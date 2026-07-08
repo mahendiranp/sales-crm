@@ -1,0 +1,4 @@
+node_modules/
+dist/
+apps/backend/src/db/data/
+.turbo/
