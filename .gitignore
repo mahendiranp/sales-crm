@@ -2,3 +2,6 @@ node_modules/
 dist/
 apps/backend/src/db/data/
 .turbo/
+
+# Ignore Next.js build output
+apps/web/.next
