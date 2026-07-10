@@ -1,16 +1,14 @@
 const express = require("express");
 const dayjs = require("dayjs");
-const { collection } = require("../db/store");
+const { scopedCollection } = require("../db/store");
 
 const router = express.Router();
-const leads = collection("leads");
-const deals = collection("deals");
-const users = collection("users");
 
-router.get("/", (req, res) => {
-  const allLeads = leads.all();
-  const allDeals = deals.all();
-  const allUsers = users.all();
+router.get("/", async (req, res) => {
+  const accountId = req.user.accountId;
+  const allLeads = await scopedCollection("leads", accountId).all();
+  const allDeals = await scopedCollection("deals", accountId).all();
+  const allUsers = await scopedCollection("users", accountId).all();
 
   // Sales trend: last 6 months revenue (won deals)
   const salesTrend = [];

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import {
   Target, Users2, MessageCircle, BarChart3, Sparkles, Building2,
-  ArrowRight, Check, ListChecks, Mail, TrendingUp,
+  ArrowRight, Check, ListChecks, Mail, TrendingUp, FormInput,
 } from "lucide-react";
 
 const FEATURES = [
   { icon: Users2, title: "Leads & Pipeline", desc: "Capture leads from Website, Facebook, and WhatsApp, then move them through a real sales pipeline." },
-  { icon: MessageCircle, title: "WhatsApp built in", desc: "Send, template, and bulk-message straight from the CRM — with AI-suggested replies." },
+  { icon: MessageCircle, title: "WhatsApp built in", desc: "Send, template, and bulk-message straight from the CRM — with AI-suggested replies, plus a conversational survey bot." },
+  { icon: FormInput, title: "Custom forms", desc: "Drag-and-drop form builder with templates, branding, and a public share link — responses land straight in your CRM, encrypted." },
   { icon: Sparkles, title: "AI Suggestions", desc: "Stale leads, overdue tasks, and hot deals surfaced automatically, every morning." },
   { icon: Building2, title: "B2B ready", desc: "Company accounts, GST numbers, and account managers for teams selling to businesses." },
   { icon: BarChart3, title: "Real analytics", desc: "Conversion rate, lead sources, best performers, and lost reasons — not vanity charts." },

@@ -1,17 +1,15 @@
 const express = require("express");
-const { collection } = require("../db/store");
+const { scopedCollection } = require("../db/store");
 
 const router = express.Router();
-const users = collection("users");
-const leads = collection("leads");
-const deals = collection("deals");
-const activities = collection("activities");
 
-router.get("/", (req, res) => {
-  const salespeople = users.all().filter((u) => u.role === "Sales Executive" || u.role === "Sales Manager");
-  const allLeads = leads.all();
-  const allDeals = deals.all();
-  const allActivities = activities.all();
+router.get("/", async (req, res) => {
+  const accountId = req.user.accountId;
+  const allUsers = await scopedCollection("users", accountId).all();
+  const salespeople = allUsers.filter((u) => u.role === "Sales Executive" || u.role === "Sales Manager");
+  const allLeads = await scopedCollection("leads", accountId).all();
+  const allDeals = await scopedCollection("deals", accountId).all();
+  const allActivities = await scopedCollection("activities", accountId).all();
 
   const data = salespeople.map((u) => {
     const assignedLeads = allLeads.filter((l) => l.assignedTo === u.id);

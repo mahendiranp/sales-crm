@@ -4,6 +4,7 @@ import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 export default function WhatsApp() {
   const { canManage } = useAuth();
@@ -18,7 +19,10 @@ export default function WhatsApp() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["whatsapp_messages"], load);
 
   const lastInbound = messages.find((m) => m.direction === "inbound");
 

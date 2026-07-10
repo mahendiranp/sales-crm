@@ -4,6 +4,7 @@ import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatDate } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const emptyForm = { title: "", relatedTo: "", dueDate: "", priority: "Medium", notifyVia: ["Email"] };
 
@@ -23,7 +24,10 @@ export default function Tasks() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["tasks", "users"], load);
 
   const userName = (id) => users.find((u) => u.id === id)?.name || "Unassigned";
   const filtered = tasks.filter((t) => t.status === filter);

@@ -1,7 +1,13 @@
 node_modules/
 dist/
-apps/backend/src/db/data/
 .turbo/
 
 # Ignore Next.js build output
 apps/web/.next
+
+# Environment files (secrets/keys) — never commit these
+.env
+.env.local
+.env.*.local
+apps/*/.env
+apps/*/.env.local

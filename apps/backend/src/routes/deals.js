@@ -1,10 +1,9 @@
 const express = require("express");
-const { collection } = require("../db/store");
+const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
 const { requireManager } = require("../middleware/auth");
 
 const router = express.Router();
-const deals = collection("deals");
 
 router.use("/", crudRouter("deals"));
 
@@ -27,6 +26,7 @@ router.post("/:id/stage", requireManager, async (req, res) => {
   const probability = stage === "Won" ? 100 : stage === "Lost" ? 0 : undefined;
   const patch = { stage };
   if (probability !== undefined) patch.probability = probability;
+  const deals = scopedCollection("deals", req.user.accountId);
   const updated = await deals.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: "Deal not found" });
   res.json(updated);

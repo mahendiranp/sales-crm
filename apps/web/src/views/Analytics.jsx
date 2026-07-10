@@ -3,15 +3,18 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tool
 import api from "../api/client";
 import { Card, PageHeader } from "../components/ui";
 import { formatINR } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const PIE_COLORS = ["#2F5D50", "#E8A33D", "#3E6FA3", "#8B5FBF", "#C1443C"];
 
 export default function Analytics() {
   const [data, setData] = useState(null);
 
+  const load = () => api.get("/analytics").then((r) => setData(r.data));
   useEffect(() => {
-    api.get("/analytics").then((r) => setData(r.data));
+    load();
   }, []);
+  useLiveCollection(["leads", "deals", "users"], load);
 
   if (!data) return <div className="text-ink/40 text-sm">Loading analytics…</div>;
 

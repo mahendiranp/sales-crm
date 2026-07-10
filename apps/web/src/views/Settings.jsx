@@ -3,6 +3,7 @@ import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkl
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Field, inputCls } from "../components/ui";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const SECTIONS = [
   { key: "companyProfile", label: "Company Profile", icon: Building2 },
@@ -21,9 +22,11 @@ export default function Settings() {
   const [active, setActive] = useState("companyProfile");
   const [saved, setSaved] = useState(false);
 
+  const load = () => api.get("/settings").then((r) => setSettings(r.data));
   useEffect(() => {
-    api.get("/settings").then((r) => setSettings(r.data));
+    load();
   }, []);
+  useLiveCollection(["settings"], load);
 
   const save = async () => {
     await api.put("/settings", settings);

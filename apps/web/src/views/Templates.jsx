@@ -3,6 +3,7 @@ import { Plus, Sparkles, MessageCircle, Mail } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const CATEGORIES = ["Welcome", "Quotation", "Payment Reminder", "Festival Wishes", "Follow-up"];
 const emptyForm = { name: "", category: "Welcome", channel: "WhatsApp", body: "" };
@@ -21,7 +22,10 @@ export default function Templates() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["templates"], load);
 
   const save = async () => {
     await api.post("/templates", form);

@@ -1,0 +1,317 @@
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import { CheckCircle2, FormInput, Eye, X } from "lucide-react";
+import api from "../../api/client";
+import { inputCls } from "../../components/ui";
+
+function validateField(field, value) {
+  const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+  if (field.required && isEmpty) return `${field.label} is required.`;
+  if (isEmpty) return null;
+
+  if (field.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    return "Enter a valid email address.";
+  }
+  if (field.type === "phone" && !/^[0-9+\-\s()]{7,15}$/.test(value)) {
+    return "Enter a valid phone number.";
+  }
+  if (field.type === "number") {
+    const num = Number(value);
+    if (Number.isNaN(num)) return "Enter a valid number.";
+    if (field.validation?.min !== undefined && field.validation.min !== "" && num < Number(field.validation.min)) {
+      return `Must be at least ${field.validation.min}.`;
+    }
+    if (field.validation?.max !== undefined && field.validation.max !== "" && num > Number(field.validation.max)) {
+      return `Must be at most ${field.validation.max}.`;
+    }
+  }
+  if ((field.type === "text" || field.type === "longtext") && typeof value === "string") {
+    if (field.validation?.minLength && value.length < Number(field.validation.minLength)) {
+      return `Must be at least ${field.validation.minLength} characters.`;
+    }
+    if (field.validation?.maxLength && value.length > Number(field.validation.maxLength)) {
+      return `Must be at most ${field.validation.maxLength} characters.`;
+    }
+  }
+  return null;
+}
+
+function FieldInput({ field, value, onChange, invalid, accentColor }) {
+  const common = {
+    className: `${inputCls} ${invalid ? "border-danger focus:border-danger" : ""}`,
+    value: value ?? "",
+    onChange: (e) => onChange(e.target.value),
+  };
+
+  switch (field.type) {
+    case "longtext":
+      return <textarea {...common} rows={4} placeholder={field.placeholder} />;
+    case "email":
+      return <input type="email" {...common} placeholder={field.placeholder} />;
+    case "phone":
+      return <input type="tel" {...common} placeholder={field.placeholder} />;
+    case "number":
+      return (
+        <input
+          type="number"
+          {...common}
+          placeholder={field.placeholder}
+          min={field.validation?.min || undefined}
+          max={field.validation?.max || undefined}
+        />
+      );
+    case "date":
+      return <input type="date" {...common} />;
+    case "time":
+      return <input type="time" {...common} />;
+    case "dropdown":
+      return (
+        <select {...common}>
+          <option value="">Select…</option>
+          {(field.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    case "radio":
+      return (
+        <div className="space-y-1.5">
+          {(field.options || []).map((o) => (
+            <label key={o} className="flex items-center gap-2 text-sm">
+              <input type="radio" name={field.id} checked={value === o} onChange={() => onChange(o)} />
+              {o}
+            </label>
+          ))}
+        </div>
+      );
+    case "checkbox": {
+      const selected = Array.isArray(value) ? value : [];
+      return (
+        <div className="space-y-1.5">
+          {(field.options || []).map((o) => (
+            <label key={o} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selected.includes(o)}
+                onChange={(e) => onChange(e.target.checked ? [...selected, o] : selected.filter((s) => s !== o))}
+              />
+              {o}
+            </label>
+          ))}
+        </div>
+      );
+    }
+    case "file":
+      return <input type="file" onChange={(e) => onChange(e.target.files?.[0]?.name || "")} className="text-sm" />;
+    case "rating":
+      return (
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4, 5].map((n) => {
+            const isSelected = Number(value) === n;
+            return (
+              <button
+                type="button"
+                key={n}
+                onClick={() => onChange(n)}
+                style={isSelected && accentColor ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
+                className={`w-9 h-9 rounded-lg border text-sm font-medium ${
+                  isSelected ? "bg-primary text-white border-primary" : "border-border text-ink/60"
+                }`}
+              >
+                {n}
+              </button>
+            );
+          })}
+        </div>
+      );
+    case "yesno":
+      return (
+        <div className="flex gap-2">
+          {["Yes", "No"].map((o) => {
+            const isSelected = value === o;
+            return (
+              <button
+                type="button"
+                key={o}
+                onClick={() => onChange(o)}
+                style={isSelected && accentColor ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
+                className={`px-4 py-2 rounded-lg border text-sm font-medium ${
+                  isSelected ? "bg-primary text-white border-primary" : "border-border text-ink/60"
+                }`}
+              >
+                {o}
+              </button>
+            );
+          })}
+        </div>
+      );
+    default:
+      return <input type="text" {...common} placeholder={field.placeholder} />;
+  }
+}
+
+export default function PublicFormPage() {
+  const router = useRouter();
+  const { id, preview } = router.query;
+  const isPreview = preview === "1";
+  const [form, setForm] = useState(null);
+  const [error, setError] = useState(false);
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    if (!id || !router.isReady) return;
+    api
+      .get(`/forms/${id}/${isPreview ? "preview" : "public"}`)
+      .then((r) => {
+        setForm(r.data);
+        const defaults = {};
+        r.data.fields.forEach((f) => {
+          if (f.defaultValue) defaults[f.id] = f.defaultValue;
+        });
+        setAnswers(defaults);
+      })
+      .catch(() => setError(true));
+  }, [id, isPreview, router.isReady]);
+
+  const setAnswer = (fieldId, value) => {
+    setAnswers((a) => ({ ...a, [fieldId]: value }));
+    setErrors((e) => (e[fieldId] ? { ...e, [fieldId]: null } : e));
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const nextErrors = {};
+    form.fields.forEach((f) => {
+      const msg = validateField(f, answers[f.id]);
+      if (msg) nextErrors[f.id] = msg;
+    });
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+    setSubmitting(true);
+    if (!isPreview) {
+      await api.post(`/forms/${id}/responses`, { answers });
+    }
+    setSubmitting(false);
+    setSubmitted(true);
+  };
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-base p-4">
+        <div className="bg-white border border-border rounded-card shadow-card p-8 max-w-md text-center">
+          <FormInput size={28} className="text-ink/30 mx-auto mb-3" />
+          <p className="font-medium text-ink/70">This form isn't available</p>
+          <p className="text-sm text-ink/40 mt-1">It may be unpublished or the link is incorrect.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!form) return null;
+
+  const branding = form.settings?.branding || {};
+  const hasBackgroundImage = !!branding.backgroundImageDataUrl;
+  const pageStyle = hasBackgroundImage
+    ? {
+        backgroundImage: `url(${branding.backgroundImageDataUrl})`,
+        backgroundSize: branding.backgroundImageFit === "repeat" ? "auto" : branding.backgroundImageFit || "cover",
+        backgroundRepeat: branding.backgroundImageFit === "repeat" ? "repeat" : "no-repeat",
+        backgroundPosition: branding.backgroundImagePosition || "center",
+      }
+    : branding.backgroundCss
+    ? { background: branding.backgroundCss }
+    : branding.backgroundColor
+    ? { backgroundColor: branding.backgroundColor }
+    : undefined;
+  const pageClass = pageStyle ? "relative" : "bg-base relative";
+  const overlayOpacity = hasBackgroundImage ? (branding.backgroundImageOverlay || 0) / 100 : 0;
+  const accentColor = branding.accentColor || "";
+
+  const Overlay = overlayOpacity > 0 && (
+    <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0,0,0,${overlayOpacity})` }} />
+  );
+  // Back-compat: older forms only ever had logoDataUrl with no explicit logoType.
+  const logoType = branding.logoType || (branding.logoDataUrl ? "image" : "none");
+
+  const Logo = ({ center }) => {
+    if (logoType === "image" && branding.logoDataUrl) {
+      return <img src={branding.logoDataUrl} alt="" className={`h-14 ${center ? "mx-auto" : ""} mb-4 object-contain`} />;
+    }
+    if (logoType === "text" && branding.logoText) {
+      return <div className={`font-display font-bold text-xl mb-4 ${center ? "text-center" : ""}`}>{branding.logoText}</div>;
+    }
+    return null;
+  };
+
+  const PreviewBanner = isPreview && (
+    <div className="sticky top-0 z-10 bg-ink text-white text-sm px-4 py-2.5 flex items-center justify-center gap-3">
+      <Eye size={14} />
+      <span>
+        <strong>Preview Mode</strong> — this is exactly what customers will see. Submissions here aren't saved.
+      </span>
+      <Link href="/app/forms" className="flex items-center gap-1 text-white/70 hover:text-white ml-2">
+        <X size={14} /> Close
+      </Link>
+    </div>
+  );
+
+  if (submitted) {
+    return (
+      <div>
+        {PreviewBanner}
+        <div className={`min-h-screen flex items-center justify-center p-4 ${pageClass}`} style={pageStyle}>
+          {Overlay}
+          <div className="relative z-10 bg-white border border-border rounded-card shadow-card p-8 max-w-md text-center">
+            <Logo center />
+            <CheckCircle2 size={32} className="text-primary mx-auto mb-3" />
+            <p className="font-display font-semibold text-lg">{form.settings?.confirmationMessage || "Thanks for your submission!"}</p>
+            {isPreview && <p className="text-xs text-ink/40 mt-3">(Preview only — nothing was actually submitted.)</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {PreviewBanner}
+      <div className={`min-h-screen p-4 flex justify-center ${pageClass}`} style={pageStyle}>
+      {Overlay}
+      <div className="relative z-10 bg-white border border-border rounded-card shadow-card p-6 sm:p-8 max-w-xl w-full h-fit my-8">
+        <Logo />
+        <h1 className="font-display font-bold text-2xl mb-1">{form.name}</h1>
+        {form.description && <p className="text-sm text-ink/50 mb-6">{form.description}</p>}
+
+        <form onSubmit={submit} noValidate className="space-y-5">
+          {form.fields.map((f) => (
+            <div key={f.id}>
+              <label className="block text-sm font-medium mb-1.5">
+                {f.label} {f.required && <span className="text-danger">*</span>}
+              </label>
+              <FieldInput field={f} value={answers[f.id]} onChange={(v) => setAnswer(f.id, v)} invalid={!!errors[f.id]} accentColor={accentColor} />
+              {errors[f.id] ? (
+                <p className="text-xs text-danger mt-1">{errors[f.id]}</p>
+              ) : (
+                f.helpText && <p className="text-xs text-ink/40 mt-1">{f.helpText}</p>
+              )}
+            </div>
+          ))}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            style={accentColor ? { backgroundColor: accentColor } : undefined}
+            className="w-full bg-primary text-white rounded-lg py-2.5 text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
+          >
+            {submitting ? "Submitting…" : form.settings?.submitButtonText || "Submit"}
+          </button>
+        </form>
+      </div>
+      </div>
+    </div>
+  );
+}

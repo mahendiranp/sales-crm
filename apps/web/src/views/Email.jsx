@@ -4,6 +4,7 @@ import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatDate } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 export default function EmailPage() {
   const { canManage } = useAuth();
@@ -20,7 +21,10 @@ export default function EmailPage() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["emails"], load);
 
   const send = async () => {
     await api.post("/emails/send", form);

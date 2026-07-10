@@ -3,6 +3,7 @@ import { Phone, MessageCircle, Mail, Users, MapPin } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const ICONS = {
   "Phone Call": Phone,
@@ -24,13 +25,17 @@ export default function Activities() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = () => {
     Promise.all([api.get("/activities"), api.get("/users")]).then(([a, u]) => {
       setActivities(a.data.sort((x, y) => new Date(y.timestamp) - new Date(x.timestamp)));
       setUsers(u.data);
       setLoading(false);
     });
+  };
+  useEffect(() => {
+    load();
   }, []);
+  useLiveCollection(["activities", "users"], load);
 
   const userName = (id) => users.find((u) => u.id === id)?.name || "System";
 

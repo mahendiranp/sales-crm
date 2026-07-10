@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import api from "../api/client";
+import { reconnectSocket } from "../lib/socket";
 
 const AuthContext = createContext(null);
 const STORAGE_KEY = "pipeline_auth_user";
@@ -20,38 +21,44 @@ export function AuthProvider({ children }) {
     setReady(true);
   }, []);
 
-  const persist = (u) => {
-    setUser(u);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+  // The JWT is what actually authenticates every API call (see api/client.js) —
+  // stored alongside the user profile so a page refresh doesn't lose the session.
+  const persist = (u, token) => {
+    const withToken = { ...u, token };
+    setUser(withToken);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(withToken));
+    reconnectSocket();
   };
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    persist(data.user);
+    persist(data.user, data.token);
     return data.user;
   };
 
   const demoLogin = async (authRole) => {
     const { data } = await api.post("/auth/demo-login", { authRole });
-    persist(data.user);
+    persist(data.user, data.token);
     return data.user;
   };
 
   const signup = async (payload) => {
     const { data } = await api.post("/auth/signup", payload);
-    persist(data.user);
+    persist(data.user, data.token);
     return data.user;
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    reconnectSocket();
   };
 
   const canManage = user ? user.authRole !== "viewer" : false;
+  const isMasterAdmin = user ? !!user.isMasterAdmin : false;
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, demoLogin, signup, logout, canManage }}>
+    <AuthContext.Provider value={{ user, ready, login, demoLogin, signup, logout, canManage, isMasterAdmin }}>
       {children}
     </AuthContext.Provider>
   );

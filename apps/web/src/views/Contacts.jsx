@@ -1,21 +1,26 @@
 import { useEffect, useState } from "react";
-import { FileText, MapPin, ShoppingBag } from "lucide-react";
+import { FileText, MapPin, ShoppingBag, Cake, CalendarClock } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, EmptyState } from "../components/ui";
 import { formatINR, formatDate } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 export default function Contacts() {
   const [contacts, setContacts] = useState([]);
   const [active, setActive] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = () => {
     api.get("/contacts").then((r) => {
       setContacts(r.data);
-      setActive(r.data[0] || null);
+      setActive((prev) => r.data.find((c) => c.id === prev?.id) || r.data[0] || null);
       setLoading(false);
     });
+  };
+  useEffect(() => {
+    load();
   }, []);
+  useLiveCollection(["contacts"], load);
 
   return (
     <div>
@@ -55,6 +60,14 @@ export default function Contacts() {
                 <div className="flex items-start gap-2 mt-4 text-sm text-ink/60">
                   <MapPin size={15} className="mt-0.5 shrink-0" />
                   {active.address || "No address on file"}
+                </div>
+                <div className="flex items-center gap-2 mt-2 text-sm text-ink/60">
+                  <Cake size={15} className="shrink-0" />
+                  Birthday: {active.birthday ? formatDate(active.birthday) : "Not on file"}
+                </div>
+                <div className="flex items-center gap-2 mt-2 text-sm text-ink/60">
+                  <CalendarClock size={15} className="shrink-0" />
+                  Contract renewal: {active.contractRenewalDate ? formatDate(active.contractRenewalDate) : "Not on file"}
                 </div>
               </Card>
 

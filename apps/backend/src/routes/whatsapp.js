@@ -1,13 +1,11 @@
 const express = require("express");
-const { v4: uuid } = require("uuid");
-const { collection } = require("../db/store");
+const { randomUUID: uuid } = require("crypto");
+const { scopedCollection } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
 
 const router = express.Router();
-const messages = collection("whatsapp_messages");
-const templates = collection("templates");
 
-router.get("/", (req, res) => res.json(messages.all()));
+router.get("/", async (req, res) => res.json(await scopedCollection("whatsapp_messages", req.user.accountId).all()));
 
 // Send a single message
 router.post("/send", requireManager, async (req, res) => {
@@ -22,14 +20,16 @@ router.post("/send", requireManager, async (req, res) => {
     status: "sent",
     timestamp: new Date().toISOString(),
   };
-  await messages.insert(record);
-  res.status(201).json(record);
+  await scopedCollection("whatsapp_messages", req.user.accountId).insert(record);
+  res.status(201).json({ ...record, accountId: req.user.accountId });
 });
 
 // Send bulk messages to multiple leads using a template
 router.post("/send-bulk", requireManager, async (req, res) => {
   const { leadIds, templateId, customMessage } = req.body;
-  const template = templateId ? templates.find(templateId) : null;
+  const messages = scopedCollection("whatsapp_messages", req.user.accountId);
+  const templates = scopedCollection("templates", req.user.accountId);
+  const template = templateId ? await templates.find(templateId) : null;
   const body = customMessage || template?.body || "";
   const sent = [];
   for (const leadId of leadIds || []) {

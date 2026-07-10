@@ -10,5 +10,8 @@ router.use("/tasks", crudRouter("tasks"));
 router.use("/templates", crudRouter("templates"));
 router.use("/users", crudRouter("users"));
 router.use("/teams", crudRouter("teams"));
+router.use("/invoices", crudRouter("invoices"));
+router.use("/expenses", crudRouter("expenses"));
+router.use("/documents", crudRouter("documents"));
 
 module.exports = router;

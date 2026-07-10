@@ -25,6 +25,12 @@ const BADGE_COLORS = {
   "Quotation Sent": "bg-amber-50 text-amber-700",
   Negotiation: "bg-orange-50 text-orange-700",
   Won: "bg-emerald-50 text-emerald-700",
+  Draft: "bg-slate-100 text-slate-600",
+  Sent: "bg-blue-50 text-blue-700",
+  Paid: "bg-emerald-50 text-emerald-700",
+  Overdue: "bg-red-50 text-red-700",
+  Approved: "bg-emerald-50 text-emerald-700",
+  Rejected: "bg-red-50 text-red-700",
 };
 
 export function Badge({ children }) {
@@ -96,6 +102,27 @@ export function Field({ label, children }) {
 
 export const inputCls =
   "w-full px-3 py-2 border border-border rounded-lg text-sm outline-none focus:border-primary transition-colors";
+
+export function Switch({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${
+        checked ? "bg-primary" : "bg-ink/15"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+          checked ? "translate-x-4" : ""
+        }`}
+      />
+    </button>
+  );
+}
 
 export function EmptyState({ icon: Icon, title, subtitle }) {
   return (

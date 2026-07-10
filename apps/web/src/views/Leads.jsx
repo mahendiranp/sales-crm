@@ -4,8 +4,9 @@ import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatINR, timeAgo } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
-const SOURCES = ["Website", "Facebook", "WhatsApp", "Referral", "Cold Call"];
+const SOURCES = ["Website", "Facebook", "WhatsApp", "Referral", "Cold Call", "Google Ads", "Email Campaign"];
 const PRODUCTS = ["ERP Suite", "CRM Pro", "Inventory Manager", "HR Toolkit", "Accounting Module"];
 const PRIORITIES = ["High", "Medium", "Low"];
 const STATUSES = ["New", "Contacted", "Qualified", "Converted", "Lost"];
@@ -33,7 +34,10 @@ export default function Leads() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["leads", "users"], load);
 
   const userName = (id) => users.find((u) => u.id === id)?.name || "Unassigned";
 

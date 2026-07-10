@@ -3,13 +3,16 @@ import { Phone, Users as UsersIcon, Trophy, Wallet } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, EmptyState } from "../components/ui";
 import { formatINR } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 export default function Performance() {
   const [data, setData] = useState(null);
 
+  const load = () => api.get("/performance").then((r) => setData(r.data));
   useEffect(() => {
-    api.get("/performance").then((r) => setData(r.data));
+    load();
   }, []);
+  useLiveCollection(["users", "leads", "deals", "activities"], load);
 
   if (!data) return <div className="text-ink/40 text-sm">Loading…</div>;
 

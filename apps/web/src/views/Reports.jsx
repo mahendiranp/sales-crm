@@ -3,6 +3,7 @@ import { FileSpreadsheet, FileText, Download } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, Button, EmptyState } from "../components/ui";
 import { formatINR, formatDate } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const PERIODS = ["daily", "weekly", "monthly"];
 
@@ -10,9 +11,11 @@ export default function Reports() {
   const [period, setPeriod] = useState("monthly");
   const [report, setReport] = useState(null);
 
+  const load = () => api.get(`/reports/${period}`).then((r) => setReport(r.data));
   useEffect(() => {
-    api.get(`/reports/${period}`).then((r) => setReport(r.data));
+    load();
   }, [period]);
+  useLiveCollection(["deals"], load);
 
   const downloadExcel = () => window.open(`/api/reports/${period}/export/excel`, "_blank");
   const downloadPdf = () => window.open(`/api/reports/${period}/export/pdf`, "_blank");

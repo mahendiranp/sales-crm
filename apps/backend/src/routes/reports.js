@@ -2,19 +2,17 @@ const express = require("express");
 const dayjs = require("dayjs");
 const XLSX = require("xlsx");
 const PDFDocument = require("pdfkit");
-const { collection } = require("../db/store");
+const { scopedCollection } = require("../db/store");
 
 const router = express.Router();
-const deals = collection("deals");
-const users = collection("users");
 
-function wonDealsInRange(start, end) {
-  return deals.all().filter(
+async function wonDealsInRange(accountId, start, end) {
+  return (await scopedCollection("deals", accountId).all()).filter(
     (d) => d.stage === "Won" && dayjs(d.updatedAt).isAfter(dayjs(start).subtract(1, "second")) && dayjs(d.updatedAt).isBefore(dayjs(end).add(1, "second"))
   );
 }
 
-function buildReport(period) {
+async function buildReport(accountId, period) {
   const now = dayjs();
   let start, end;
   if (period === "daily") {
@@ -27,8 +25,8 @@ function buildReport(period) {
     start = now.startOf("month");
     end = now.endOf("month");
   }
-  const won = wonDealsInRange(start, end);
-  const allUsers = users.all();
+  const won = await wonDealsInRange(accountId, start, end);
+  const allUsers = await scopedCollection("users", accountId).all();
 
   const productWise = {};
   won.forEach((d) => (d.products || []).forEach((p) => {
@@ -52,16 +50,16 @@ function buildReport(period) {
   };
 }
 
-router.get("/:period", (req, res) => {
+router.get("/:period", async (req, res) => {
   const { period } = req.params;
   if (!["daily", "weekly", "monthly"].includes(period)) {
     return res.status(400).json({ error: "period must be daily, weekly, or monthly" });
   }
-  res.json(buildReport(period));
+  res.json(await buildReport(req.user.accountId, period));
 });
 
-router.get("/:period/export/excel", (req, res) => {
-  const report = buildReport(req.params.period);
+router.get("/:period/export/excel", async (req, res) => {
+  const report = await buildReport(req.user.accountId, req.params.period);
   const wb = XLSX.utils.book_new();
 
   const summarySheet = XLSX.utils.json_to_sheet([
@@ -86,8 +84,8 @@ router.get("/:period/export/excel", (req, res) => {
   res.send(buffer);
 });
 
-router.get("/:period/export/pdf", (req, res) => {
-  const report = buildReport(req.params.period);
+router.get("/:period/export/pdf", async (req, res) => {
+  const report = await buildReport(req.user.accountId, req.params.period);
   const doc = new PDFDocument({ margin: 40 });
   res.setHeader("Content-Disposition", `attachment; filename=${report.period}-sales-report.pdf`);
   res.setHeader("Content-Type", "application/pdf");

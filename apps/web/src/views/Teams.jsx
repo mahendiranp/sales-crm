@@ -3,6 +3,7 @@ import { Plus, Users as UsersIcon } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls } from "../components/ui";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const emptyForm = { name: "", region: "", memberIds: [] };
 
@@ -21,7 +22,10 @@ export default function Teams() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["teams", "users"], load);
 
   const userName = (id) => users.find((u) => u.id === id)?.name || "—";
 

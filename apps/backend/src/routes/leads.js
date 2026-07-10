@@ -1,12 +1,12 @@
 const express = require("express");
-const { v4: uuid } = require("uuid");
-const { collection } = require("../db/store");
+const { randomUUID: uuid } = require("crypto");
+const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
 const { requireManager } = require("../middleware/auth");
 
 const router = express.Router();
-const leads = collection("leads");
-const contacts = collection("contacts");
+const leads = (req) => scopedCollection("leads", req.user.accountId);
+const contacts = (req) => scopedCollection("contacts", req.user.accountId);
 
 // mount base CRUD first, then add extra action routes
 router.use("/", crudRouter("leads"));
@@ -14,14 +14,14 @@ router.use("/", crudRouter("leads"));
 // Assign a salesperson to a lead
 router.post("/:id/assign", requireManager, async (req, res) => {
   const { userId } = req.body;
-  const updated = await leads.update(req.params.id, { assignedTo: userId });
+  const updated = await leads(req).update(req.params.id, { assignedTo: userId });
   if (!updated) return res.status(404).json({ error: "Lead not found" });
   res.json(updated);
 });
 
 // Convert a lead into a customer (Contact)
 router.post("/:id/convert", requireManager, async (req, res) => {
-  const lead = leads.find(req.params.id);
+  const lead = await leads(req).find(req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
   const contact = {
@@ -37,19 +37,19 @@ router.post("/:id/convert", requireManager, async (req, res) => {
     documents: [],
     createdAt: new Date().toISOString(),
   };
-  await contacts.insert(contact);
-  await leads.update(lead.id, { status: "Converted" });
-  res.status(201).json(contact);
+  await contacts(req).insert(contact);
+  await leads(req).update(lead.id, { status: "Converted" });
+  res.status(201).json({ ...contact, accountId: req.user.accountId });
 });
 
 // Merge duplicate leads: keep primary, drop the rest
 router.post("/merge", requireManager, async (req, res) => {
   const { primaryId, duplicateIds } = req.body;
-  const primary = leads.find(primaryId);
+  const primary = await leads(req).find(primaryId);
   if (!primary) return res.status(404).json({ error: "Primary lead not found" });
 
   for (const dupId of duplicateIds || []) {
-    await leads.remove(dupId);
+    await leads(req).remove(dupId);
   }
   res.json({ merged: true, primary });
 });

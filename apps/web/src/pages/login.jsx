@@ -5,6 +5,9 @@ import { Target, ShieldCheck, UserCog, Eye, ArrowRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Field, inputCls, Button } from "../components/ui";
 
+// Demo passwords come from env (must be NEXT_PUBLIC_ to reach the client
+// bundle) so they're never hardcoded in source and stay in sync with the
+// backend's DEMO_*_PASSWORD seed values — see apps/web/.env.example.
 const ROLES = [
   {
     key: "admin",
@@ -12,7 +15,7 @@ const ROLES = [
     desc: "Full access — manage everything, including settings and users.",
     icon: ShieldCheck,
     email: "admin@pipeline.com",
-    password: "admin123",
+    password: process.env.NEXT_PUBLIC_DEMO_ADMIN_PASSWORD || "admin123",
   },
   {
     key: "manager",
@@ -20,7 +23,7 @@ const ROLES = [
     desc: "Can manage leads, deals, tasks, and messaging.",
     icon: UserCog,
     email: "manager@pipeline.com",
-    password: "manager123",
+    password: process.env.NEXT_PUBLIC_DEMO_MANAGER_PASSWORD || "manager123",
   },
   {
     key: "viewer",
@@ -28,7 +31,7 @@ const ROLES = [
     desc: "View-only — can browse the CRM but can't make changes.",
     icon: Eye,
     email: "viewer@pipeline.com",
-    password: "viewer123",
+    password: process.env.NEXT_PUBLIC_DEMO_VIEWER_PASSWORD || "viewer123",
   },
 ];
 

@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls } from "../components/ui";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const ROLES = ["Owner", "Admin", "Sales Manager", "Sales Executive", "Support Agent"];
 const emptyForm = { name: "", email: "", phone: "", role: "Sales Executive", avatarColor: "#2F5D50" };
@@ -20,7 +21,10 @@ export default function Users() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["users"], load);
 
   const save = async () => {
     await api.post("/users", form);

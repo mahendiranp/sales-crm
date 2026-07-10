@@ -4,13 +4,14 @@ const api = axios.create({
   baseURL: "/api",
 });
 
+// Every request carries the signed JWT from login — the backend verifies
+// it server-side (see middleware/auth.js); nothing here is trusted as-is.
 api.interceptors.request.use((config) => {
   try {
     const stored = localStorage.getItem("pipeline_auth_user");
     if (stored) {
       const user = JSON.parse(stored);
-      config.headers["x-auth-role"] = user.authRole;
-      config.headers["x-user-id"] = user.id;
+      if (user.token) config.headers["Authorization"] = `Bearer ${user.token}`;
     }
   } catch {
     // ignore malformed storage
@@ -21,7 +22,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (error.response?.status === 403) {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("pipeline_auth_user");
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    } else if (error.response?.status === 403) {
       alert(error.response.data?.error || "You don't have permission to do that.");
     }
     return Promise.reject(error);
@@ -48,3 +54,6 @@ export const Tasks = Resource("tasks");
 export const Templates = Resource("templates");
 export const Users = Resource("users");
 export const Teams = Resource("teams");
+export const Invoices = Resource("invoices");
+export const Expenses = Resource("expenses");
+export const Documents = Resource("documents");

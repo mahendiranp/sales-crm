@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Users2, UserPlus, Clock3, Trophy, Wallet, Sparkles } from "lucide-react";
+import { Users2, UserPlus, Clock3, Trophy, Wallet, Sparkles, Bell, Crown, TrendingDown, FormInput } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader } from "../components/ui";
-import { formatINR } from "../lib/format";
+import { formatINR, formatDate } from "../lib/format";
+import useLiveCollection from "../lib/useLiveCollection";
 
 function StatCard({ icon: Icon, label, value, accent }) {
   return (
@@ -24,14 +26,42 @@ function StatCard({ icon: Icon, label, value, accent }) {
   );
 }
 
+function WidgetCard({ icon, title, children }) {
+  return (
+    <Card className="p-5">
+      <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
+        <span>{icon}</span> {title}
+      </h3>
+      {children}
+    </Card>
+  );
+}
+
+function MetricRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 text-sm">
+      <span className="text-ink/60">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
+  const [formStats, setFormStats] = useState(null);
 
+  const load = () => api.get("/dashboard").then((r) => setData(r.data));
+  const loadFormStats = () => api.get("/forms/stats").then((r) => setFormStats(r.data)).catch(() => {});
   useEffect(() => {
-    api.get("/dashboard").then((r) => setData(r.data));
+    load();
+    loadFormStats();
   }, []);
+  useLiveCollection(["leads", "deals", "tasks", "activities"], load);
+  useLiveCollection(["forms", "form_responses"], loadFormStats);
 
   if (!data) return <div className="text-ink/40 text-sm">Loading dashboard…</div>;
+
+  const { salesPerformance, leadStatus, todaysActivities, teamPerformance, revenueSummary, leadSources, notifications } = data;
 
   return (
     <div>
@@ -45,7 +75,7 @@ export default function Dashboard() {
         <StatCard icon={Wallet} label="Monthly Revenue" value={formatINR(data.monthlyRevenue)} accent="#C1443C" />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4 mb-4">
         <Card className="col-span-2 p-5">
           <h3 className="font-display font-semibold mb-4">Sales Trend — Last 6 Months</h3>
           <ResponsiveContainer width="100%" height={260}>
@@ -64,11 +94,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </Card>
 
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles size={17} className="text-accent" />
-            <h3 className="font-display font-semibold">AI Suggestions</h3>
-          </div>
+        <WidgetCard icon={<Sparkles size={17} className="text-accent inline" />} title="AI Suggestions">
           <div className="space-y-3">
             {data.aiSuggestions.map((s, i) => (
               <div key={i} className="text-sm text-ink/70 bg-accent/8 border border-accent/20 rounded-lg p-3 leading-snug">
@@ -76,7 +102,121 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        </Card>
+        </WidgetCard>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <WidgetCard icon="📊" title="Sales Performance">
+          <MetricRow label="Today's Sales" value={formatINR(salesPerformance.today)} />
+          <MetricRow label="Weekly Sales" value={formatINR(salesPerformance.weekly)} />
+          <MetricRow label="Monthly Sales" value={formatINR(salesPerformance.monthly)} />
+          <MetricRow label="Yearly Sales" value={formatINR(salesPerformance.yearly)} />
+        </WidgetCard>
+
+        <WidgetCard icon="📌" title="Lead Status">
+          <MetricRow label="New Leads" value={leadStatus.newLeads} />
+          <MetricRow label="Contacted" value={leadStatus.contacted} />
+          <MetricRow label="Qualified" value={leadStatus.qualified} />
+          <MetricRow label="Proposal Sent" value={leadStatus.proposalSent} />
+          <MetricRow label="Negotiation" value={leadStatus.negotiation} />
+          <MetricRow label="Won" value={leadStatus.won} />
+          <MetricRow label="Lost" value={leadStatus.lost} />
+        </WidgetCard>
+
+        <WidgetCard icon="📅" title="Today's Activities">
+          <MetricRow label="Meetings" value={todaysActivities.meetings} />
+          <MetricRow label="Calls" value={todaysActivities.calls} />
+          <MetricRow label="Follow-ups" value={todaysActivities.followUps} />
+          <MetricRow label="Pending Tasks" value={todaysActivities.pendingTasks} />
+          <MetricRow label="Upcoming Appointments" value={todaysActivities.upcomingAppointments} />
+        </WidgetCard>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <WidgetCard icon="👨‍💼" title="Sales Team Performance">
+          <div className="flex items-center gap-2 text-sm mb-1.5">
+            <Crown size={14} className="text-amber-500" />
+            <span className="text-ink/60">Top Performer</span>
+            <span className="ml-auto font-medium">
+              {teamPerformance.topPerformer ? teamPerformance.topPerformer.name : "—"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm mb-1.5">
+            <TrendingDown size={14} className="text-ink/40" />
+            <span className="text-ink/60">Lowest Performer</span>
+            <span className="ml-auto font-medium">
+              {teamPerformance.lowestPerformer ? teamPerformance.lowestPerformer.name : "—"}
+            </span>
+          </div>
+          <MetricRow label="Deals Closed" value={teamPerformance.dealsClosed} />
+          <div className="mt-2 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-ink/40 mb-1.5">Revenue by Salesperson</p>
+            {teamPerformance.revenueBySalesperson.slice(0, 5).map((p) => (
+              <MetricRow key={p.userId} label={p.name} value={formatINR(p.revenue)} />
+            ))}
+          </div>
+        </WidgetCard>
+
+        <WidgetCard icon="💰" title="Revenue Summary">
+          <MetricRow label="Total Revenue" value={formatINR(revenueSummary.totalRevenue)} />
+          <MetricRow label="Target Revenue" value={formatINR(revenueSummary.targetRevenue)} />
+          <MetricRow label="Revenue Achievement %" value={`${revenueSummary.achievementPct}%`} />
+          <MetricRow label="Average Deal Value" value={formatINR(revenueSummary.avgDealValue)} />
+        </WidgetCard>
+
+        <WidgetCard icon="🌍" title="Lead Sources">
+          {leadSources.length === 0 && <p className="text-sm text-ink/40">No leads yet.</p>}
+          {leadSources.map((s) => (
+            <MetricRow key={s.source} label={s.source} value={s.count} />
+          ))}
+        </WidgetCard>
+      </div>
+
+      {formStats && (
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <WidgetCard icon={<FormInput size={17} className="text-primary inline" />} title="Forms">
+            <MetricRow label="Total Forms" value={formStats.totalForms} />
+            <MetricRow label="Total Responses" value={formStats.totalResponses} />
+          </WidgetCard>
+
+          <Card className="p-5 col-span-2">
+            <h3 className="font-display font-semibold mb-4">Recent Form Responses</h3>
+            {formStats.recentResponses.length === 0 ? (
+              <p className="text-sm text-ink/40">No responses yet.</p>
+            ) : (
+              <div className="space-y-1">
+                {formStats.recentResponses.map((r) => (
+                  <Link
+                    key={r.id}
+                    href={`/app/forms/${r.formId}/responses?highlight=${r.id}`}
+                    className="flex items-center justify-between text-sm py-1 px-1.5 -mx-1.5 rounded-lg hover:bg-base"
+                  >
+                    <span className="text-ink/70 truncate">{r.formName}</span>
+                    <span className="text-xs text-ink/40 shrink-0 ml-2">{formatDate(r.submittedAt)}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4">
+        <WidgetCard icon="🔔" title="Notifications">
+          {notifications.length === 0 && <p className="text-sm text-ink/40">No notifications right now.</p>}
+          <div className="space-y-2">
+            {notifications.map((n, i) => (
+              <div key={i} className="flex items-start gap-3 text-sm p-2.5 rounded-lg hover:bg-base">
+                <Bell size={15} className="text-ink/30 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium">{n.type}</span>
+                  <span className="text-ink/60"> — {n.message}</span>
+                </div>
+                <span className="text-xs text-ink/35 shrink-0">{formatDate(n.timestamp)}</span>
+              </div>
+            ))}
+          </div>
+        </WidgetCard>
       </div>
     </div>
   );

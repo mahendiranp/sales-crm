@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import {
@@ -22,8 +23,12 @@ import {
   ChevronDown,
   Eye,
   LogOut,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import api from "../api/client";
+import { APP_CATALOG } from "../lib/appCatalog";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const NAV_SECTIONS = [
   {
@@ -67,6 +72,7 @@ const NAV_SECTIONS = [
     items: [
       { to: "/app/users", label: "Users", icon: UserCog },
       { to: "/app/teams", label: "Teams", icon: Users },
+      { to: "/app/apps", label: "Admin Portal", icon: ShieldCheck, adminOnly: true },
       { to: "/app/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -90,15 +96,39 @@ function NavItem({ to, label, icon: Icon }) {
 }
 
 export default function Layout({ children }) {
-  const { user, logout, canManage } = useAuth();
+  const { user, logout, canManage, isMasterAdmin } = useAuth();
   const router = useRouter();
   const initials = (user?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2);
   const roleLabel = { admin: "Admin", manager: "Manager", viewer: "Viewer" }[user?.authRole] || user?.authRole;
+  const [enabledApps, setEnabledApps] = useState({});
+
+  const loadEnabledApps = () => api.get("/settings").then((r) => setEnabledApps(r.data.apps || {})).catch(() => {});
+  useEffect(() => {
+    loadEnabledApps();
+  }, []);
+  useLiveCollection(["settings"], loadEnabledApps);
 
   const handleLogout = () => {
     logout();
     router.push("/login");
   };
+
+  const enabledAppItems = APP_CATALOG
+    .filter((a) => a.status !== "builtIn" && enabledApps[a.key])
+    .map((a) => ({
+      to: a.status === "available" ? a.route : `/app/module/${a.key}`,
+      label: a.label,
+      icon: a.icon,
+    }));
+
+  const visibleSections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => !item.adminOnly || isMasterAdmin),
+  }));
+
+  const sections = enabledAppItems.length
+    ? [...visibleSections, { label: "Apps", items: enabledAppItems }]
+    : visibleSections;
 
   return (
     <div className="flex h-screen bg-base font-body">
@@ -111,7 +141,7 @@ export default function Layout({ children }) {
           <span className="font-display font-bold text-lg tracking-tight">Pipeline</span>
         </div>
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
-          {NAV_SECTIONS.map((section) => (
+          {sections.map((section) => (
             <div key={section.label}>
               <div className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink/35">
                 {section.label}

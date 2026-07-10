@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls } from "../components/ui";
 import { formatINR, formatDate } from "../lib/format";
 import PipelineFunnel from "../components/PipelineFunnel";
+import useLiveCollection from "../lib/useLiveCollection";
 
 const STAGES = ["New Lead", "Qualified", "Meeting Scheduled", "Quotation Sent", "Negotiation", "Won", "Lost"];
 const PRODUCTS = ["ERP Suite", "CRM Pro", "Inventory Manager", "HR Toolkit", "Accounting Module"];
@@ -30,7 +31,10 @@ export default function Deals() {
       setLoading(false);
     });
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
+  useLiveCollection(["deals", "users"], load);
 
   const userName = (id) => users.find((u) => u.id === id)?.name || "—";
 
