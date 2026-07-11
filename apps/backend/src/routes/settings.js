@@ -1,6 +1,7 @@
 const express = require("express");
 const { collection } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
+const { limitsFor } = require("../utils/plans");
 
 const router = express.Router();
 const settings = collection("settings");
@@ -10,7 +11,11 @@ function defaults(accountId) {
     id: `settings-${accountId}`,
     accountId,
     companyProfile: { name: "Your Company Pvt Ltd", industry: "Technology", address: "" },
-    subscription: { plan: "Pro Trial", renewsOn: null },
+    // "starter" is the free tier every new signup starts on — see
+    // utils/plans.js for what each tier actually unlocks. There's no
+    // payment processor wired up yet, so nothing moves an account off
+    // this without someone (master admin, for now) changing it by hand.
+    subscription: { plan: "starter", renewsOn: null },
     whatsappApi: { provider: "", apiKey: "", connected: false },
     emailSettings: { provider: "SMTP", fromAddress: "", connected: false },
     paymentGateway: { provider: "Razorpay", connected: false },
@@ -90,8 +95,10 @@ function defaults(accountId) {
       knowledge: false,
       // Not part of the Odoo-style app catalog (it's a capability toggle
       // within Forms, not a standalone page) — surfaced directly in the
-      // WhatsApp tab of the Form Builder instead of the Apps grid.
-      whatsappBot: true,
+      // WhatsApp tab of the Form Builder instead of the Apps grid. Off by
+      // default since it's a Growth-plan feature (see utils/plans.js);
+      // the PUT / handler below blocks turning it on below that plan.
+      whatsappBot: false,
     },
   };
 }
@@ -114,8 +121,26 @@ router.put("/", requireManager, async (req, res) => {
   if ((req.body.apps || req.body.modules) && !isOwner) {
     return res.status(403).json({ error: "Only the account owner can manage feature flags." });
   }
+  // Without this, any owner could PUT their own subscription.plan and
+  // grant themselves Growth/Enterprise limits for free — there's no
+  // payment processor wired up yet to be the actual gate. Only the
+  // platform's master admin can change it until real billing exists.
+  if (req.body.subscription && !req.user.isMasterAdmin) {
+    return res.status(403).json({ error: "Only the platform admin can change your subscription plan." });
+  }
   const id = `settings-${req.user.accountId}`;
   let current = await settings.find(id);
+
+  // Can't enable a plan-gated app toggle below the plan that unlocks it —
+  // otherwise this endpoint would be a backdoor around the pricing table.
+  if (req.body.apps && !req.user.isMasterAdmin) {
+    const plan = (current || defaults(req.user.accountId)).subscription?.plan;
+    const limits = limitsFor(plan);
+    if (req.body.apps.whatsappBot && !limits.whatsappBot) {
+      return res.status(403).json({ error: `The WhatsApp survey bot requires the Growth plan or higher. Your account is on ${limits.label}.` });
+    }
+  }
+
   if (!current) {
     await settings.insert({ ...defaults(req.user.accountId), ...req.body });
   } else {
@@ -124,5 +149,14 @@ router.put("/", requireManager, async (req, res) => {
   res.json(await settings.find(id));
 });
 
+// Shared by other route files (forms.js, auth.js) that need to check plan
+// limits (max forms, max teammates, feature gates) without duplicating
+// the "find settings, fall back to defaults" dance.
+async function getLimitsForAccount(accountId) {
+  const current = await settings.find(`settings-${accountId}`);
+  return limitsFor((current || defaults(accountId)).subscription?.plan);
+}
+
 module.exports = router;
 module.exports.defaults = defaults;
+module.exports.getLimitsForAccount = getLimitsForAccount;

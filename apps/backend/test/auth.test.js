@@ -48,6 +48,19 @@ async function signup(overrides = {}) {
   return res.body;
 }
 
+// New tenants default to the "starter" plan, which only allows a single
+// user (see utils/plans.js) — most permission tests below need to add
+// teammates, so they need Growth first. Writes directly to the settings
+// collection rather than through PUT /api/settings, since that route now
+// (correctly) refuses to let anyone but the master admin change plans.
+async function upgradeToGrowth(accountId) {
+  await ready;
+  const settings = collection("settings");
+  const id = `settings-${accountId}`;
+  const current = await settings.find(id);
+  await settings.update(id, { subscription: { ...(current?.subscription || {}), plan: "growth" } });
+}
+
 test("signup requires name, email, and password", async () => {
   await ready;
   const res = await request(app).post("/api/auth/signup").send({ email: "missing@example.com" });
@@ -118,6 +131,7 @@ test("tenant isolation: a fresh signup sees none of another tenant's leads", asy
 
 test("permission=view can read but not create", async () => {
   const owner = await signup({ prefix: "permOwner" });
+  await upgradeToGrowth(owner.user.id); // the owner's own id IS the tenant's accountId
   const teammateRes = await request(app)
     .post("/api/auth/team")
     .set("Authorization", `Bearer ${owner.token}`)
@@ -141,6 +155,7 @@ test("permission=view can read but not create", async () => {
 
 test("permission=edit can create but not delete", async () => {
   const owner = await signup({ prefix: "permEdit" });
+  await upgradeToGrowth(owner.user.id);
   const teammateRes = await request(app)
     .post("/api/auth/team")
     .set("Authorization", `Bearer ${owner.token}`)
@@ -163,6 +178,7 @@ test("permission=edit can create but not delete", async () => {
 
 test("a teammate cannot create other teammates (owner-only)", async () => {
   const owner = await signup({ prefix: "teamGuard" });
+  await upgradeToGrowth(owner.user.id);
   const teammateRes = await request(app)
     .post("/api/auth/team")
     .set("Authorization", `Bearer ${owner.token}`)
@@ -181,6 +197,7 @@ test("a teammate cannot create other teammates (owner-only)", async () => {
 
 test("only the account owner (or master admin) can change feature flags", async () => {
   const owner = await signup({ prefix: "flagGuard" });
+  await upgradeToGrowth(owner.user.id);
   const teammateRes = await request(app)
     .post("/api/auth/team")
     .set("Authorization", `Bearer ${owner.token}`)
@@ -253,6 +270,54 @@ test("CSV export neutralizes formula-injection payloads", async () => {
   assert.ok(csv.text.includes("'=cmd"), "formula-leading cell should be neutralized with a leading quote");
 
   await request(app).delete(`/api/forms/${formId}`).set("Authorization", `Bearer ${token}`);
+});
+
+test("starter plan blocks a 4th form, a 2nd teammate, and Growth-only features", async () => {
+  const owner = await signup({ prefix: "planLimit" });
+
+  // 3 forms is the starter cap — the first 3 succeed.
+  let lastFormId;
+  for (let i = 0; i < 3; i++) {
+    const res = await request(app)
+      .post("/api/forms")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ name: `Form ${i}`, fields: [] });
+    assert.equal(res.status, 201);
+    lastFormId = res.body.id;
+  }
+  const fourth = await request(app)
+    .post("/api/forms")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ name: "Form 4", fields: [] });
+  assert.equal(fourth.status, 403);
+
+  // Starter is a single-user plan — can't add even one teammate.
+  const teammate = await request(app)
+    .post("/api/auth/team")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ name: "Nope", email: uniqueEmail("starter-teammate"), password: "password123", permission: "view" });
+  assert.equal(teammate.status, 403);
+
+  // Approval workflows are Growth+.
+  const workflow = await request(app)
+    .put(`/api/forms/${lastFormId}`)
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ workflow: { enabled: true, steps: [{ id: "s1", name: "Approve", mode: "all", approvers: [{ type: "role", value: "admin" }] }] } });
+  assert.equal(workflow.status, 403);
+
+  // The WhatsApp survey bot toggle is Growth+.
+  const whatsappBot = await request(app)
+    .put("/api/settings")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ apps: { whatsappBot: true } });
+  assert.equal(whatsappBot.status, 403);
+
+  // An owner can't grant themselves a higher plan through the same endpoint.
+  const selfUpgrade = await request(app)
+    .put("/api/settings")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ subscription: { plan: "enterprise" } });
+  assert.equal(selfUpgrade.status, 403);
 });
 
 // Runs last (node:test executes a file's tests in declaration order) —
