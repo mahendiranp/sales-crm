@@ -6,6 +6,7 @@ const { collection, scopedCollection } = require("../db/store");
 const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
+const { buildSnapshot, autoAdvance, currentApprovers, applyDecision, applyEscalations } = require("../utils/workflowEngine");
 
 const router = express.Router();
 // Public routes (/public, /responses POST) bypass auth entirely (see
@@ -14,8 +15,12 @@ const router = express.Router();
 // below scopes fresh per request via req.user.accountId instead.
 const rawForms = collection("forms");
 const rawResponses = collection("form_responses");
+const accounts = collection("accounts");
 const formsFor = (req) => scopedCollection("forms", req.user.accountId);
 const responsesFor = (req) => scopedCollection("form_responses", req.user.accountId);
+// Everyone sharing a tenant (owner + teammates) for resolving role-based
+// approvers — mirrors the membership check in routes/auth.js's /team route.
+const tenantAccountsFor = async (req) => (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId);
 
 async function withResponseCount(form, allResponses) {
   const count = (allResponses || (await rawResponses.query((r) => r.formId === form.id))).filter((r) => r.formId === form.id).length;
@@ -43,6 +48,45 @@ router.get("/", async (req, res) => {
 
 router.get("/templates", (req, res) => {
   res.json(listTemplates());
+});
+
+// Cross-form inbox: every response, in any form owned by this tenant,
+// whose current workflow step this user can act on and hasn't yet voted
+// on. Placed before /:id so "approvals" isn't swallowed as a form id.
+router.get("/approvals/pending", async (req, res) => {
+  const [allForms, allResponses, tenantAccounts] = await Promise.all([formsFor(req).all(), responsesFor(req).all(), tenantAccountsFor(req)]);
+  const pending = allResponses
+    .filter((r) => r.workflow?.status === "pending")
+    .filter((r) => {
+      const approverIds = currentApprovers(r.workflow, tenantAccounts);
+      if (!approverIds.includes(req.user.id)) return false;
+      return !r.workflow.history.some((h) => h.stepIndex === r.workflow.currentStep && h.actorId === req.user.id);
+    })
+    .map((r) => {
+      const form = allForms.find((f) => f.id === r.formId);
+      return { ...decryptResponse(r), formName: form?.name || "Unknown form", formFields: form?.fields || [] };
+    })
+    .sort((a, b) => dayjs(a.submittedAt).diff(dayjs(b.submittedAt)));
+  res.json(pending);
+});
+
+// Manual trigger since this repo has no cron infra wired up — call this
+// from an external scheduler (Vercel Cron, etc.) on whatever cadence makes
+// sense, or run it by hand. Advances overdue steps' escalation.
+router.post("/workflow/check-escalations", requireManager, async (req, res) => {
+  const allResponses = await responsesFor(req).all();
+  let escalated = 0;
+  for (const r of allResponses) {
+    if (r.workflow?.status !== "pending") continue;
+    const before = JSON.stringify(r.workflow.steps[r.workflow.currentStep]);
+    const workflow = JSON.parse(JSON.stringify(r.workflow));
+    applyEscalations(workflow);
+    if (JSON.stringify(workflow.steps[workflow.currentStep]) !== before) {
+      await responsesFor(req).update(r.id, { workflow });
+      escalated++;
+    }
+  }
+  res.json({ checked: allResponses.length, escalated });
 });
 
 router.post("/from-template", requireManager, async (req, res) => {
@@ -93,6 +137,7 @@ router.post("/", requireManager, async (req, res) => {
     description: req.body.description || "",
     fields: req.body.fields || [],
     settings: req.body.settings || {},
+    workflow: req.body.workflow || { enabled: false, steps: [] },
     status: "Draft",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -197,8 +242,37 @@ router.post("/:id/responses", async (req, res) => {
     submittedAt: new Date().toISOString(),
     accountId: form.accountId,
   };
+  // Snapshotted at submission time so later edits to the form's workflow
+  // config don't retroactively change an approval already in flight.
+  if (form.workflow?.enabled && form.workflow.steps?.length) {
+    response.workflow = autoAdvance(buildSnapshot(form.workflow));
+  }
   await rawResponses.insert(response);
   res.status(201).json(decryptResponse(response));
+});
+
+router.get("/:id/responses/:responseId/workflow", async (req, res) => {
+  const response = await responsesFor(req).find(req.params.responseId);
+  if (!response?.workflow) return res.status(404).json({ error: "This response has no workflow." });
+  const tenantAccounts = await tenantAccountsFor(req);
+  res.json({ ...response.workflow, currentApproverIds: currentApprovers(response.workflow, tenantAccounts) });
+});
+
+router.post("/:id/responses/:responseId/workflow/decide", async (req, res) => {
+  const response = await responsesFor(req).find(req.params.responseId);
+  if (!response?.workflow) return res.status(404).json({ error: "This response has no workflow." });
+  const { action, comment } = req.body;
+  if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action must be 'approve' or 'reject'." });
+
+  const tenantAccounts = await tenantAccountsFor(req);
+  const workflow = JSON.parse(JSON.stringify(response.workflow));
+  try {
+    applyDecision(workflow, { actorId: req.user.id, actorName: req.user.email, action, comment }, tenantAccounts);
+  } catch (err) {
+    return res.status(403).json({ error: err.message });
+  }
+  await responsesFor(req).update(req.params.responseId, { workflow });
+  res.json({ ...workflow, currentApproverIds: currentApprovers(workflow, tenantAccounts) });
 });
 
 router.delete("/:id/responses/:responseId", requireFullAccess, async (req, res) => {
