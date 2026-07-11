@@ -54,11 +54,16 @@ export function AuthProvider({ children }) {
     reconnectSocket();
   };
 
-  const canManage = user ? user.authRole !== "viewer" : false;
+  // permission is server-computed (see auth.js publicAccount): "view" | "edit" | "full".
+  // canManage = can create/edit (old binary check, kept for existing call sites).
+  // canDelete = the new, stricter check — an "edit" teammate can't delete.
+  const canManage = user ? ["edit", "full"].includes(user.permission) : false;
+  const canDelete = user ? user.permission === "full" : false;
   const isMasterAdmin = user ? !!user.isMasterAdmin : false;
+  const isOwner = user ? user.isMasterAdmin || user.authRole === "admin" : false;
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, demoLogin, signup, logout, canManage, isMasterAdmin }}>
+    <AuthContext.Provider value={{ user, ready, login, demoLogin, signup, logout, canManage, canDelete, isMasterAdmin, isOwner }}>
       {children}
     </AuthContext.Provider>
   );

@@ -24,54 +24,61 @@ import {
   Eye,
   LogOut,
   ShieldCheck,
+  UserCheck,
+  Menu,
+  X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
 import { APP_CATALOG } from "../lib/appCatalog";
 import useLiveCollection from "../lib/useLiveCollection";
 
+// Each item's `module` key maps to settings.modules (see routes/settings.js)
+// — omit it (like Admin Portal / Settings) to always show it regardless of
+// module toggles, since those are the controls used to manage the toggles.
 const NAV_SECTIONS = [
   {
     label: "Overview",
-    items: [{ to: "/app", label: "Dashboard", icon: LayoutDashboard }],
+    items: [{ to: "/app", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" }],
   },
   {
     label: "Pipeline",
     items: [
-      { to: "/app/leads", label: "Leads", icon: Users2 },
-      { to: "/app/contacts", label: "Contacts", icon: Contact },
-      { to: "/app/companies", label: "Companies", icon: Building2 },
-      { to: "/app/deals", label: "Deals", icon: Target },
+      { to: "/app/leads", label: "Leads", icon: Users2, module: "leads" },
+      { to: "/app/contacts", label: "Contacts", icon: Contact, module: "contacts" },
+      { to: "/app/companies", label: "Companies", icon: Building2, module: "companies" },
+      { to: "/app/deals", label: "Deals", icon: Target, module: "deals" },
     ],
   },
   {
     label: "Work",
     items: [
-      { to: "/app/activities", label: "Activities", icon: Activity },
-      { to: "/app/tasks", label: "Tasks", icon: ListChecks },
+      { to: "/app/activities", label: "Activities", icon: Activity, module: "activities" },
+      { to: "/app/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
     ],
   },
   {
     label: "Engage",
     items: [
-      { to: "/app/whatsapp", label: "WhatsApp", icon: MessageCircle },
-      { to: "/app/email", label: "Email", icon: Mail },
-      { to: "/app/templates", label: "Templates", icon: FileText },
+      { to: "/app/whatsapp", label: "WhatsApp", icon: MessageCircle, module: "whatsapp" },
+      { to: "/app/email", label: "Email", icon: Mail, module: "email" },
+      { to: "/app/templates", label: "Templates", icon: FileText, module: "templates" },
     ],
   },
   {
     label: "Insights",
     items: [
-      { to: "/app/analytics", label: "Analytics", icon: BarChart3 },
-      { to: "/app/reports", label: "Sales Reports", icon: ClipboardList },
-      { to: "/app/performance", label: "Performance", icon: TrendingUp },
+      { to: "/app/analytics", label: "Analytics", icon: BarChart3, module: "analytics" },
+      { to: "/app/reports", label: "Sales Reports", icon: ClipboardList, module: "reports" },
+      { to: "/app/performance", label: "Performance", icon: TrendingUp, module: "performance" },
     ],
   },
   {
     label: "Admin",
     items: [
-      { to: "/app/users", label: "Users", icon: UserCog },
-      { to: "/app/teams", label: "Teams", icon: Users },
+      { to: "/app/users", label: "Users", icon: UserCog, module: "users" },
+      { to: "/app/teams", label: "Teams", icon: Users, module: "teams" },
+      { to: "/app/team", label: "Team Access", icon: UserCheck, ownerOnly: true },
       { to: "/app/apps", label: "Admin Portal", icon: ShieldCheck, adminOnly: true },
       { to: "/app/settings", label: "Settings", icon: Settings },
     ],
@@ -96,35 +103,61 @@ function NavItem({ to, label, icon: Icon }) {
 }
 
 export default function Layout({ children }) {
-  const { user, logout, canManage, isMasterAdmin } = useAuth();
+  const { user, logout, canManage, isMasterAdmin, isOwner } = useAuth();
   const router = useRouter();
   const initials = (user?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2);
   const roleLabel = { admin: "Admin", manager: "Manager", viewer: "Viewer" }[user?.authRole] || user?.authRole;
   const [enabledApps, setEnabledApps] = useState({});
+  const [enabledModules, setEnabledModules] = useState(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const loadEnabledApps = () => api.get("/settings").then((r) => setEnabledApps(r.data.apps || {})).catch(() => {});
+  const loadEnabledApps = () =>
+    api
+      .get("/settings")
+      .then((r) => {
+        setEnabledApps(r.data.apps || {});
+        setEnabledModules(r.data.modules || {});
+      })
+      .catch(() => {});
   useEffect(() => {
     loadEnabledApps();
   }, []);
   useLiveCollection(["settings"], loadEnabledApps);
+
+  // Close the mobile drawer whenever navigation happens — otherwise tapping
+  // a nav link on a phone leaves the overlay open behind the new page.
+  useEffect(() => {
+    const close = () => setMobileOpen(false);
+    router.events.on("routeChangeComplete", close);
+    return () => router.events.off("routeChangeComplete", close);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = () => {
     logout();
     router.push("/login");
   };
 
+  // Master admin sees every feature regardless of any tenant's flags — the
+  // flags exist to restrict what everyone *else* under this account sees.
   const enabledAppItems = APP_CATALOG
-    .filter((a) => a.status !== "builtIn" && enabledApps[a.key])
+    .filter((a) => a.status !== "builtIn" && (isMasterAdmin || enabledApps[a.key]))
     .map((a) => ({
       to: a.status === "available" ? a.route : `/app/module/${a.key}`,
       label: a.label,
       icon: a.icon,
     }));
 
+  // Until settings load, show everything rather than flashing an empty
+  // sidebar — modules default to true server-side anyway.
+  const isModuleOn = (key) => !key || isMasterAdmin || enabledModules === null || enabledModules[key] !== false;
+
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => !item.adminOnly || isMasterAdmin),
-  }));
+    items: section.items.filter(
+      (item) => (!item.adminOnly || isMasterAdmin) && (!item.ownerOnly || isOwner) && isModuleOn(item.module)
+    ),
+  })).filter((section) => section.items.length > 0);
 
   const sections = enabledAppItems.length
     ? [...visibleSections, { label: "Apps", items: enabledAppItems }]
@@ -132,13 +165,25 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen bg-base font-body">
-      {/* Sidebar */}
-      <aside className="w-60 shrink-0 bg-white border-r border-border flex flex-col">
+      {/* Mobile backdrop — tap to close the drawer */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-ink/40 z-40 md:hidden" onClick={() => setMobileOpen(false)} />
+      )}
+
+      {/* Sidebar — fixed overlay drawer on mobile, static column from md up */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-60 shrink-0 bg-white border-r border-border flex flex-col transition-transform duration-200 md:static md:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="h-16 flex items-center gap-2 px-5 border-b border-border">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Target size={17} className="text-white" />
           </div>
-          <span className="font-display font-bold text-lg tracking-tight">Pipeline</span>
+          <span className="font-display font-bold text-lg tracking-tight flex-1">Pipeline</span>
+          <button onClick={() => setMobileOpen(false)} className="text-ink/40 hover:text-ink md:hidden">
+            <X size={18} />
+          </button>
         </div>
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
           {sections.map((section) => (
@@ -170,9 +215,12 @@ export default function Layout({ children }) {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 shrink-0 bg-white border-b border-border flex items-center justify-between px-6">
-          <div className="flex items-center gap-2 text-ink/40 bg-base rounded-lg px-3 py-2 w-80">
-            <Search size={16} />
+        <header className="h-16 shrink-0 bg-white border-b border-border flex items-center justify-between px-4 md:px-6 gap-3">
+          <button onClick={() => setMobileOpen(true)} className="text-ink/50 hover:text-ink md:hidden shrink-0">
+            <Menu size={22} />
+          </button>
+          <div className="flex items-center gap-2 text-ink/40 bg-base rounded-lg px-3 py-2 w-full max-w-[200px] sm:max-w-xs md:w-80">
+            <Search size={16} className="shrink-0" />
             <input
               placeholder="Search leads, deals, contacts…"
               className="bg-transparent outline-none text-sm w-full placeholder:text-ink/40"
@@ -188,7 +236,7 @@ export default function Layout({ children }) {
               <Bell size={19} />
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-danger" />
             </button>
-            <div className="flex items-center gap-1.5 text-sm text-ink/70 cursor-pointer">
+            <div className="hidden sm:flex items-center gap-1.5 text-sm text-ink/70 cursor-pointer">
               Bangalore Sales
               <ChevronDown size={15} />
             </div>

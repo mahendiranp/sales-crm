@@ -134,6 +134,11 @@ export default function Login() {
             <Field label="Password">
               <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </Field>
+            <div className="text-right -mt-2 mb-3">
+              <Link href="/forgot-password" className="text-xs text-primary font-medium hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             {error && <p className="text-sm text-danger mb-3">{error}</p>}
             <Button type="submit" variant="secondary" className="w-full justify-center" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}

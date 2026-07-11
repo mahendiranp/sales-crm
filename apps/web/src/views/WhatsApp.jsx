@@ -96,7 +96,8 @@ export default function WhatsApp() {
         </Card>
 
         <Card className="p-5">
-          <h4 className="font-display font-semibold mb-3">AI Reply Example</h4>
+          <h4 className="font-display font-semibold mb-1">AI Reply Example</h4>
+          <p className="text-xs text-ink/35 mb-3">Rule-based keyword matching right now, not a live LLM.</p>
           <div className="text-xs text-ink/50 mb-2">Customer:</div>
           <div className="bg-base rounded-lg px-3 py-2 text-sm mb-3">Is this available?</div>
           <div className="text-xs text-ink/50 mb-2 flex items-center gap-1"><Sparkles size={11} className="text-accent" /> AI Suggestion:</div>

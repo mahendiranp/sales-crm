@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye } from "lucide-react";
+import { Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, EyeOff } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
@@ -8,6 +8,7 @@ import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import FormResponses from "./FormResponses";
 import WhatsAppSurveyPanel from "./WhatsAppSurveyPanel";
+import FormPreview from "../components/FormPreview";
 import { FORM_THEMES } from "../lib/formThemes";
 
 const FIELD_TYPES = [
@@ -371,6 +372,7 @@ function FormBuilder({ form, onSave }) {
   const [expandedId, setExpandedId] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
   useEffect(() => {
     setName(form.name);
@@ -426,28 +428,41 @@ function FormBuilder({ form, onSave }) {
   };
 
   return (
-    <div>
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <Field label="Form Name">
-          <input
-            className={inputCls}
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              markDirty();
-            }}
-          />
-        </Field>
-        <Field label="Description">
-          <input
-            className={inputCls}
-            value={description}
-            onChange={(e) => {
-              setDescription(e.target.value);
-              markDirty();
-            }}
-          />
-        </Field>
+    <div className={showPreview ? "grid grid-cols-[minmax(0,340px)_1fr] gap-5 items-start" : ""}>
+      {showPreview && <FormPreview name={name} description={description} fields={fields} branding={branding} />}
+
+      <div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="grid grid-cols-2 gap-3 flex-1">
+          <Field label="Form Name">
+            <input
+              className={inputCls}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                markDirty();
+              }}
+            />
+          </Field>
+          <Field label="Description">
+            <input
+              className={inputCls}
+              value={description}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                markDirty();
+              }}
+            />
+          </Field>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPreview((v) => !v)}
+          className="ml-3 mt-5 shrink-0 flex items-center gap-1.5 text-xs font-medium text-ink/60 hover:text-primary border border-border rounded-lg px-3 py-2"
+        >
+          {showPreview ? <EyeOff size={14} /> : <Eye size={14} />}
+          {showPreview ? "Hide Preview" : "Show Preview"}
+        </button>
       </div>
 
       <div className="flex items-center justify-between mb-2">
@@ -514,6 +529,7 @@ function FormBuilder({ form, onSave }) {
 
       <div className="flex justify-end">
         <Button onClick={save} disabled={!dirty}>Save Changes</Button>
+      </div>
       </div>
     </div>
   );

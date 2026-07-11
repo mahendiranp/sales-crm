@@ -3,6 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, Switch } from "../components/ui";
 import { APP_CATALOG, APP_CATEGORIES } from "../lib/appCatalog";
+import { CORE_MODULES } from "../lib/coreModules";
 import useLiveCollection from "../lib/useLiveCollection";
 
 export default function Apps() {
@@ -22,6 +23,14 @@ export default function Apps() {
     await api.put("/settings", { apps: updatedApps });
   };
 
+  const isModuleOn = (key) => settings?.modules?.[key] !== false;
+
+  const toggleModule = async (key, next) => {
+    const updatedModules = { ...settings.modules, [key]: next };
+    setSettings((s) => ({ ...s, modules: updatedModules }));
+    await api.put("/settings", { modules: updatedModules });
+  };
+
   if (!settings) return <div className="text-ink/40 text-sm">Loading…</div>;
 
   return (
@@ -30,6 +39,39 @@ export default function Apps() {
         title="Admin Portal"
         subtitle="Turn on the modules your team needs. Enabled apps show up in the sidebar right away — admins only."
       />
+
+      <div className="mb-8">
+        <h3 className="font-display font-semibold text-sm text-ink/70 mb-2.5">Core CRM</h3>
+        <p className="text-xs text-ink/40 mb-2.5 -mt-1.5">
+          Hide sections your team isn't using yet — e.g. launch with only Dashboard + Forms turned on.
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          {CORE_MODULES.map((mod) => {
+            const Icon = mod.icon;
+            const on = isModuleOn(mod.key);
+            return (
+              <Card key={mod.key} className="p-4 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center shrink-0">
+                  <Icon size={17} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{mod.label}</p>
+                  <p className="text-xs text-ink/40 mt-0.5">
+                    {on ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600">
+                        <CheckCircle2 size={11} /> Visible
+                      </span>
+                    ) : (
+                      "Hidden"
+                    )}
+                  </p>
+                </div>
+                <Switch checked={on} onChange={(next) => toggleModule(mod.key, next)} />
+              </Card>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="space-y-6">
         {APP_CATEGORIES.map((category) => {

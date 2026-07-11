@@ -8,12 +8,19 @@ const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/sales_
 
 let db = null;
 let io = null;
+let client = null;
 
 async function connectDB() {
-  const client = new MongoClient(MONGODB_URI);
+  client = new MongoClient(MONGODB_URI);
   await client.connect();
   db = client.db();
   return db;
+}
+
+// Lets test suites close the connection so the process can exit instead of
+// hanging on the open socket.
+async function closeDB() {
+  if (client) await client.close();
 }
 
 // Called once at startup so mutations can broadcast live updates.
@@ -37,6 +44,24 @@ function collection(name) {
     },
     async query(predicate) {
       return (await this.all()).filter(predicate);
+    },
+    // Real DB-level pagination (skip/limit + countDocuments), not
+    // fetch-everything-then-slice — the only way this stays fast once a
+    // collection has thousands of records. `filter` is a raw Mongo filter
+    // (scopedCollection.paginate below merges accountId into it).
+    async paginate({ filter = {}, page = 1, limit = 50, sort = { createdAt: -1 } } = {}) {
+      const safePage = Math.max(1, parseInt(page, 10) || 1);
+      const safeLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+      const [items, total] = await Promise.all([
+        col()
+          .find(filter, { projection: { _id: 0 } })
+          .sort(sort)
+          .skip((safePage - 1) * safeLimit)
+          .limit(safeLimit)
+          .toArray(),
+        col().countDocuments(filter),
+      ]);
+      return { items, total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) || 1 };
     },
     async insert(record) {
       await col().insertOne({ ...record });
@@ -93,6 +118,9 @@ function scopedCollection(name, accountId) {
     async query(predicate) {
       return (await this.all()).filter(predicate);
     },
+    async paginate(opts = {}) {
+      return base.paginate({ ...opts, filter: { ...(opts.filter || {}), accountId } });
+    },
     async insert(record) {
       return base.insert({ ...record, accountId });
     },
@@ -110,4 +138,4 @@ function scopedCollection(name, accountId) {
   };
 }
 
-module.exports = { connectDB, setIO, collection, scopedCollection };
+module.exports = { connectDB, closeDB, setIO, collection, scopedCollection };

@@ -18,9 +18,10 @@ export default function RequireApp({ appKey, children }) {
     api.get("/settings").then((r) => setEnabled(!!r.data.apps?.[appKey]));
   }, [appKey]);
 
-  if (enabled === null) return null;
+  if (enabled === null && !isMasterAdmin) return null;
 
-  if (!enabled) {
+  // Master admin bypasses every tenant's app flags — they see everything.
+  if (!enabled && !isMasterAdmin) {
     return (
       <div>
         <PageHeader title={app?.label || appKey} />

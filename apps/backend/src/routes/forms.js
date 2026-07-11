@@ -3,7 +3,7 @@ const dayjs = require("dayjs");
 const XLSX = require("xlsx");
 const { randomUUID: uuid } = require("crypto");
 const { collection, scopedCollection } = require("../db/store");
-const { requireManager } = require("../middleware/auth");
+const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
 
@@ -107,7 +107,7 @@ router.put("/:id", requireManager, async (req, res) => {
   res.json(updated);
 });
 
-router.delete("/:id", requireManager, async (req, res) => {
+router.delete("/:id", requireFullAccess, async (req, res) => {
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
   const formResponses = await responsesFor(req).query((r) => r.formId === req.params.id);
@@ -160,7 +160,26 @@ router.get("/:id/responses", async (req, res) => {
     list = list.filter((r) => Object.values(r.answers || {}).some((v) => String(v ?? "").toLowerCase().includes(needle)));
   }
 
-  res.json(list.sort((a, b) => dayjs(b.submittedAt).diff(dayjs(a.submittedAt))));
+  const sorted = list.sort((a, b) => dayjs(b.submittedAt).diff(dayjs(a.submittedAt)));
+
+  // Opt-in pagination (same pattern as crudFactory) — answers are encrypted
+  // at rest, so search/filter above already has to decrypt+scan every
+  // response for this form in JS (Mongo can't $regex ciphertext); paginating
+  // here still caps what actually goes over the wire to the browser.
+  if (req.query.page) {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const start = (page - 1) * limit;
+    return res.json({
+      items: sorted.slice(start, start + limit),
+      total: sorted.length,
+      page,
+      limit,
+      totalPages: Math.ceil(sorted.length / limit) || 1,
+    });
+  }
+
+  res.json(sorted);
 });
 
 // Public submission — anonymous form-fillers and the WhatsApp survey engine
@@ -182,17 +201,27 @@ router.post("/:id/responses", async (req, res) => {
   res.status(201).json(decryptResponse(response));
 });
 
-router.delete("/:id/responses/:responseId", requireManager, async (req, res) => {
+router.delete("/:id/responses/:responseId", requireFullAccess, async (req, res) => {
   const removed = await responsesFor(req).remove(req.params.responseId);
   if (!removed) return res.status(404).json({ error: "Not found" });
   res.status(204).end();
 });
 
+// Excel/Sheets treats a leading =, +, -, or @ as the start of a formula —
+// a form respondent could submit "=cmd|'/c calc'!A1" as an answer and have
+// it execute when someone opens the exported file (CSV or Excel — both go
+// through this same row-builder). Prefixing with a plain quote defuses it
+// (Excel shows the literal text, formula never runs).
+function sanitizeCsvCell(value) {
+  const str = String(value ?? "");
+  return /^[=+\-@]/.test(str) ? `'${str}` : str;
+}
+
 function responseRows(form, formResponses) {
   return formResponses.map((r) => {
     const row = { "Submitted At": dayjs(r.submittedAt).format("YYYY-MM-DD HH:mm") };
     form.fields.forEach((f) => {
-      row[f.label] = r.answers?.[f.id] ?? "";
+      row[f.label] = sanitizeCsvCell(r.answers?.[f.id] ?? "");
     });
     return row;
   });

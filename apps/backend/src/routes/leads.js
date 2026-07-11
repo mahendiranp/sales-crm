@@ -2,7 +2,7 @@ const express = require("express");
 const { randomUUID: uuid } = require("crypto");
 const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
-const { requireManager } = require("../middleware/auth");
+const { requireManager, requireFullAccess } = require("../middleware/auth");
 
 const router = express.Router();
 const leads = (req) => scopedCollection("leads", req.user.accountId);
@@ -43,7 +43,7 @@ router.post("/:id/convert", requireManager, async (req, res) => {
 });
 
 // Merge duplicate leads: keep primary, drop the rest
-router.post("/merge", requireManager, async (req, res) => {
+router.post("/merge", requireFullAccess, async (req, res) => {
   const { primaryId, duplicateIds } = req.body;
   const primary = await leads(req).find(primaryId);
   if (!primary) return res.status(404).json({ error: "Primary lead not found" });
