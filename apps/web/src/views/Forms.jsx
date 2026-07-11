@@ -434,6 +434,64 @@ function FieldPalette({ onAdd, onAskAI }) {
   );
 }
 
+// Click straight on a field's label to rename it in place — no need to
+// open the full field editor just to fix a typo in the label text.
+function EditableLabel({ field, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(field.label);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+  useEffect(() => {
+    setValue(field.label);
+  }, [field.label]);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== field.label) onChange({ ...field, label: trimmed });
+    else setValue(field.label);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="block w-full text-sm font-medium mb-1.5 border border-primary rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 outline-none"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setValue(field.label);
+            setEditing(false);
+          }
+        }}
+        onClick={(e) => e.stopPropagation()}
+      />
+    );
+  }
+
+  return (
+    <label
+      className="block text-sm font-medium mb-1.5 rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 cursor-text hover:bg-base"
+      title="Click to rename this field"
+      onClick={(e) => {
+        e.stopPropagation();
+        setEditing(true);
+      }}
+    >
+      {field.label} {field.required && <span className="text-danger">*</span>}
+    </label>
+  );
+}
+
 // The center canvas doubles as the live preview — what you see while
 // editing is exactly what a respondent sees. Edit/delete/drag controls are
 // always visible on touch devices (no hover to reveal them there) and only
@@ -451,9 +509,7 @@ function CanvasField({ field, expanded, onToggle, onChange, onDelete, dragHandle
         <button onClick={onDelete} className="p-1.5 rounded bg-base text-ink/50 hover:text-danger"><Trash2 size={13} /></button>
         <span className="p-1.5 rounded bg-base text-ink/30 cursor-grab"><GripVertical size={13} /></span>
       </div>
-      <label className="block text-sm font-medium mb-1.5">
-        {field.label} {field.required && <span className="text-danger">*</span>}
-      </label>
+      <EditableLabel field={field} onChange={onChange} />
       <FormFieldInput field={field} value={field.type === "checkbox" ? [] : ""} onChange={() => {}} />
       {field.helpText && <p className="text-xs text-ink/40 mt-1">{field.helpText}</p>}
 
