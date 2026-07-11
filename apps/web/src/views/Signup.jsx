@@ -118,6 +118,11 @@ export default function Signup() {
                 <Button type="submit" className="w-full justify-center" disabled={loading}>
                   {loading ? "Creating account…" : "Create account"}
                 </Button>
+                <p className="text-xs text-ink/40 text-center">
+                  By creating an account, you agree to our{" "}
+                  <Link href="/terms" className="text-primary hover:underline">Terms of Service</Link> and{" "}
+                  <Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>.
+                </p>
               </form>
             </>
           )}

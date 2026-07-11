@@ -215,6 +215,8 @@ export default function Landing() {
           <div className="flex items-center gap-4 text-xs text-ink/50">
             <span className="flex items-center gap-1"><Mail size={12} /> hello@pipeline.app</span>
             <span className="flex items-center gap-1"><TrendingUp size={12} /> Made in Bengaluru</span>
+            <Link href="/terms" className="hover:text-ink">Terms</Link>
+            <Link href="/privacy" className="hover:text-ink">Privacy</Link>
           </div>
         </div>
       </footer>
