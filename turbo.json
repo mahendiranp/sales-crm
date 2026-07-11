@@ -8,7 +8,7 @@
       "persistent": true
     },
     "build": {
-      "outputs": ["dist/**"]
+      "outputs": [".next/**", "dist/**", "!.next/cache/**"]
     },
     "lint": {},
     "test": {
