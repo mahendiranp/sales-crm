@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
-import { Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, EyeOff, ClipboardCheck } from "lucide-react";
+import {
+  Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, ClipboardCheck,
+  LayoutGrid, Inbox, Workflow as WorkflowIcon, BarChart3, Plug, Settings as SettingsIcon, Sparkles, Send, X as XIcon,
+} from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
@@ -8,7 +11,7 @@ import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import FormResponses from "./FormResponses";
 import WhatsAppSurveyPanel from "./WhatsAppSurveyPanel";
-import FormPreview from "../components/FormPreview";
+import FormFieldInput from "../components/FormFieldInput";
 import { FORM_THEMES } from "../lib/formThemes";
 
 const FIELD_TYPES = [
@@ -25,6 +28,21 @@ const FIELD_TYPES = [
   { type: "file", label: "File Upload" },
   { type: "rating", label: "Rating" },
   { type: "yesno", label: "Yes/No" },
+];
+
+const BASIC_FIELD_TYPES = ["text", "longtext", "email", "phone", "number", "date", "dropdown", "checkbox"];
+const FIELD_CATEGORIES = [
+  { key: "basic", label: "Basic Fields", types: FIELD_TYPES.filter((f) => BASIC_FIELD_TYPES.includes(f.type)) },
+  { key: "advanced", label: "Advanced Fields", types: FIELD_TYPES.filter((f) => !BASIC_FIELD_TYPES.includes(f.type)) },
+];
+
+const STUDIO_NAV = [
+  { key: "builder", label: "Build", icon: LayoutGrid },
+  { key: "responses", label: "Submissions", icon: Inbox },
+  { key: "workflow", label: "Workflow", icon: WorkflowIcon },
+  { key: "analytics", label: "Analytics", icon: BarChart3 },
+  { key: "whatsapp", label: "Integrations", icon: Plug },
+  { key: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
 const OPTION_TYPES = ["dropdown", "radio", "checkbox"];
@@ -364,28 +382,181 @@ function BrandingEditor({ branding, onChange }) {
   );
 }
 
+function FieldPalette({ onAdd, onAskAI }) {
+  const [cat, setCat] = useState("basic");
+  const active = FIELD_CATEGORIES.find((c) => c.key === cat);
+  return (
+    <div className="border border-border rounded-card bg-white p-3 h-fit">
+      <h4 className="font-display font-semibold text-sm mb-3">Add Fields</h4>
+      <div className="flex gap-1 mb-3 border-b border-border">
+        {FIELD_CATEGORIES.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => setCat(c.key)}
+            className={`px-2.5 py-1.5 text-xs font-medium border-b-2 -mb-px ${
+              cat === c.key ? "border-primary text-primary" : "border-transparent text-ink/50 hover:text-ink"
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-1">
+        {active.types.map((t) => (
+          <button
+            key={t.type}
+            onClick={() => onAdd(t.type)}
+            className="w-full flex items-center gap-2 text-left text-sm px-2.5 py-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors"
+          >
+            <span className="text-ink/70">{t.label}</span>
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={onAskAI}
+        className="w-full mt-3 flex items-center justify-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-2 hover:bg-primary/10"
+      >
+        <Sparkles size={13} /> Ask AI to add a field
+      </button>
+    </div>
+  );
+}
+
+// The center canvas doubles as the live preview — what you see while
+// editing is exactly what a respondent sees, with an edit/delete overlay
+// on hover instead of a separate compact field-list + preview pane.
+function CanvasField({ field, expanded, onToggle, onChange, onDelete, dragHandleProps }) {
+  return (
+    <div className="group relative border border-border rounded-lg p-3.5 bg-white hover:border-primary/40 transition-colors" {...dragHandleProps}>
+      <div className="absolute top-2 right-2 hidden group-hover:flex items-center gap-1">
+        <button onClick={onToggle} className="p-1.5 rounded bg-base text-ink/50 hover:text-primary"><Pencil size={13} /></button>
+        <button onClick={onDelete} className="p-1.5 rounded bg-base text-ink/50 hover:text-danger"><Trash2 size={13} /></button>
+        <span className="p-1.5 rounded bg-base text-ink/30 cursor-grab"><GripVertical size={13} /></span>
+      </div>
+      <label className="block text-sm font-medium mb-1.5">
+        {field.label} {field.required && <span className="text-danger">*</span>}
+      </label>
+      <FormFieldInput field={field} value={field.type === "checkbox" ? [] : ""} onChange={() => {}} />
+      {field.helpText && <p className="text-xs text-ink/40 mt-1">{field.helpText}</p>}
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <FieldEditor field={field} onChange={onChange} onDelete={onDelete} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AI_REPLY_INTRO() {
+  return "I can add fields to this form right now — try \"Add a field for email\" or \"Add a phone number field\". Full AI-generated forms from a single prompt need an LLM API key; ask your admin to add one so I can do more.";
+}
+
+// Pattern-matches simple "add a field for X" / "add an X field" style
+// requests locally (no LLM required) so the assistant does *something*
+// real without a key configured, rather than only ever stubbing replies.
+function matchAddFieldIntent(text) {
+  const lower = text.toLowerCase();
+  if (!/\badd\b/.test(lower) || !/\bfield\b/.test(lower)) return null;
+  for (const t of FIELD_TYPES) {
+    const needle = t.label.toLowerCase();
+    if (lower.includes(needle)) return t;
+  }
+  // Fallback keyword matches for common phrasings ("add a field for email").
+  const keywordMap = {
+    email: "email", phone: "phone", number: "number", date: "date", time: "time",
+    rating: "rating", file: "file", upload: "file", "yes/no": "yesno", "yes or no": "yesno",
+    dropdown: "dropdown", "long text": "longtext", paragraph: "longtext", checkbox: "checkbox", radio: "radio",
+  };
+  for (const [kw, type] of Object.entries(keywordMap)) {
+    if (lower.includes(kw)) return FIELD_TYPES.find((t) => t.type === type);
+  }
+  return null;
+}
+
+function AIAssistantPanel({ onClose, onAddField, formName }) {
+  const [messages, setMessages] = useState([
+    { role: "ai", text: AI_REPLY_INTRO() },
+  ]);
+  const [input, setInput] = useState("");
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [messages]);
+
+  const send = () => {
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+    const userMsg = { role: "user", text };
+    const match = matchAddFieldIntent(text);
+    let reply;
+    if (match) {
+      onAddField(match.type);
+      reply = { role: "ai", text: `Added a "${match.label}" field to ${formName}.` };
+    } else {
+      reply = { role: "ai", text: AI_REPLY_INTRO() };
+    }
+    setMessages((m) => [...m, userMsg, reply]);
+  };
+
+  return (
+    <div className="border border-border rounded-card bg-white flex flex-col h-[600px]">
+      <div className="flex items-center justify-between px-3.5 py-3 border-b border-border">
+        <div className="flex items-center gap-1.5">
+          <Sparkles size={15} className="text-primary" />
+          <h4 className="font-display font-semibold text-sm">AI Assistant</h4>
+          <Badge>Beta</Badge>
+        </div>
+        <button onClick={onClose} className="text-ink/40 hover:text-ink"><XIcon size={16} /></button>
+      </div>
+
+      <div ref={listRef} className="flex-1 overflow-y-auto p-3.5 space-y-3">
+        {messages.map((m, i) => (
+          <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
+            <div className={`text-sm rounded-lg px-3 py-2 max-w-[85%] ${m.role === "user" ? "bg-primary text-white" : "bg-base text-ink/80"}`}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="p-3 border-t border-border">
+        <div className="flex items-center gap-2 bg-base rounded-lg px-2.5 py-1.5">
+          <input
+            className="bg-transparent outline-none text-sm flex-1"
+            placeholder="Ask AI to create or modify your form…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+          />
+          <button onClick={send} className="text-primary shrink-0"><Send size={15} /></button>
+        </div>
+        <p className="text-[11px] text-ink/35 mt-1.5">Examples: "Add a signature field", "Add a phone field"</p>
+      </div>
+    </div>
+  );
+}
+
 function FormBuilder({ form, onSave }) {
-  const [name, setName] = useState(form.name);
-  const [description, setDescription] = useState(form.description || "");
   const [fields, setFields] = useState(form.fields || []);
-  const [branding, setBranding] = useState(form.settings?.branding || {});
   const [expandedId, setExpandedId] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
   const [dirty, setDirty] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
+  const [aiOpen, setAiOpen] = useState(true);
 
   useEffect(() => {
-    setName(form.name);
-    setDescription(form.description || "");
     setFields(form.fields || []);
-    setBranding(form.settings?.branding || {});
     setDirty(false);
   }, [form.id]);
 
   const markDirty = () => setDirty(true);
 
   const addField = (type) => {
-    setFields((f) => [...f, newField(type)]);
+    const f = newField(type);
+    setFields((prev) => [...prev, f]);
+    setExpandedId(f.id);
     markDirty();
   };
   const updateField = (id, updated) => {
@@ -410,6 +581,73 @@ function FormBuilder({ form, onSave }) {
   };
 
   const save = () => {
+    onSave({ fields });
+    setDirty(false);
+  };
+
+  return (
+    <div className={`grid ${aiOpen ? "grid-cols-[220px_1fr_320px]" : "grid-cols-[220px_1fr]"} gap-4 items-start`}>
+      <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} />
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="font-display font-semibold text-sm">Canvas</h4>
+          <div className="flex items-center gap-2">
+            {!aiOpen && (
+              <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
+                <Sparkles size={13} /> AI Assistant
+              </button>
+            )}
+            <Button onClick={save} disabled={!dirty}>Save Changes</Button>
+          </div>
+        </div>
+
+        <div className="border border-border rounded-card bg-base/30 p-4">
+          {fields.length === 0 ? (
+            <div className="text-sm text-ink/40 border border-dashed border-border rounded-lg p-8 text-center bg-white">
+              No fields yet — add one from the palette on the left, or ask the AI Assistant.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {fields.map((f, i) => (
+                <div key={f.id} draggable onDragStart={() => setDragIndex(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop(i)}>
+                  <CanvasField
+                    field={f}
+                    expanded={expandedId === f.id}
+                    onToggle={() => setExpandedId(expandedId === f.id ? null : f.id)}
+                    onChange={(updated) => updateField(f.id, updated)}
+                    onDelete={() => removeField(f.id)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {aiOpen && <AIAssistantPanel onClose={() => setAiOpen(false)} onAddField={addField} formName={form.name} />}
+    </div>
+  );
+}
+
+// Name/description + branding, split out of the field canvas so "Settings"
+// is its own left-rail destination, matching the studio layout.
+function FormSettingsPanel({ form, onSave }) {
+  const [name, setName] = useState(form.name);
+  const [description, setDescription] = useState(form.description || "");
+  const [branding, setBranding] = useState(form.settings?.branding || {});
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setName(form.name);
+    setDescription(form.description || "");
+    setBranding(form.settings?.branding || {});
+    setDirty(false);
+  }, [form.id]);
+
+  const markDirty = () => setDirty(true);
+
+  const save = () => {
     const cleanBranding = {
       logoType: branding.logoType || (branding.logoDataUrl ? "image" : "none"),
       logoDataUrl: branding.logoDataUrl || "",
@@ -423,113 +661,25 @@ function FormBuilder({ form, onSave }) {
       backgroundImagePosition: branding.backgroundImagePosition || "center",
       backgroundImageOverlay: branding.backgroundImageOverlay || 0,
     };
-    onSave({ name, description, fields, settings: { ...form.settings, branding: cleanBranding } });
+    onSave({ name, description, settings: { ...form.settings, branding: cleanBranding } });
     setDirty(false);
   };
 
   return (
-    <div className={showPreview ? "grid grid-cols-[minmax(0,340px)_1fr] gap-5 items-start" : ""}>
-      {showPreview && <FormPreview name={name} description={description} fields={fields} branding={branding} />}
-
-      <div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="grid grid-cols-2 gap-3 flex-1">
-          <Field label="Form Name">
-            <input
-              className={inputCls}
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                markDirty();
-              }}
-            />
-          </Field>
-          <Field label="Description">
-            <input
-              className={inputCls}
-              value={description}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                markDirty();
-              }}
-            />
-          </Field>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowPreview((v) => !v)}
-          className="ml-3 mt-5 shrink-0 flex items-center gap-1.5 text-xs font-medium text-ink/60 hover:text-primary border border-border rounded-lg px-3 py-2"
-        >
-          {showPreview ? <EyeOff size={14} /> : <Eye size={14} />}
-          {showPreview ? "Hide Preview" : "Show Preview"}
-        </button>
+    <div className="max-w-2xl">
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <Field label="Form Name">
+          <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); markDirty(); }} />
+        </Field>
+        <Field label="Description">
+          <input className={inputCls} value={description} onChange={(e) => { setDescription(e.target.value); markDirty(); }} />
+        </Field>
       </div>
 
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="font-display font-semibold text-sm">Fields</h4>
-        <select
-          className={`${inputCls} w-44`}
-          value=""
-          onChange={(e) => {
-            if (e.target.value) addField(e.target.value);
-          }}
-        >
-          <option value="">+ Add Field…</option>
-          {FIELD_TYPES.map((t) => (
-            <option key={t.type} value={t.type}>{t.label}</option>
-          ))}
-        </select>
-      </div>
+      <BrandingEditor branding={branding} onChange={(next) => { setBranding(next); markDirty(); }} />
 
-      {fields.length === 0 ? (
-        <div className="text-sm text-ink/40 border border-dashed border-border rounded-lg p-6 text-center">
-          No fields yet — add one above.
-        </div>
-      ) : (
-        <div className="space-y-2 mb-4">
-          {fields.map((f, i) => (
-            <div
-              key={f.id}
-              draggable
-              onDragStart={() => setDragIndex(i)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handleDrop(i)}
-            >
-              <div className="flex items-center gap-2 border border-border rounded-lg px-3 py-2 bg-white cursor-grab">
-                <GripVertical size={15} className="text-ink/30 shrink-0" />
-                <span className="text-sm font-medium flex-1">{f.label}</span>
-                <Badge>{fieldTypeLabel(f.type)}</Badge>
-                {f.required && <span className="text-xs text-danger font-medium">Required</span>}
-                <button
-                  onClick={() => setExpandedId(expandedId === f.id ? null : f.id)}
-                  className="text-ink/40 hover:text-ink"
-                >
-                  <Pencil size={14} />
-                </button>
-              </div>
-              {expandedId === f.id && (
-                <div className="mt-1.5">
-                  <FieldEditor field={f} onChange={(updated) => updateField(f.id, updated)} onDelete={() => removeField(f.id)} />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="mb-4">
-        <BrandingEditor
-          branding={branding}
-          onChange={(next) => {
-            setBranding(next);
-            markDirty();
-          }}
-        />
-      </div>
-
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={!dirty}>Save Changes</Button>
-      </div>
+      <div className="flex justify-end mt-4">
+        <Button onClick={save} disabled={!dirty}>Save Settings</Button>
       </div>
     </div>
   );
@@ -834,6 +984,39 @@ function NewFormModal({ open, onClose, onCreated }) {
   );
 }
 
+function FormAnalyticsPanel({ form, recentResponses }) {
+  const forThisForm = recentResponses.filter((r) => r.formName === form.name);
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink/50">Total Responses</p>
+          <p className="text-2xl font-display font-bold mt-1.5">{form.responseCount}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink/50">Status</p>
+          <p className="text-2xl font-display font-bold mt-1.5">{form.status}</p>
+        </Card>
+      </div>
+      <Card className="p-4">
+        <p className="text-xs font-medium text-ink/50 mb-1.5">Recent Activity</p>
+        {forThisForm.length === 0 ? (
+          <p className="text-xs text-ink/40">No responses yet.</p>
+        ) : (
+          <div className="space-y-1">
+            {forThisForm.map((r) => (
+              <div key={r.id} className="flex justify-between text-xs">
+                <span className="text-ink/70">New submission</span>
+                <span className="text-ink/40">{timeAgo(r.submittedAt)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 export default function Forms() {
   const { canManage } = useAuth();
   const router = useRouter();
@@ -983,39 +1166,49 @@ export default function Forms() {
 
                 {active.status === "Published" && <ShareLink form={active} />}
 
-                <div className="flex items-center justify-between border-b border-border mb-4">
-                  <div className="flex gap-1">
-                    {["builder", "workflow", "responses", "whatsapp"].map((t) => (
+                <div className="grid grid-cols-[76px_1fr] gap-4">
+                  <div className="flex flex-col gap-1 border-r border-border pr-2">
+                    {STUDIO_NAV.map((item) => (
                       <button
-                        key={t}
-                        onClick={() => setTab(t)}
-                        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${
-                          tab === t ? "border-primary text-primary" : "border-transparent text-ink/50 hover:text-ink"
+                        key={item.key}
+                        onClick={() => setTab(item.key)}
+                        className={`flex flex-col items-center gap-1 py-2.5 rounded-lg text-[11px] font-medium ${
+                          tab === item.key ? "bg-primary/8 text-primary" : "text-ink/50 hover:bg-base hover:text-ink"
                         }`}
                       >
-                        {t === "builder" ? "Builder" : t === "workflow" ? "Workflow" : t === "responses" ? `Responses (${active.responseCount})` : "WhatsApp"}
+                        <item.icon size={17} />
+                        {item.label}
                       </button>
                     ))}
                   </div>
-                  {tab === "responses" && (
-                    <button
-                      onClick={() => router.push(`/app/forms/${active.id}/responses`)}
-                      className="text-xs font-medium text-primary flex items-center gap-1 hover:underline mb-2"
-                    >
-                      View Details <ExternalLink size={12} />
-                    </button>
-                  )}
-                </div>
 
-                {tab === "builder" ? (
-                  <FormBuilder form={active} onSave={saveBuilder} />
-                ) : tab === "workflow" ? (
-                  <WorkflowEditor form={active} onSave={saveBuilder} />
-                ) : tab === "responses" ? (
-                  <FormResponses formId={active.id} headerless />
-                ) : (
-                  <WhatsAppSurveyPanel form={active} />
-                )}
+                  <div>
+                    {tab === "responses" && (
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={() => router.push(`/app/forms/${active.id}/responses`)}
+                          className="text-xs font-medium text-primary flex items-center gap-1 hover:underline"
+                        >
+                          View Details <ExternalLink size={12} />
+                        </button>
+                      </div>
+                    )}
+
+                    {tab === "builder" ? (
+                      <FormBuilder form={active} onSave={saveBuilder} />
+                    ) : tab === "workflow" ? (
+                      <WorkflowEditor form={active} onSave={saveBuilder} />
+                    ) : tab === "responses" ? (
+                      <FormResponses formId={active.id} headerless />
+                    ) : tab === "whatsapp" ? (
+                      <WhatsAppSurveyPanel form={active} />
+                    ) : tab === "settings" ? (
+                      <FormSettingsPanel form={active} onSave={saveBuilder} />
+                    ) : (
+                      <FormAnalyticsPanel form={active} recentResponses={stats?.recentResponses || []} />
+                    )}
+                  </div>
+                </div>
               </Card>
             </div>
           )}
