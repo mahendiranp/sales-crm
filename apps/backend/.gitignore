@@ -1,2 +1,4 @@
 node_modules/
 src/db/data/
+.vercel
+.env*
