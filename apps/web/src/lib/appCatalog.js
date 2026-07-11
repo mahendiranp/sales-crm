@@ -137,6 +137,8 @@ export function findApp(key) {
 // settings.apps map).
 export const TOGGLEABLE_APPS = APP_CATALOG.filter((a) => a.status !== "builtIn");
 
-// Suggested starter kit for new signups — the apps that are actually
-// real (status: "available") rather than placeholders.
-export const RECOMMENDED_APP_KEYS = APP_CATALOG.filter((a) => a.status === "available").map((a) => a.key);
+// Suggested starter kit for new signups. Initial release only ships
+// Forms + Dashboard — narrower than "every status: available app" (which
+// currently also includes Documents/Expenses/Invoicing) so new signups
+// aren't nudged toward enabling areas that aren't actually launched yet.
+export const RECOMMENDED_APP_KEYS = ["forms"];

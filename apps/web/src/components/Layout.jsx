@@ -138,10 +138,19 @@ export default function Layout({ children }) {
     router.push("/login");
   };
 
+  // UI-only release lock: this build only ships Dashboard + Forms.
+  // Deliberately front-end only — doesn't touch settings.modules/apps in
+  // the database at all, so nothing here needs undoing to widen the
+  // release later beyond just editing these two arrays. Master admin
+  // bypasses this (and everything else) same as always.
+  const RELEASED_MODULE_KEYS = ["dashboard"];
+  const RELEASED_APP_KEYS = ["forms"];
+
   // Master admin sees every feature regardless of any tenant's flags — the
   // flags exist to restrict what everyone *else* under this account sees.
   const enabledAppItems = APP_CATALOG
-    .filter((a) => a.status !== "builtIn" && (isMasterAdmin || enabledApps[a.key]))
+    .filter((a) => a.status !== "builtIn")
+    .filter((a) => isMasterAdmin || (RELEASED_APP_KEYS.includes(a.key) && enabledApps[a.key]))
     .map((a) => ({
       to: a.status === "available" ? a.route : `/app/module/${a.key}`,
       label: a.label,
@@ -150,7 +159,12 @@ export default function Layout({ children }) {
 
   // Until settings load, show everything rather than flashing an empty
   // sidebar — modules default to true server-side anyway.
-  const isModuleOn = (key) => !key || isMasterAdmin || enabledModules === null || enabledModules[key] !== false;
+  const isModuleOn = (key) => {
+    if (!key) return true;
+    if (isMasterAdmin) return true;
+    if (!RELEASED_MODULE_KEYS.includes(key)) return false;
+    return enabledModules === null || enabledModules[key] !== false;
+  };
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,

@@ -38,7 +38,8 @@ export const CORE_MODULES = [
   { key: "teams", label: "Teams", icon: Users },
 ];
 
-// Sensible default for a brand-new signup — the core sales loop. Everything
-// else (WhatsApp, Analytics, Users, Teams, etc.) starts hidden until the
-// admin turns it on from the Admin Portal.
-export const RECOMMENDED_MODULE_KEYS = ["dashboard", "leads", "contacts", "deals", "activities", "tasks"];
+// Sensible default for a brand-new signup. Initial release only ships
+// Dashboard + Forms — everything else (the rest of the core sales loop,
+// WhatsApp, Analytics, Users, Teams, etc.) starts hidden until the owner
+// turns it on from Settings > Upgrade Plan as those areas go live.
+export const RECOMMENDED_MODULE_KEYS = ["dashboard"];
