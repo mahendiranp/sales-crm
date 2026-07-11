@@ -2,14 +2,82 @@ import { useEffect, useState } from "react";
 import { Search, FileSpreadsheet, FileText as FileTextIcon, Trash2, Eye, FormInput } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Modal, inputCls, EmptyState } from "../components/ui";
+import { Card, PageHeader, Button, Badge, Modal, inputCls, EmptyState } from "../components/ui";
 import Pagination from "../components/Pagination";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
 const PAGE_SIZE = 25;
 
-function ResponseDetailModal({ form, response, onClose }) {
+function workflowStatusLabel(status) {
+  return status === "approved" ? "Approved" : status === "rejected" ? "Rejected" : "Pending";
+}
+
+// Approval history + (if the current user is an eligible approver of the
+// current step) Approve/Reject actions for a single response. Fetches the
+// workflow detail on demand (it includes currentApproverIds, which the
+// list endpoint doesn't compute for every row) rather than eagerly for
+// every response in the table.
+function WorkflowPanel({ formId, response, onDecided }) {
+  const { user } = useAuth();
+  const [detail, setDetail] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setDetail(null);
+    if (response?.workflow) {
+      api.get(`/forms/${formId}/responses/${response.id}/workflow`).then((r) => setDetail(r.data));
+    }
+  }, [formId, response?.id]);
+
+  if (!response?.workflow || !detail) return null;
+
+  const canDecide = detail.status === "pending" && detail.currentApproverIds.includes(user?.id);
+
+  const decide = async (action) => {
+    const comment = action === "reject" ? prompt("Reason for rejecting (optional):") || "" : "";
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/forms/${formId}/responses/${response.id}/workflow/decide`, { action, comment });
+      setDetail(data);
+      onDecided?.();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to record decision.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-border pt-4 mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="font-display font-semibold text-sm">Approval Workflow</h4>
+        <Badge>{workflowStatusLabel(detail.status)}</Badge>
+      </div>
+      {detail.status === "pending" && (
+        <p className="text-xs text-ink/50 mb-2">Current step: {detail.steps[detail.currentStep]?.name}</p>
+      )}
+      {detail.history.length > 0 && (
+        <div className="space-y-1 mb-3">
+          {detail.history.map((h, i) => (
+            <div key={i} className="text-xs text-ink/50">
+              <span className="font-medium text-ink/70">{h.stepName}</span> — {h.actorName} {h.action}
+              {h.comment ? `: "${h.comment}"` : ""}
+            </div>
+          ))}
+        </div>
+      )}
+      {canDecide && (
+        <div className="flex gap-2">
+          <Button onClick={() => decide("approve")} disabled={busy}>Approve</Button>
+          <Button variant="danger" onClick={() => decide("reject")} disabled={busy}>Reject</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResponseDetailModal({ formId, form, response, onClose, onDecided }) {
   return (
     <Modal open={!!response} onClose={onClose} title="Response Details">
       {response && (
@@ -25,6 +93,7 @@ function ResponseDetailModal({ form, response, onClose }) {
               </p>
             </div>
           ))}
+          <WorkflowPanel formId={formId} response={response} onDecided={onDecided} />
         </div>
       )}
     </Modal>
@@ -133,6 +202,7 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
                 {form.fields.map((f) => (
                   <th key={f.id} className="p-2.5 font-medium text-ink/50 text-xs">{f.label}</th>
                 ))}
+                {form.workflow?.enabled && <th className="p-2.5 font-medium text-ink/50 text-xs">Approval</th>}
                 <th className="p-2.5" />
               </tr>
             </thead>
@@ -145,6 +215,9 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
                       {Array.isArray(r.answers?.[f.id]) ? r.answers[f.id].join(", ") || "—" : String(r.answers?.[f.id] ?? "—")}
                     </td>
                   ))}
+                  {form.workflow?.enabled && (
+                    <td className="p-2.5">{r.workflow ? <Badge>{workflowStatusLabel(r.workflow.status)}</Badge> : "—"}</td>
+                  )}
                   <td className="p-2.5 whitespace-nowrap">
                     <button onClick={() => setViewing(r)} className="text-ink/30 hover:text-primary mr-2">
                       <Eye size={14} />
@@ -164,7 +237,7 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
 
       <Pagination {...pageInfo} onPageChange={setPage} />
 
-      <ResponseDetailModal form={form} response={viewing} onClose={() => setViewing(null)} />
+      <ResponseDetailModal formId={formId} form={form} response={viewing} onClose={() => setViewing(null)} onDecided={loadResponses} />
     </div>
   );
 

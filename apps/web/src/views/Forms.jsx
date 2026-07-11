@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, EyeOff } from "lucide-react";
+import { Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, EyeOff, ClipboardCheck } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
@@ -535,6 +535,208 @@ function FormBuilder({ form, onSave }) {
   );
 }
 
+const ROLE_OPTIONS = [
+  { value: "admin", label: "Owner/Admin" },
+  { value: "manager", label: "Manager" },
+  { value: "viewer", label: "Viewer" },
+];
+
+function newStep() {
+  return {
+    id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    name: "Approval Step",
+    mode: "all",
+    approvers: [{ type: "role", value: "manager" }],
+    autoApprove: false,
+    escalateAfterHours: "",
+    escalateTo: null,
+  };
+}
+
+// Employee → Manager → HR style sequential approval routing, attached to
+// a form so every submission gets its own approval instance. Approvers
+// are role-based (resolved against the tenant's current team each time)
+// or a specific teammate; steps run in order, each step can require every
+// assigned approver ("all") or just the first one ("any").
+function WorkflowStepEditor({ step, onChange, onDelete }) {
+  const update = (patch) => onChange({ ...step, ...patch });
+  const approver = step.approvers[0] || { type: "role", value: "manager" };
+  const updateApprover = (patch) => update({ approvers: [{ ...approver, ...patch }] });
+
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">
+      <div className="flex items-center gap-2">
+        <input className={`${inputCls} flex-1`} value={step.name} onChange={(e) => update({ name: e.target.value })} placeholder="Step name" />
+        <button onClick={onDelete} className="text-danger shrink-0"><Trash2 size={14} /></button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <Field label="Approver">
+          <div className="flex gap-1.5">
+            <select className={inputCls} value={approver.type} onChange={(e) => updateApprover({ type: e.target.value, value: e.target.value === "role" ? "manager" : "" })}>
+              <option value="role">By role</option>
+              <option value="user">Specific person (account id)</option>
+            </select>
+          </div>
+        </Field>
+        <Field label={approver.type === "role" ? "Role" : "Account ID"}>
+          {approver.type === "role" ? (
+            <select className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })}>
+              {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          ) : (
+            <input className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })} placeholder="Paste teammate's account id" />
+          )}
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <Field label="If role resolves to multiple people">
+          <select className={inputCls} value={step.mode} onChange={(e) => update({ mode: e.target.value })}>
+            <option value="all">All must approve</option>
+            <option value="any">Any one approval advances</option>
+          </select>
+        </Field>
+        <Field label="Escalate after (hours, optional)">
+          <input type="number" className={inputCls} value={step.escalateAfterHours} onChange={(e) => update({ escalateAfterHours: e.target.value })} placeholder="e.g. 24" />
+        </Field>
+      </div>
+
+      <label className="flex items-center gap-2 text-sm text-ink/70">
+        <input type="checkbox" checked={!!step.autoApprove} onChange={(e) => update({ autoApprove: e.target.checked })} />
+        Auto-approve this step (skip, useful as a placeholder step)
+      </label>
+    </div>
+  );
+}
+
+function WorkflowEditor({ form, onSave }) {
+  const [enabled, setEnabled] = useState(!!form.workflow?.enabled);
+  const [steps, setSteps] = useState(form.workflow?.steps || []);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setEnabled(!!form.workflow?.enabled);
+    setSteps(form.workflow?.steps || []);
+    setDirty(false);
+  }, [form.id]);
+
+  const markDirty = () => setDirty(true);
+  const addStep = () => { setSteps((s) => [...s, newStep()]); markDirty(); };
+  const updateStep = (id, updated) => { setSteps((s) => s.map((x) => (x.id === id ? updated : x))); markDirty(); };
+  const removeStep = (id) => { setSteps((s) => s.filter((x) => x.id !== id)); markDirty(); };
+
+  const save = () => {
+    onSave({ workflow: { enabled, steps } });
+    setDirty(false);
+  };
+
+  return (
+    <div>
+      <label className="flex items-center gap-2 text-sm font-medium mb-4">
+        <input type="checkbox" checked={enabled} onChange={(e) => { setEnabled(e.target.checked); markDirty(); }} />
+        Require approval workflow before a submission counts as final
+      </label>
+
+      {enabled && (
+        <>
+          {steps.length === 0 ? (
+            <div className="text-sm text-ink/40 border border-dashed border-border rounded-lg p-6 text-center mb-3">
+              No steps yet — add one below. Each submission routes through steps in order.
+            </div>
+          ) : (
+            <div className="space-y-2.5 mb-3">
+              {steps.map((s, i) => (
+                <div key={s.id} className="flex items-start gap-2">
+                  <span className="text-xs font-semibold text-ink/30 mt-3 shrink-0 w-5">{i + 1}.</span>
+                  <div className="flex-1">
+                    <WorkflowStepEditor step={s} onChange={(u) => updateStep(s.id, u)} onDelete={() => removeStep(s.id)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <Button variant="secondary" onClick={addStep}><Plus size={14} /> Add Step</Button>
+        </>
+      )}
+
+      <div className="flex justify-end mt-4">
+        <Button onClick={save} disabled={!dirty}>Save Workflow</Button>
+      </div>
+    </div>
+  );
+}
+
+// Cross-form inbox of everything waiting on the current user's decision —
+// opened from the header button on the Forms list page.
+function ApprovalsModal({ open, onClose, onDecided }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    api.get("/forms/approvals/pending").then((r) => {
+      setItems(r.data);
+      setLoading(false);
+    });
+  };
+  useEffect(() => {
+    if (open) load();
+  }, [open]);
+
+  const decide = async (item, action) => {
+    setBusyId(item.id);
+    const comment = action === "reject" ? prompt("Reason for rejecting (optional):") || "" : "";
+    try {
+      await api.post(`/forms/${item.formId}/responses/${item.id}/workflow/decide`, { action, comment });
+      load();
+      onDecided?.();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to record decision.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="My Approvals" wide>
+      {loading ? (
+        <div className="text-sm text-ink/40">Loading…</div>
+      ) : items.length === 0 ? (
+        <EmptyState icon={ClipboardCheck} title="Nothing pending" subtitle="You have no approvals waiting on you right now." />
+      ) : (
+        <div className="space-y-2.5">
+          {items.map((item) => {
+            const step = item.workflow.steps[item.workflow.currentStep];
+            return (
+              <div key={item.id} className="border border-border rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-medium text-sm">{item.formName}</span>
+                  <span className="text-xs text-ink/40">{timeAgo(item.submittedAt)}</span>
+                </div>
+                <p className="text-xs text-ink/50 mb-2">Step: {step?.name}</p>
+                <div className="text-xs space-y-0.5 mb-2.5">
+                  {item.formFields.slice(0, 3).map((f) => (
+                    <div key={f.id} className="flex gap-1.5">
+                      <span className="text-ink/40">{f.label}:</span>
+                      <span className="truncate">{Array.isArray(item.answers?.[f.id]) ? item.answers[f.id].join(", ") : String(item.answers?.[f.id] ?? "—")}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => decide(item, "approve")} disabled={busyId === item.id}>Approve</Button>
+                  <Button variant="danger" onClick={() => decide(item, "reject")} disabled={busyId === item.id}>Reject</Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function ShareLink({ form }) {
   const [copied, setCopied] = useState(false);
   if (typeof window === "undefined") return null;
@@ -641,6 +843,8 @@ export default function Forms() {
   const [tab, setTab] = useState("builder");
   const [modal, setModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [approvalsOpen, setApprovalsOpen] = useState(false);
+  const [approvalsCount, setApprovalsCount] = useState(0);
 
   const load = () => {
     Promise.all([api.get("/forms"), api.get("/forms/stats")]).then(([f, s]) => {
@@ -650,10 +854,12 @@ export default function Forms() {
       setLoading(false);
     });
   };
+  const loadApprovalsCount = () => api.get("/forms/approvals/pending").then((r) => setApprovalsCount(r.data.length));
   useEffect(() => {
     load();
+    loadApprovalsCount();
   }, []);
-  useLiveCollection(["forms", "form_responses"], load);
+  useLiveCollection(["forms", "form_responses"], () => { load(); loadApprovalsCount(); });
 
   const handleFormCreated = (data) => {
     setModal(false);
@@ -689,8 +895,17 @@ export default function Forms() {
       <PageHeader
         title="Forms"
         subtitle="Build custom forms and collect responses."
-        action={canManage && <Button onClick={() => setModal(true)}><Plus size={15} /> New Form</Button>}
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setApprovalsOpen(true)}>
+              <ClipboardCheck size={15} /> My Approvals{approvalsCount > 0 ? ` (${approvalsCount})` : ""}
+            </Button>
+            {canManage && <Button onClick={() => setModal(true)}><Plus size={15} /> New Form</Button>}
+          </div>
+        }
       />
+
+      <ApprovalsModal open={approvalsOpen} onClose={() => setApprovalsOpen(false)} onDecided={loadApprovalsCount} />
 
       {stats && (
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -770,7 +985,7 @@ export default function Forms() {
 
                 <div className="flex items-center justify-between border-b border-border mb-4">
                   <div className="flex gap-1">
-                    {["builder", "responses", "whatsapp"].map((t) => (
+                    {["builder", "workflow", "responses", "whatsapp"].map((t) => (
                       <button
                         key={t}
                         onClick={() => setTab(t)}
@@ -778,7 +993,7 @@ export default function Forms() {
                           tab === t ? "border-primary text-primary" : "border-transparent text-ink/50 hover:text-ink"
                         }`}
                       >
-                        {t === "builder" ? "Builder" : t === "responses" ? `Responses (${active.responseCount})` : "WhatsApp"}
+                        {t === "builder" ? "Builder" : t === "workflow" ? "Workflow" : t === "responses" ? `Responses (${active.responseCount})` : "WhatsApp"}
                       </button>
                     ))}
                   </div>
@@ -794,6 +1009,8 @@ export default function Forms() {
 
                 {tab === "builder" ? (
                   <FormBuilder form={active} onSave={saveBuilder} />
+                ) : tab === "workflow" ? (
+                  <WorkflowEditor form={active} onSave={saveBuilder} />
                 ) : tab === "responses" ? (
                   <FormResponses formId={active.id} headerless />
                 ) : (
