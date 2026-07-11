@@ -11,10 +11,26 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const request = require("supertest");
-const app = require("../src/app");
-const { connectDB, collection } = require("../src/db/store");
+const { MongoMemoryServer } = require("mongodb-memory-server");
 
-const ready = connectDB();
+// Tests run against an in-memory MongoDB instead of a real service — no
+// external DB to spin up/health-check in CI, and every run starts from a
+// guaranteed-empty database. The URI must be set before app/store are
+// required, since store.js reads process.env.MONGODB_URI at module load.
+let mongod;
+let app;
+let connectDB;
+let closeDB;
+let collection;
+
+const ready = (async () => {
+  mongod = await MongoMemoryServer.create();
+  process.env.MONGODB_URI = mongod.getUri("sales_crm_test");
+  app = require("../src/app");
+  ({ connectDB, closeDB, collection } = require("../src/db/store"));
+  await connectDB();
+})();
+
 const cleanupEmails = [];
 
 function uniqueEmail(prefix) {
@@ -256,4 +272,6 @@ test("cleanup: remove test accounts created by this suite", async () => {
     }
   }
   assert.ok(removed >= 0);
+  await closeDB();
+  await mongod.stop();
 });

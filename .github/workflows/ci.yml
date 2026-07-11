@@ -12,16 +12,6 @@ on:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
-    services:
-      mongodb:
-        image: mongo:6
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ping:1})' --quiet"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +28,6 @@ jobs:
         run: npm test
         env:
           NODE_ENV: test
-          MONGODB_URI: mongodb://127.0.0.1:27017/sales_crm_ci
           JWT_SECRET: ci-test-jwt-secret-not-for-real-use
           FORM_ENCRYPTION_KEY: ci-test-form-encryption-key-not-for-real-use
           ALLOW_DEMO_LOGIN: "true"

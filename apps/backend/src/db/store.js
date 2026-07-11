@@ -8,12 +8,19 @@ const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/sales_
 
 let db = null;
 let io = null;
+let client = null;
 
 async function connectDB() {
-  const client = new MongoClient(MONGODB_URI);
+  client = new MongoClient(MONGODB_URI);
   await client.connect();
   db = client.db();
   return db;
+}
+
+// Lets test suites close the connection so the process can exit instead of
+// hanging on the open socket.
+async function closeDB() {
+  if (client) await client.close();
 }
 
 // Called once at startup so mutations can broadcast live updates.
@@ -131,4 +138,4 @@ function scopedCollection(name, accountId) {
   };
 }
 
-module.exports = { connectDB, setIO, collection, scopedCollection };
+module.exports = { connectDB, closeDB, setIO, collection, scopedCollection };
