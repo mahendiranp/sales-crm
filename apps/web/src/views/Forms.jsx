@@ -1190,12 +1190,14 @@ function NewFormModal({ open, onClose, onCreated }) {
   const [selected, setSelected] = useState(null);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (open) {
       api.get("/forms/templates").then((r) => setTemplates(r.data));
       setSelected(null);
       setName("");
+      setError("");
     }
   }, [open]);
 
@@ -1207,9 +1209,15 @@ function NewFormModal({ open, onClose, onCreated }) {
   const create = async () => {
     if (!name.trim() || !selected) return;
     setCreating(true);
-    const { data } = await api.post("/forms/from-template", { templateKey: selected.key, name });
-    setCreating(false);
-    onCreated(data);
+    setError("");
+    try {
+      const { data } = await api.post("/forms/from-template", { templateKey: selected.key, name });
+      onCreated(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't create that form.");
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -1224,6 +1232,7 @@ function NewFormModal({ open, onClose, onCreated }) {
           <Field label="Form Name">
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Contact Us" autoFocus />
           </Field>
+          {error && <p className="text-xs text-danger mb-2">{error}</p>}
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button onClick={create} disabled={creating || !name.trim()}>{creating ? "Creating…" : "Create Form"}</Button>
@@ -1284,6 +1293,7 @@ export default function Forms() {
   // Disables Publish/Duplicate/Delete while any one of them is in flight,
   // so a double-click can't fire the same mutation twice.
   const [actionBusy, setActionBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const load = () => {
     Promise.all([api.get("/forms"), api.get("/forms/stats")]).then(([f, s]) => {
@@ -1341,8 +1351,13 @@ export default function Forms() {
   };
 
   const saveBuilder = async (patch) => {
-    await api.put(`/forms/${active.id}`, patch);
-    load();
+    setSaveError("");
+    try {
+      await api.put(`/forms/${active.id}`, patch);
+      load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't save that change.");
+    }
   };
 
   return (
@@ -1429,6 +1444,7 @@ export default function Forms() {
                 </div>
 
                 {active.status === "Published" && <ShareLink form={active} />}
+                {saveError && <p className="text-sm text-danger mb-3">{saveError}</p>}
 
                 {/* Below lg: a horizontal scrollable tab row above the
                     content instead of a narrow 76px vertical rail, which

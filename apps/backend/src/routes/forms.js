@@ -8,6 +8,7 @@ const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
 const { buildSnapshot, autoAdvance, currentApprovers, applyDecision, applyEscalations } = require("../utils/workflowEngine");
 const { isConfigured: aiConfigured, generateFormFields } = require("../integrations/aiClient");
+const { getLimitsForAccount } = require("./settings");
 
 const router = express.Router();
 // Public routes (/public, /responses POST) bypass auth entirely (see
@@ -22,6 +23,19 @@ const responsesFor = (req) => scopedCollection("form_responses", req.user.accoun
 // Everyone sharing a tenant (owner + teammates) for resolving role-based
 // approvers — mirrors the membership check in routes/auth.js's /team route.
 const tenantAccountsFor = async (req) => (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId);
+
+// Master admin bypasses plan limits same as every other gate in this app.
+// Returns null (ok to proceed) or an error message to send as a 403.
+async function checkFormLimit(req) {
+  if (req.user.isMasterAdmin) return null;
+  const limits = await getLimitsForAccount(req.user.accountId);
+  if (limits.maxForms === Infinity) return null;
+  const count = (await formsFor(req).all()).length;
+  if (count >= limits.maxForms) {
+    return `Your plan (${limits.label}) allows up to ${limits.maxForms} form${limits.maxForms === 1 ? "" : "s"}. Upgrade to create more.`;
+  }
+  return null;
+}
 
 async function withResponseCount(form, allResponses) {
   const count = (allResponses || (await rawResponses.query((r) => r.formId === form.id))).filter((r) => r.formId === form.id).length;
@@ -91,6 +105,8 @@ router.post("/workflow/check-escalations", requireManager, async (req, res) => {
 });
 
 router.post("/from-template", requireManager, async (req, res) => {
+  const limitError = await checkFormLimit(req);
+  if (limitError) return res.status(403).json({ error: limitError });
   const { templateKey, name } = req.body;
   const template = getTemplate(templateKey);
   if (!template) return res.status(404).json({ error: "Template not found" });
@@ -139,6 +155,12 @@ router.get("/:id", async (req, res) => {
 router.post("/:id/ai/build", requireManager, async (req, res) => {
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
+  if (!req.user.isMasterAdmin) {
+    const limits = await getLimitsForAccount(req.user.accountId);
+    if (!limits.aiAssistant) {
+      return res.status(403).json({ error: `The AI Assistant requires the Growth plan or higher. Your account is on ${limits.label}.` });
+    }
+  }
   if (!aiConfigured()) {
     return res.status(503).json({ error: "AI Assistant isn't configured yet. Ask your admin to set ANTHROPIC_API_KEY in the backend environment." });
   }
@@ -153,6 +175,8 @@ router.post("/:id/ai/build", requireManager, async (req, res) => {
 });
 
 router.post("/", requireManager, async (req, res) => {
+  const limitError = await checkFormLimit(req);
+  if (limitError) return res.status(403).json({ error: limitError });
   const form = {
     id: uuid(),
     name: req.body.name || "Untitled Form",
@@ -169,6 +193,12 @@ router.post("/", requireManager, async (req, res) => {
 });
 
 router.put("/:id", requireManager, async (req, res) => {
+  if (req.body.workflow?.enabled && !req.user.isMasterAdmin) {
+    const limits = await getLimitsForAccount(req.user.accountId);
+    if (!limits.workflows) {
+      return res.status(403).json({ error: `Approval workflows require the Growth plan or higher. Your account is on ${limits.label}.` });
+    }
+  }
   const updated = await formsFor(req).update(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: "Not found" });
   res.json(updated);
@@ -184,6 +214,8 @@ router.delete("/:id", requireFullAccess, async (req, res) => {
 });
 
 router.post("/:id/duplicate", requireManager, async (req, res) => {
+  const limitError = await checkFormLimit(req);
+  if (limitError) return res.status(403).json({ error: limitError });
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
   const copy = {
