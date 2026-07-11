@@ -1117,32 +1117,24 @@ export default function Forms() {
       ) : forms.length === 0 ? (
         <Card><EmptyState icon={FormInput} title="No forms yet" subtitle="Create your first form to start collecting responses." /></Card>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="p-2 h-fit max-h-[70vh] overflow-y-auto">
-            {forms.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => {
-                  setActive(f);
-                  setTab("builder");
-                }}
-                className={`w-full text-left p-3 rounded-lg mb-1 ${active?.id === f.id ? "bg-primary/8" : "hover:bg-base"}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-sm truncate">{f.name}</span>
-                  <Badge>{f.status}</Badge>
-                </div>
-                <div className="text-xs text-ink/40 mt-0.5">{f.responseCount} response{f.responseCount === 1 ? "" : "s"}</div>
-              </button>
-            ))}
-          </Card>
-
+        <div>
           {active && (
-            <div className="col-span-2 space-y-4">
+            <div className="space-y-4">
               <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-display font-semibold text-lg">{active.name}</h3>
+                    <select
+                      value={active.id}
+                      onChange={(e) => {
+                        setActive(forms.find((f) => f.id === e.target.value) || active);
+                        setTab("builder");
+                      }}
+                      className="font-display font-semibold text-lg bg-transparent border-none outline-none cursor-pointer -ml-1 max-w-[420px] truncate"
+                    >
+                      {forms.map((f) => (
+                        <option key={f.id} value={f.id}>{f.name} — {f.responseCount} response{f.responseCount === 1 ? "" : "s"}</option>
+                      ))}
+                    </select>
                     <Badge>{active.status}</Badge>
                   </div>
                   <div className="flex items-center gap-1.5">
