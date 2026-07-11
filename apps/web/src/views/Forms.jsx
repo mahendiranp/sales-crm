@@ -6,13 +6,14 @@ import {
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState, ConfirmDialog } from "../components/ui";
+import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState, ConfirmDialog, ErrorModal } from "../components/ui";
 import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import FormResponses from "./FormResponses";
 import WhatsAppSurveyPanel from "./WhatsAppSurveyPanel";
 import FormFieldInput from "../components/FormFieldInput";
 import { FORM_THEMES } from "../lib/formThemes";
+import { limitsFor } from "../lib/plans";
 
 const FIELD_TYPES = [
   { type: "text", label: "Short Text" },
@@ -899,7 +900,7 @@ function AddTeammateModal({ open, onClose, onCreated }) {
 // are role-based (resolved against the tenant's current team each time)
 // or a specific teammate; steps run in order, each step can require every
 // assigned approver ("all") or just the first one ("any").
-function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate }) {
+function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate, atUserLimit, planLabel }) {
   const update = (patch) => onChange({ ...step, ...patch });
   const approver = step.approvers[0] || { type: "role", value: "manager" };
   const updateApprover = (patch) => update({ approvers: [{ ...approver, ...patch }] });
@@ -936,7 +937,9 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate
         ) : teammates.length === 0 ? (
           <Field label="Team member">
             <p className="text-xs text-ink/40 mb-1.5">No team members yet.</p>
-            <Button variant="secondary" onClick={onAddTeammate}><Plus size={13} /> Add Team Member</Button>
+            <span title={atUserLimit ? `Your plan (${planLabel}) doesn't allow adding teammates. Upgrade to add more.` : undefined}>
+              <Button variant="secondary" onClick={onAddTeammate} disabled={atUserLimit}><Plus size={13} /> Add Team Member</Button>
+            </span>
           </Field>
         ) : (
           <Field label="Team member">
@@ -944,7 +947,15 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate
               <option value="">Select…</option>
               {teammates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.email})</option>)}
             </select>
-            <button type="button" onClick={onAddTeammate} className="text-xs text-primary hover:underline mt-1">+ Add another team member</button>
+            <button
+              type="button"
+              onClick={onAddTeammate}
+              disabled={atUserLimit}
+              title={atUserLimit ? `Your plan (${planLabel}) allows up to that many teammates already. Upgrade to add more.` : undefined}
+              className={`text-xs mt-1 ${atUserLimit ? "text-ink/30 cursor-not-allowed" : "text-primary hover:underline"}`}
+            >
+              + Add another team member
+            </button>
           </Field>
         )}
       </div>
@@ -969,7 +980,8 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate
   );
 }
 
-function WorkflowEditor({ form, onSave }) {
+function WorkflowEditor({ form, onSave, planLimits }) {
+  const workflowsAllowed = !planLimits || planLimits.workflows;
   const [enabled, setEnabled] = useState(!!form.workflow?.enabled);
   const [steps, setSteps] = useState(form.workflow?.steps || []);
   const [dirty, setDirty] = useState(false);
@@ -978,6 +990,8 @@ function WorkflowEditor({ form, onSave }) {
   // manual account-id field in that case instead of an empty dropdown.
   const [teammates, setTeammates] = useState(null);
   const [addTeammateOpen, setAddTeammateOpen] = useState(false);
+  // +1 for the owner — teammates only ever holds the OTHER members.
+  const atUserLimit = planLimits && teammates && teammates.length + 1 >= planLimits.maxUsers;
 
   useEffect(() => {
     setEnabled(!!form.workflow?.enabled);
@@ -1002,8 +1016,16 @@ function WorkflowEditor({ form, onSave }) {
 
   return (
     <div>
-      <label className="flex items-center gap-2 text-sm font-medium mb-4">
-        <input type="checkbox" checked={enabled} onChange={(e) => { setEnabled(e.target.checked); markDirty(); }} />
+      <label
+        className={`flex items-center gap-2 text-sm font-medium mb-4 ${!workflowsAllowed ? "opacity-50 cursor-not-allowed" : ""}`}
+        title={!workflowsAllowed ? `Approval workflows require the Growth plan or higher. Your account is on ${planLimits.label}.` : undefined}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={!workflowsAllowed}
+          onChange={(e) => { setEnabled(e.target.checked); markDirty(); }}
+        />
         Require approval workflow before a submission counts as final
       </label>
 
@@ -1025,6 +1047,8 @@ function WorkflowEditor({ form, onSave }) {
                       onDelete={() => removeStep(s.id)}
                       teammates={teammates}
                       onAddTeammate={() => setAddTeammateOpen(true)}
+                      atUserLimit={atUserLimit}
+                      planLabel={planLimits?.label}
                     />
                   </div>
                 </div>
@@ -1190,12 +1214,14 @@ function NewFormModal({ open, onClose, onCreated }) {
   const [selected, setSelected] = useState(null);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (open) {
       api.get("/forms/templates").then((r) => setTemplates(r.data));
       setSelected(null);
       setName("");
+      setError("");
     }
   }, [open]);
 
@@ -1207,9 +1233,15 @@ function NewFormModal({ open, onClose, onCreated }) {
   const create = async () => {
     if (!name.trim() || !selected) return;
     setCreating(true);
-    const { data } = await api.post("/forms/from-template", { templateKey: selected.key, name });
-    setCreating(false);
-    onCreated(data);
+    setError("");
+    try {
+      const { data } = await api.post("/forms/from-template", { templateKey: selected.key, name });
+      onCreated(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't create that form.");
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -1224,6 +1256,7 @@ function NewFormModal({ open, onClose, onCreated }) {
           <Field label="Form Name">
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Contact Us" autoFocus />
           </Field>
+          {error && <p className="text-xs text-danger mb-2">{error}</p>}
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button onClick={create} disabled={creating || !name.trim()}>{creating ? "Creating…" : "Create Form"}</Button>
@@ -1284,6 +1317,12 @@ export default function Forms() {
   // Disables Publish/Duplicate/Delete while any one of them is in flight,
   // so a double-click can't fire the same mutation twice.
   const [actionBusy, setActionBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  // Used to proactively disable actions (New Form, workflow toggle, etc.)
+  // with a tooltip instead of letting the request fail after the fact.
+  // null while loading — treated as "no limit" so buttons aren't briefly
+  // disabled before the real plan is known.
+  const [planLimits, setPlanLimits] = useState(null);
 
   const load = () => {
     Promise.all([api.get("/forms"), api.get("/forms/stats")]).then(([f, s]) => {
@@ -1294,11 +1333,16 @@ export default function Forms() {
     });
   };
   const loadApprovalsCount = () => api.get("/forms/approvals/pending").then((r) => setApprovalsCount(r.data.length));
+  const loadPlanLimits = () => api.get("/settings").then((r) => setPlanLimits(limitsFor(r.data.subscription?.plan))).catch(() => {});
   useEffect(() => {
     load();
     loadApprovalsCount();
+    loadPlanLimits();
   }, []);
   useLiveCollection(["forms", "form_responses"], () => { load(); loadApprovalsCount(); });
+  useLiveCollection(["settings"], loadPlanLimits);
+
+  const atFormLimit = planLimits && forms.length >= planLimits.maxForms;
 
   const handleFormCreated = (data) => {
     setModal(false);
@@ -1341,8 +1385,13 @@ export default function Forms() {
   };
 
   const saveBuilder = async (patch) => {
-    await api.put(`/forms/${active.id}`, patch);
-    load();
+    setSaveError("");
+    try {
+      await api.put(`/forms/${active.id}`, patch);
+      load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't save that change.");
+    }
   };
 
   return (
@@ -1355,7 +1404,11 @@ export default function Forms() {
             <Button variant="secondary" onClick={() => setApprovalsOpen(true)}>
               <ClipboardCheck size={15} /> My Approvals{approvalsCount > 0 ? ` (${approvalsCount})` : ""}
             </Button>
-            {canManage && <Button onClick={() => setModal(true)}><Plus size={15} /> New Form</Button>}
+            {canManage && (
+              <span title={atFormLimit ? `Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.` : undefined}>
+                <Button onClick={() => setModal(true)} disabled={atFormLimit}><Plus size={15} /> New Form</Button>
+              </span>
+            )}
           </div>
         }
       />
@@ -1465,7 +1518,7 @@ export default function Forms() {
                     {tab === "builder" ? (
                       <FormBuilder form={active} onSave={saveBuilder} />
                     ) : tab === "workflow" ? (
-                      <WorkflowEditor form={active} onSave={saveBuilder} />
+                      <WorkflowEditor form={active} onSave={saveBuilder} planLimits={planLimits} />
                     ) : tab === "responses" ? (
                       <FormResponses formId={active.id} headerless />
                     ) : tab === "whatsapp" ? (
@@ -1494,6 +1547,8 @@ export default function Forms() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={deleteForm}
       />
+
+      <ErrorModal open={!!saveError} message={saveError} onClose={() => setSaveError("")} />
     </div>
   );
 }

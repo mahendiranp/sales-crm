@@ -240,10 +240,16 @@ export default function WhatsAppSurveyPanel({ form }) {
 
   const toggleBot = async (next) => {
     setToggling(true);
-    const { data: current } = await api.get("/settings");
-    await api.put("/settings", { apps: { ...current.apps, whatsappBot: next } });
-    await loadConfig();
-    setToggling(false);
+    setError("");
+    try {
+      const { data: current } = await api.get("/settings");
+      await api.put("/settings", { apps: { ...current.apps, whatsappBot: next } });
+      await loadConfig();
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't change that setting.");
+    } finally {
+      setToggling(false);
+    }
   };
 
   const startSurvey = async () => {

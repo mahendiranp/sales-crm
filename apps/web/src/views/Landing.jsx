@@ -1,17 +1,16 @@
 import Link from "next/link";
 import {
-  Target, Users2, MessageCircle, BarChart3, Sparkles, Building2,
-  ArrowRight, Check, ListChecks, Mail, TrendingUp, FormInput,
+  Target, Sparkles, ArrowRight, Check, Mail, TrendingUp,
+  FormInput, Workflow, Share2, BarChart3, MessageCircle,
 } from "lucide-react";
 
 const FEATURES = [
-  { icon: Users2, title: "Leads & Pipeline", desc: "Capture leads from Website, Facebook, and WhatsApp, then move them through a real sales pipeline." },
-  { icon: MessageCircle, title: "WhatsApp built in", desc: "Send, template, and bulk-message straight from the CRM — with AI-suggested replies, plus a conversational survey bot." },
-  { icon: FormInput, title: "Custom forms", desc: "Drag-and-drop form builder with templates, branding, and a public share link — responses land straight in your CRM, encrypted." },
-  { icon: Sparkles, title: "AI Suggestions", desc: "Stale leads, overdue tasks, and hot deals surfaced automatically, every morning." },
-  { icon: Building2, title: "B2B ready", desc: "Company accounts, GST numbers, and account managers for teams selling to businesses." },
-  { icon: BarChart3, title: "Real analytics", desc: "Conversion rate, lead sources, best performers, and lost reasons — not vanity charts." },
-  { icon: ListChecks, title: "Tasks that stick", desc: "Follow-ups with Email, SMS, and push reminders so nothing slips through." },
+  { icon: FormInput, title: "Drag-and-drop builder", desc: "13 field types, branding, and a live canvas that's exactly what respondents see — no separate preview pane to keep in sync." },
+  { icon: Sparkles, title: "AI Assistant", desc: "Describe the form you want and let AI add the fields — or just ask it to add one field at a time." },
+  { icon: Workflow, title: "Approval workflows", desc: "Route submissions through Employee → Manager → HR style multi-step approvals, with role-based or specific-person approvers." },
+  { icon: Share2, title: "Publish anywhere", desc: "A public share link, ready in one click — responses land straight in your dashboard, encrypted at rest." },
+  { icon: MessageCircle, title: "WhatsApp survey bot", desc: "Deliver a form as a conversational, one-field-at-a-time WhatsApp chat instead of a web link." },
+  { icon: BarChart3, title: "Export & analyze", desc: "Search, filter, and export every response to CSV or Excel — with per-form response counts on your dashboard." },
 ];
 
 const PLANS = [
@@ -19,16 +18,16 @@ const PLANS = [
     name: "Starter",
     price: "₹0",
     period: "forever",
-    tagline: "For solo founders getting their first leads organized.",
-    features: ["Up to 100 leads", "Leads, Contacts, Deals", "Basic email sending", "1 user"],
+    tagline: "For getting your first form live and collecting responses.",
+    features: ["Up to 3 forms", "Unlimited responses", "CSV/Excel export", "1 user"],
     cta: "Start free",
   },
   {
     name: "Growth",
-    price: "₹1,499",
+    price: "₹999",
     period: "/user/month",
-    tagline: "For sales teams who live in WhatsApp and need a real pipeline.",
-    features: ["Unlimited leads", "WhatsApp + AI replies", "Analytics & Sales Reports", "Teams & Performance", "Up to 20 users"],
+    tagline: "For teams that need approvals and WhatsApp delivery.",
+    features: ["Unlimited forms", "Approval workflows", "WhatsApp survey bot", "AI form-building assistant", "Up to 20 users"],
     cta: "Start free trial",
     highlighted: true,
   },
@@ -77,14 +76,14 @@ export default function Landing() {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-16 text-center">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/8 text-primary text-xs font-medium mb-6">
-          <Sparkles size={12} /> AI suggestions built in, not bolted on
+          <Sparkles size={12} /> AI-assisted form building
         </div>
         <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.05] max-w-3xl mx-auto">
-          The sales CRM built for how Indian teams actually sell.
+          Build forms, collect responses, know what's happening.
         </h1>
         <p className="text-ink/60 text-lg max-w-xl mx-auto mt-5">
-          Leads, WhatsApp, deals, and reports in one place — with AI that tells you
-          who to call next, not just where you left off.
+          A drag-and-drop form builder with approval workflows, WhatsApp delivery,
+          and a dashboard that shows exactly what's coming in — all in one place.
         </p>
         <div className="flex items-center justify-center gap-3 mt-8">
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark">
@@ -101,12 +100,10 @@ export default function Landing() {
       <section className="max-w-5xl mx-auto px-6 -mt-4 mb-20">
         <div className="rounded-2xl border border-border shadow-card bg-white p-3">
           <div className="rounded-xl bg-base border border-border p-6">
-            <div className="grid grid-cols-4 gap-3 mb-3">
+            <div className="grid grid-cols-2 gap-3 mb-3">
               {[
-                { label: "Total Leads", value: "482", color: "#3E6FA3" },
-                { label: "New Today", value: "12", color: "#2F5D50" },
-                { label: "Follow-ups Due", value: "7", color: "#E8A33D" },
-                { label: "Deals Won", value: "38", color: "#8B5FBF" },
+                { label: "Total Forms", value: "12", color: "#2F5D50" },
+                { label: "Total Responses", value: "486", color: "#3E6FA3" },
               ].map((s) => (
                 <div key={s.label} className="bg-white rounded-lg border border-border p-3">
                   <p className="text-[10px] text-ink/40">{s.label}</p>
@@ -114,9 +111,17 @@ export default function Landing() {
                 </div>
               ))}
             </div>
-            <div className="bg-white rounded-lg border border-border p-4 flex items-end gap-1.5 h-28">
-              {[40, 55, 45, 70, 60, 85, 65, 90].map((h, i) => (
-                <div key={i} className="flex-1 bg-primary/70 rounded-t" style={{ height: `${h}%` }} />
+            <div className="bg-white rounded-lg border border-border p-4">
+              <p className="text-[10px] font-medium text-ink/40 mb-2">Recent Form Responses</p>
+              {[
+                { name: "Employee Leave Request", when: "2m ago" },
+                { name: "Customer Feedback", when: "18m ago" },
+                { name: "Event Registration", when: "1h ago" },
+              ].map((r) => (
+                <div key={r.name} className="flex items-center justify-between text-sm py-1.5 border-t border-border first:border-t-0">
+                  <span className="text-ink/70">{r.name}</span>
+                  <span className="text-xs text-ink/40">{r.when}</span>
+                </div>
               ))}
             </div>
           </div>
@@ -126,8 +131,8 @@ export default function Landing() {
       {/* Features */}
       <section id="features" className="max-w-6xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
-          <h2 className="font-display font-bold text-3xl">Everything your sales team needs</h2>
-          <p className="text-ink/50 mt-2">16 modules, one login — no more switching between five different tools.</p>
+          <h2 className="font-display font-bold text-3xl">Everything you need to collect and act on responses</h2>
+          <p className="text-ink/50 mt-2">Build, publish, and route — one tool instead of a form builder plus a spreadsheet.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5">
           {FEATURES.map((f) => (
@@ -146,10 +151,10 @@ export default function Landing() {
       <section className="bg-primary text-white py-16">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <Sparkles size={28} className="mx-auto mb-4 text-accent" />
-          <h2 className="font-display font-bold text-3xl mb-3">Your sales manager, minus the spreadsheet.</h2>
+          <h2 className="font-display font-bold text-3xl mb-3">Your form-building copilot.</h2>
           <p className="text-white/70 max-w-xl mx-auto">
-            Every morning, Pipeline surfaces the leads going cold, the tasks slipping,
-            and the deals in Negotiation that need a nudge — before you even open the dashboard.
+            Describe the form you need — "create an employee leave request form" — and
+            the AI Assistant adds the fields for you, right inside the builder.
           </p>
         </div>
       </section>
@@ -158,7 +163,7 @@ export default function Landing() {
       <section id="pricing" className="max-w-6xl mx-auto px-6 py-20">
         <div className="text-center mb-12">
           <h2 className="font-display font-bold text-3xl">Simple, transparent pricing</h2>
-          <p className="text-ink/50 mt-2">Start free. Upgrade when your pipeline grows.</p>
+          <p className="text-ink/50 mt-2">Start free. Upgrade when you need workflows and WhatsApp delivery.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5">
           {PLANS.map((p) => (
@@ -206,10 +211,12 @@ export default function Landing() {
             </div>
             <span className="font-display font-semibold">Pipeline</span>
           </div>
-          <p className="text-xs text-ink/40">© 2026 Pipeline CRM. Built for teams who sell every day.</p>
+          <p className="text-xs text-ink/40">© 2026 Pipeline. Forms that route themselves.</p>
           <div className="flex items-center gap-4 text-xs text-ink/50">
             <span className="flex items-center gap-1"><Mail size={12} /> hello@pipeline.app</span>
             <span className="flex items-center gap-1"><TrendingUp size={12} /> Made in Bengaluru</span>
+            <Link href="/terms" className="hover:text-ink">Terms</Link>
+            <Link href="/privacy" className="hover:text-ink">Privacy</Link>
           </div>
         </div>
       </footer>

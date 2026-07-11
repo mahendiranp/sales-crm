@@ -4,6 +4,7 @@ import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatDate } from "../lib/format";
+import { limitsFor } from "../lib/plans";
 
 const PERMISSIONS = [
   { key: "view", label: "View Only", desc: "Can see everything, can't create, edit, or delete.", icon: Eye },
@@ -21,11 +22,16 @@ export default function Team() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [planLimits, setPlanLimits] = useState(null);
 
   const load = () => api.get("/auth/team").then((r) => { setTeam(r.data); setLoading(false); }).catch(() => setLoading(false));
   useEffect(() => {
     load();
+    api.get("/settings").then((r) => setPlanLimits(limitsFor(r.data.subscription?.plan))).catch(() => {});
   }, []);
+
+  // +1 for the owner — `team` only holds the other members.
+  const atUserLimit = planLimits && team.length + 1 >= planLimits.maxUsers;
 
   const createTeammate = async () => {
     setError("");
@@ -75,7 +81,11 @@ export default function Team() {
       <PageHeader
         title="Team"
         subtitle="Create logins for your teammates and control exactly what each one can do."
-        action={<Button onClick={() => setModal(true)}><Plus size={15} /> Add Teammate</Button>}
+        action={
+          <span title={atUserLimit ? `Your plan (${planLimits.label}) allows up to ${planLimits.maxUsers} user${planLimits.maxUsers === 1 ? "" : "s"}. Upgrade to add more.` : undefined}>
+            <Button onClick={() => setModal(true)} disabled={atUserLimit}><Plus size={15} /> Add Teammate</Button>
+          </span>
+        }
       />
 
       <Card className="p-4 mb-4 flex items-center gap-3">
