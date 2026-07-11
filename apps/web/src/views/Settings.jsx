@@ -1,26 +1,33 @@
 import { useEffect, useState } from "react";
-import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkles, Bell, Plug } from "lucide-react";
+import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkles, Bell, Plug, Rocket } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Field, inputCls } from "../components/ui";
+import CoreModulePicker from "../components/CoreModulePicker";
+import FeaturePicker from "../components/FeaturePicker";
+import { RECOMMENDED_APP_KEYS } from "../lib/appCatalog";
 import useLiveCollection from "../lib/useLiveCollection";
 
-const SECTIONS = [
-  { key: "companyProfile", label: "Company Profile", icon: Building2 },
-  { key: "subscription", label: "Subscription", icon: CreditCard },
-  { key: "whatsappApi", label: "WhatsApp API", icon: MessageCircle },
-  { key: "emailSettings", label: "Email Settings", icon: Mail },
-  { key: "paymentGateway", label: "Payment Gateway", icon: Wallet },
-  { key: "aiConfiguration", label: "AI Configuration", icon: Sparkles },
-  { key: "notifications", label: "Notifications", icon: Bell },
-  { key: "integrations", label: "Integrations", icon: Plug },
-];
+function baseSections(isOwner) {
+  return [
+    { key: "companyProfile", label: "Company Profile", icon: Building2 },
+    { key: "subscription", label: "Subscription", icon: CreditCard },
+    ...(isOwner ? [{ key: "upgradePlan", label: "Upgrade Plan", icon: Rocket }] : []),
+    { key: "whatsappApi", label: "WhatsApp API", icon: MessageCircle },
+    { key: "emailSettings", label: "Email Settings", icon: Mail },
+    { key: "paymentGateway", label: "Payment Gateway", icon: Wallet },
+    { key: "aiConfiguration", label: "AI Configuration", icon: Sparkles },
+    { key: "notifications", label: "Notifications", icon: Bell },
+    { key: "integrations", label: "Integrations", icon: Plug },
+  ];
+}
 
 export default function Settings() {
-  const { canManage } = useAuth();
+  const { canManage, isOwner } = useAuth();
   const [settings, setSettings] = useState(null);
   const [active, setActive] = useState("companyProfile");
   const [saved, setSaved] = useState(false);
+  const [planSaved, setPlanSaved] = useState(false);
 
   const load = () => api.get("/settings").then((r) => setSettings(r.data));
   useEffect(() => {
@@ -28,13 +35,27 @@ export default function Settings() {
   }, []);
   useLiveCollection(["settings"], load);
 
+  const SECTIONS = baseSections(isOwner);
+
   const save = async () => {
-    await api.put("/settings", settings);
+    // Plain field edits shouldn't touch apps/modules — those are only sent
+    // from the Upgrade Plan tab's own save, so a non-owner teammate saving
+    // Notifications/Company Profile never trips the owner-only flag check.
+    const { apps, modules, ...editable } = settings;
+    await api.put("/settings", editable);
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   };
 
   const update = (section, patch) => setSettings((s) => ({ ...s, [section]: { ...s[section], ...patch } }));
+
+  const toggleModule = (key) => setSettings((s) => ({ ...s, modules: { ...s.modules, [key]: !s.modules[key] } }));
+  const toggleApp = (key) => setSettings((s) => ({ ...s, apps: { ...s.apps, [key]: !s.apps[key] } }));
+  const savePlan = async () => {
+    await api.put("/settings", { modules: settings.modules, apps: settings.apps });
+    setPlanSaved(true);
+    setTimeout(() => setPlanSaved(false), 1800);
+  };
 
   if (!settings) return <div className="text-ink/40 text-sm">Loading…</div>;
 
@@ -43,7 +64,14 @@ export default function Settings() {
       <PageHeader
         title="Settings"
         subtitle="Configure your CRM to match how your business runs."
-        action={canManage && <Button onClick={save}>{saved ? "Saved ✓" : "Save Changes"}</Button>}
+        action={
+          canManage &&
+          (active === "upgradePlan" ? (
+            <Button onClick={savePlan}>{planSaved ? "Saved ✓" : "Save Plan"}</Button>
+          ) : (
+            <Button onClick={save}>{saved ? "Saved ✓" : "Save Changes"}</Button>
+          ))
+        }
       />
 
       <div className="grid grid-cols-4 gap-4">
@@ -88,6 +116,31 @@ export default function Settings() {
                 </div>
                 <ShieldCheck size={20} className="text-primary" />
               </div>
+            </div>
+          )}
+
+          {active === "upgradePlan" && (
+            <div>
+              <h3 className="font-display font-semibold mb-1">Upgrade Plan</h3>
+              <p className="text-sm text-ink/50 mb-4">
+                Pick what's live for your whole team. Only what's checked here shows up in the sidebar — for you and
+                everyone you've added under Team Access.
+              </p>
+
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2">Core CRM</p>
+              <CoreModulePicker selected={settings.modules} onToggle={toggleModule} />
+
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2 mt-5">Add-on Apps</p>
+              <FeaturePicker
+                selected={settings.apps}
+                onToggle={toggleApp}
+                onUseRecommended={() =>
+                  setSettings((s) => ({
+                    ...s,
+                    apps: { ...s.apps, ...Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true])) },
+                  }))
+                }
+              />
             </div>
           )}
 

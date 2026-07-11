@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const { collection } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
 const engine = require("../services/whatsappSurveyEngine");
@@ -9,6 +10,37 @@ const sessions = collection("survey_sessions");
 const forms = collection("forms");
 const messages = collection("whatsapp_messages");
 const settings = collection("settings");
+
+let warnedNoAppSecret = false;
+
+// Meta signs every webhook POST with your app secret (HMAC-SHA256 over the
+// raw request body) so you can tell a real Meta callback from someone who
+// just guessed the URL. Without WHATSAPP_APP_SECRET set, we can't verify —
+// warn once and let it through anyway (mock/dev mode), same pattern as the
+// other integrations in this app (formCrypto, JWT).
+function verifyMetaSignature(req, res, next) {
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (!appSecret) {
+    if (!warnedNoAppSecret) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "⚠️  WHATSAPP_APP_SECRET is not set — webhook signature verification is DISABLED. " +
+        "Anyone who finds this URL can POST forged WhatsApp messages. Set it before going live."
+      );
+      warnedNoAppSecret = true;
+    }
+    return next();
+  }
+
+  const signature = req.header("x-hub-signature-256") || "";
+  const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(req.rawBody || Buffer.alloc(0)).digest("hex");
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return res.sendStatus(401);
+  }
+  next();
+}
 
 router.get("/", async (req, res) => {
   const { formId } = req.query;
@@ -72,7 +104,7 @@ router.post("/", requireManager, async (req, res) => {
 });
 
 // Real inbound message webhook (POST) — Meta Cloud API payload shape.
-router.post("/webhook", async (req, res) => {
+router.post("/webhook", verifyMetaSignature, async (req, res) => {
   try {
     const entry = req.body?.entry?.[0];
     const message = entry?.changes?.[0]?.value?.messages?.[0];

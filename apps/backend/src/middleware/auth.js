@@ -14,6 +14,17 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET || "dev-only-insecure-jwt-secret";
 const JWT_EXPIRY = "7d";
 
+// Permission levels for teammates a company admin creates (Settings → Team):
+// "view" (read-only), "edit" (create/update, no delete), "full" (everything).
+// The tenant owner (authRole "admin") and the platform's master admin are
+// always treated as "full" regardless of what's stored — see effectivePermission().
+const PERMISSION_RANK = { view: 0, edit: 1, full: 2 };
+
+function effectivePermission(account) {
+  if (account.isMasterAdmin || account.authRole === "admin") return "full";
+  return PERMISSION_RANK[account.permission] !== undefined ? account.permission : "view";
+}
+
 function signToken(account) {
   return jwt.sign(
     {
@@ -21,9 +32,11 @@ function signToken(account) {
       email: account.email,
       authRole: account.authRole,
       isMasterAdmin: !!account.isMasterAdmin,
+      permission: effectivePermission(account),
       // The tenant this account's data lives under. A signup's own id is
-      // its tenant root; invited teammates (seeded demo manager/viewer)
-      // share the admin's id here instead of their own.
+      // its tenant root; invited teammates (seeded demo manager/viewer,
+      // or ones created via Settings → Team) share the owner's id here
+      // instead of their own.
       accountId: account.accountId || account.id,
     },
     JWT_SECRET,
@@ -41,6 +54,7 @@ function verifyToken(token) {
     email: payload.email,
     authRole: payload.authRole,
     isMasterAdmin: payload.isMasterAdmin,
+    permission: payload.permission || "view",
     accountId: payload.accountId,
   };
 }
@@ -63,10 +77,19 @@ function requireAuth(req, res, next) {
 
 // Authorization check, run after requireAuth — blocks view-only accounts
 // from making changes. Reads the verified req.user, not anything the
-// client sent directly.
+// client sent directly. Equivalent to requirePermission("edit").
 function requireManager(req, res, next) {
-  if (req.user?.authRole === "viewer") {
+  if (PERMISSION_RANK[req.user?.permission] < PERMISSION_RANK.edit) {
     return res.status(403).json({ error: "This account is view-only and cannot make changes." });
+  }
+  next();
+}
+
+// Stricter than requireManager — for destructive actions (delete). A
+// teammate with "edit" permission can create/update but not delete.
+function requireFullAccess(req, res, next) {
+  if (PERMISSION_RANK[req.user?.permission] < PERMISSION_RANK.full) {
+    return res.status(403).json({ error: "This account doesn't have permission to delete records." });
   }
   next();
 }
@@ -78,4 +101,13 @@ function requireMasterAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireManager, requireMasterAdmin, signToken, verifyToken };
+module.exports = {
+  requireAuth,
+  requireManager,
+  requireFullAccess,
+  requireMasterAdmin,
+  signToken,
+  verifyToken,
+  effectivePermission,
+  PERMISSION_RANK,
+};

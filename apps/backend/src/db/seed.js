@@ -380,6 +380,9 @@ async function seed() {
       password: hash(process.env.DEMO_MANAGER_PASSWORD || "manager123"),
       company: "Your Company Pvt Ltd",
       authRole: "manager",
+      // Full CRUD (create/edit/delete) — matches this account's behavior
+      // before per-teammate permission levels existed.
+      permission: "full",
       isDemo: true,
       createdAt: now(),
     },
@@ -391,6 +394,7 @@ async function seed() {
       password: hash(process.env.DEMO_VIEWER_PASSWORD || "viewer123"),
       company: "Your Company Pvt Ltd",
       authRole: "viewer",
+      permission: "view",
       isDemo: true,
       createdAt: now(),
     },

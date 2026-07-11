@@ -3,8 +3,11 @@ import { Search, FileSpreadsheet, FileText as FileTextIcon, Trash2, Eye, FormInp
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, inputCls, EmptyState } from "../components/ui";
+import Pagination from "../components/Pagination";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+
+const PAGE_SIZE = 25;
 
 function ResponseDetailModal({ form, response, onClose }) {
   return (
@@ -35,10 +38,12 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
   const { canManage } = useAuth();
   const [form, setForm] = useState(null);
   const [responses, setResponses] = useState([]);
+  const [pageInfo, setPageInfo] = useState({ page: 1, totalPages: 1, total: 0, limit: PAGE_SIZE });
   const [q, setQ] = useState("");
   const [filterFieldId, setFilterFieldId] = useState("");
   const [filterValue, setFilterValue] = useState("");
   const [viewing, setViewing] = useState(null);
+  const [page, setPage] = useState(1);
 
   const loadForm = () => api.get(`/forms/${formId}`).then((r) => setForm(r.data));
   const loadResponses = () => {
@@ -48,10 +53,13 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
       params.set("fieldId", filterFieldId);
       params.set("value", filterValue);
     }
+    params.set("page", page);
+    params.set("limit", PAGE_SIZE);
     api.get(`/forms/${formId}/responses?${params.toString()}`).then((r) => {
-      setResponses(r.data);
+      setResponses(r.data.items);
+      setPageInfo(r.data);
       if (highlightResponseId) {
-        const match = r.data.find((x) => x.id === highlightResponseId);
+        const match = r.data.items.find((x) => x.id === highlightResponseId);
         if (match) setViewing(match);
       }
     });
@@ -62,11 +70,16 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
     loadForm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formId]);
+  // Search/filter changes should always jump back to page 1 — staying on
+  // page 4 of a narrower result set would just show an empty page.
+  useEffect(() => {
+    setPage(1);
+  }, [q, filterFieldId, filterValue]);
   useEffect(() => {
     if (!formId) return;
     loadResponses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formId, q, filterFieldId, filterValue]);
+  }, [formId, q, filterFieldId, filterValue, page]);
   useLiveCollection(["form_responses"], loadResponses);
 
   const removeResponse = async (id) => {
@@ -149,6 +162,8 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
         </div>
       )}
 
+      <Pagination {...pageInfo} onPageChange={setPage} />
+
       <ResponseDetailModal form={form} response={viewing} onClose={() => setViewing(null)} />
     </div>
   );
@@ -157,7 +172,7 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
 
   return (
     <div>
-      <PageHeader title={form.name} subtitle={`${responses.length} submitted response${responses.length === 1 ? "" : "s"}`} />
+      <PageHeader title={form.name} subtitle={`${pageInfo.total} submitted response${pageInfo.total === 1 ? "" : "s"}`} />
       <Card className="p-5">{table}</Card>
     </div>
   );

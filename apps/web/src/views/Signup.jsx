@@ -3,24 +3,31 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Target, ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import api from "../api/client";
 import { Field, inputCls, Button } from "../components/ui";
 import FeaturePicker from "../components/FeaturePicker";
+import CoreModulePicker from "../components/CoreModulePicker";
 import { RECOMMENDED_APP_KEYS } from "../lib/appCatalog";
+import { CORE_MODULES, RECOMMENDED_MODULE_KEYS } from "../lib/coreModules";
 
-const recommendedMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
+const recommendedAppsMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
+const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.map((k) => [k, true]));
 
 export default function Signup() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", email: "", company: "", password: "" });
-  const [selectedApps, setSelectedApps] = useState(recommendedMap);
+  const [selectedModules, setSelectedModules] = useState(recommendedModulesMap);
+  const [selectedApps, setSelectedApps] = useState(recommendedAppsMap);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { signup } = useAuth();
   const router = useRouter();
 
+  const toggleModule = (key) => setSelectedModules((s) => ({ ...s, [key]: !s[key] }));
   const toggleApp = (key) => setSelectedApps((s) => ({ ...s, [key]: !s[key] }));
-  const useRecommended = () => setSelectedApps(recommendedMap());
+  const useRecommended = () => {
+    setSelectedModules(recommendedModulesMap());
+    setSelectedApps(recommendedAppsMap());
+  };
 
   const continueToStep2 = (e) => {
     e.preventDefault();
@@ -32,11 +39,14 @@ export default function Signup() {
     setError("");
     setLoading(true);
     try {
-      await signup(form);
+      // The starter-kit selection is set server-side as part of account
+      // creation (see POST /auth/signup) — a separate PUT /settings call
+      // would require master-admin permission, which a brand-new account
+      // doesn't have. Only what's checked here stays visible afterward —
+      // everything else can still be turned on later from the Admin Portal.
+      const modules = Object.fromEntries(CORE_MODULES.map((m) => [m.key, !!selectedModules[m.key]]));
       const appsToEnable = Object.fromEntries(Object.entries(selectedApps).filter(([, v]) => v));
-      if (Object.keys(appsToEnable).length) {
-        await api.put("/settings", { apps: appsToEnable }).catch(() => {});
-      }
+      await signup({ ...form, modules, apps: appsToEnable });
       router.push("/app");
     } catch (err) {
       setError(err.response?.data?.error || "Something went wrong.");
@@ -72,7 +82,7 @@ export default function Signup() {
                   <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
                 </Field>
                 <Field label="Password">
-                  <input className={inputCls} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={6} />
+                  <input className={inputCls} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
                 </Field>
                 <Button type="submit" className="w-full justify-center">
                   Continue
@@ -89,13 +99,23 @@ export default function Signup() {
               </button>
               <h1 className="font-display font-bold text-xl mb-1">Build your starter toolkit</h1>
               <p className="text-sm text-ink/50 mb-4">
-                Tap the features you want from day one — CRM, Sales, and WhatsApp are already included. You can add more anytime from the Admin Portal.
+                Pick exactly what you want to see from day one — only what's checked below will show up in your
+                sidebar. You (the account owner) can turn anything else on anytime from the Admin Portal.
               </p>
 
-              <form onSubmit={finish}>
-                <FeaturePicker selected={selectedApps} onToggle={toggleApp} onUseRecommended={useRecommended} />
-                {error && <p className="text-sm text-danger mt-3">{error}</p>}
-                <Button type="submit" className="w-full justify-center mt-4" disabled={loading}>
+              <form onSubmit={finish} className="space-y-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2">Core CRM</p>
+                  <CoreModulePicker selected={selectedModules} onToggle={toggleModule} />
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2">Add-on Apps</p>
+                  <FeaturePicker selected={selectedApps} onToggle={toggleApp} onUseRecommended={useRecommended} />
+                </div>
+
+                {error && <p className="text-sm text-danger">{error}</p>}
+                <Button type="submit" className="w-full justify-center" disabled={loading}>
                   {loading ? "Creating account…" : "Create account"}
                 </Button>
               </form>

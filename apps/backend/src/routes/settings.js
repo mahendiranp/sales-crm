@@ -17,6 +17,27 @@ function defaults(accountId) {
     aiConfiguration: { provider: "Anthropic (Claude)", apiKey: "", enabled: false },
     notifications: { email: true, sms: false, push: true },
     integrations: [],
+    // Core CRM sections — unlike `apps` (the Odoo-style optional-modules
+    // catalog), these were previously hardcoded always-on in Layout.jsx.
+    // Defaults preserve that (everything on) so existing tenants see no
+    // change; a tenant can be configured down to e.g. just Forms + Dashboard.
+    modules: {
+      dashboard: true,
+      leads: true,
+      contacts: true,
+      companies: true,
+      deals: true,
+      activities: true,
+      tasks: true,
+      whatsapp: true,
+      email: true,
+      templates: true,
+      analytics: true,
+      reports: true,
+      performance: true,
+      users: true,
+      teams: true,
+    },
     // Odoo-style "apps" catalog — one boolean per toggleable app key (see
     // apps/web/src/lib/appCatalog.js for the matching catalog). builtIn apps
     // (crm, sales, whatsapp) aren't listed here since they're always on.
@@ -86,10 +107,12 @@ router.get("/", async (req, res) => {
 });
 
 router.put("/", requireManager, async (req, res) => {
-  // Feature flags (the Admin Portal's Apps toggles) are master-admin-only —
-  // a company's own admin can manage everything else but not these.
-  if (req.body.apps && !req.user.isMasterAdmin) {
-    return res.status(403).json({ error: "Only the master admin can manage the Admin Portal's feature flags." });
+  // Feature flags (Admin Portal apps + core module visibility) can be
+  // changed by the tenant owner (their own account/plan) or the platform's
+  // master admin — but not by a teammate (manager/viewer) they've added.
+  const isOwner = req.user.isMasterAdmin || req.user.authRole === "admin";
+  if ((req.body.apps || req.body.modules) && !isOwner) {
+    return res.status(403).json({ error: "Only the account owner can manage feature flags." });
   }
   const id = `settings-${req.user.accountId}`;
   let current = await settings.find(id);
@@ -102,3 +125,4 @@ router.put("/", requireManager, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.defaults = defaults;

@@ -1,0 +1,65 @@
+name: CI
+
+# Runs on every PR targeting main (and on pushes to main as a safety net).
+# Branch protection on main requires the "backend-tests" and
+# "frontend-build" jobs below to succeed before a PR can be merged.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend test suite
+        working-directory: apps/backend
+        run: npm test
+        env:
+          NODE_ENV: test
+          MONGODB_URI: mongodb://127.0.0.1:27017/sales_crm_ci
+          JWT_SECRET: ci-test-jwt-secret-not-for-real-use
+          FORM_ENCRYPTION_KEY: ci-test-form-encryption-key-not-for-real-use
+          ALLOW_DEMO_LOGIN: "true"
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Build backend (no-op, keeps parity with turbo pipeline)
+        working-directory: apps/backend
+        run: npm run build
