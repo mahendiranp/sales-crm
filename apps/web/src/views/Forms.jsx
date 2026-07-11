@@ -751,12 +751,75 @@ function newStep() {
   };
 }
 
+const emptyTeammateForm = { name: "", email: "", password: "", permission: "edit" };
+
+// Lets someone assigning a workflow approver add a teammate without
+// leaving the builder — same POST /auth/team used by the full Team
+// settings page, just surfaced inline where it's needed.
+function AddTeammateModal({ open, onClose, onCreated }) {
+  const [form, setForm] = useState(emptyTeammateForm);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setForm(emptyTeammateForm);
+      setError("");
+    }
+  }, [open]);
+
+  const create = async () => {
+    setError("");
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+      setError("Name, email, and password are all required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data } = await api.post("/auth/team", form);
+      onCreated(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't create that account.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add Team Member">
+      <div className="space-y-3">
+        <Field label="Name">
+          <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
+        </Field>
+        <Field label="Email">
+          <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        </Field>
+        <Field label="Password">
+          <input type="password" className={inputCls} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+        </Field>
+        <Field label="Permission">
+          <select className={inputCls} value={form.permission} onChange={(e) => setForm({ ...form, permission: e.target.value })}>
+            <option value="view">View Only</option>
+            <option value="edit">Edit Only</option>
+            <option value="full">View, Edit & Delete</option>
+          </select>
+        </Field>
+        {error && <p className="text-xs text-danger">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={create} disabled={saving}>{saving ? "Adding…" : "Add Team Member"}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // Employee → Manager → HR style sequential approval routing, attached to
 // a form so every submission gets its own approval instance. Approvers
 // are role-based (resolved against the tenant's current team each time)
 // or a specific teammate; steps run in order, each step can require every
 // assigned approver ("all") or just the first one ("any").
-function WorkflowStepEditor({ step, onChange, onDelete, teammates }) {
+function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate }) {
   const update = (patch) => onChange({ ...step, ...patch });
   const approver = step.approvers[0] || { type: "role", value: "manager" };
   const updateApprover = (patch) => update({ approvers: [{ ...approver, ...patch }] });
@@ -773,27 +836,34 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates }) {
           <div className="flex gap-1.5">
             <select className={inputCls} value={approver.type} onChange={(e) => updateApprover({ type: e.target.value, value: e.target.value === "role" ? "manager" : "" })}>
               <option value="role">By role</option>
-              <option value="user">Specific person</option>
+              <option value="user">Specific team member</option>
             </select>
           </div>
         </Field>
-        <Field label={approver.type === "role" ? "Role" : "Teammate"}>
-          {approver.type === "role" ? (
+        {approver.type === "role" ? (
+          <Field label="Role">
             <select className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })}>
               {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
-          ) : teammates === null ? (
-            // /auth/team is owner-only — a manager-level teammate building
-            // this workflow won't be able to list the roster, so fall back
-            // to a manual id field rather than showing a broken dropdown.
-            <input className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })} placeholder="Paste teammate's account id" />
-          ) : (
+          </Field>
+        ) : teammates === null ? (
+          <Field label="Team member">
+            <p className="text-xs text-ink/40 mt-2">Only the account owner can assign approvals to specific teammates.</p>
+          </Field>
+        ) : teammates.length === 0 ? (
+          <Field label="Team member">
+            <p className="text-xs text-ink/40 mb-1.5">No team members yet.</p>
+            <Button variant="secondary" onClick={onAddTeammate}><Plus size={13} /> Add Team Member</Button>
+          </Field>
+        ) : (
+          <Field label="Team member">
             <select className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })}>
-              <option value="">Select a teammate…</option>
+              <option value="">Select…</option>
               {teammates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.email})</option>)}
             </select>
-          )}
-        </Field>
+            <button type="button" onClick={onAddTeammate} className="text-xs text-primary hover:underline mt-1">+ Add another team member</button>
+          </Field>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
@@ -824,6 +894,7 @@ function WorkflowEditor({ form, onSave }) {
   // owner, so GET /auth/team 403s) — WorkflowStepEditor falls back to a
   // manual account-id field in that case instead of an empty dropdown.
   const [teammates, setTeammates] = useState(null);
+  const [addTeammateOpen, setAddTeammateOpen] = useState(false);
 
   useEffect(() => {
     setEnabled(!!form.workflow?.enabled);
@@ -831,8 +902,9 @@ function WorkflowEditor({ form, onSave }) {
     setDirty(false);
   }, [form.id]);
 
+  const loadTeammates = () => api.get("/auth/team").then((r) => setTeammates(r.data)).catch(() => setTeammates(null));
   useEffect(() => {
-    api.get("/auth/team").then((r) => setTeammates(r.data)).catch(() => setTeammates(null));
+    loadTeammates();
   }, []);
 
   const markDirty = () => setDirty(true);
@@ -864,7 +936,13 @@ function WorkflowEditor({ form, onSave }) {
                 <div key={s.id} className="flex items-start gap-2">
                   <span className="text-xs font-semibold text-ink/30 mt-3 shrink-0 w-5">{i + 1}.</span>
                   <div className="flex-1">
-                    <WorkflowStepEditor step={s} onChange={(u) => updateStep(s.id, u)} onDelete={() => removeStep(s.id)} teammates={teammates} />
+                    <WorkflowStepEditor
+                      step={s}
+                      onChange={(u) => updateStep(s.id, u)}
+                      onDelete={() => removeStep(s.id)}
+                      teammates={teammates}
+                      onAddTeammate={() => setAddTeammateOpen(true)}
+                    />
                   </div>
                 </div>
               ))}
@@ -877,6 +955,12 @@ function WorkflowEditor({ form, onSave }) {
       <div className="flex justify-end mt-4">
         <Button onClick={save} disabled={!dirty}>Save Workflow</Button>
       </div>
+
+      <AddTeammateModal
+        open={addTeammateOpen}
+        onClose={() => setAddTeammateOpen(false)}
+        onCreated={() => { setAddTeammateOpen(false); loadTeammates(); }}
+      />
     </div>
   );
 }
