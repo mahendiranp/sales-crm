@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
+import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState, ConfirmDialog } from "../components/ui";
 import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import FormResponses from "./FormResponses";
@@ -173,6 +173,9 @@ const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024; // 1.5MB — images are stored inline
 
 function ImageUploadField({ label, value, onChange }) {
   const [error, setError] = useState("");
+  // Converting a near-1.5MB file to a base64 data URL isn't instant — show
+  // something instead of letting the UI look frozen for that stretch.
+  const [converting, setConverting] = useState(false);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -182,13 +185,20 @@ function ImageUploadField({ label, value, onChange }) {
       return;
     }
     setError("");
-    onChange(await fileToDataUrl(file));
+    setConverting(true);
+    try {
+      onChange(await fileToDataUrl(file));
+    } finally {
+      setConverting(false);
+    }
   };
 
   return (
     <div>
       <p className="text-xs font-medium text-ink/60 mb-1.5">{label}</p>
-      {value ? (
+      {converting ? (
+        <p className="text-xs text-ink/40">Uploading…</p>
+      ) : value ? (
         <div className="flex items-center gap-2">
           <img src={value} alt={label} className="h-12 w-12 object-cover rounded-lg border border-border" />
           <Button variant="secondary" onClick={() => onChange("")}>Remove</Button>
@@ -204,7 +214,9 @@ function ImageUploadField({ label, value, onChange }) {
 function ThemePicker({ activeTheme, onPick }) {
   return (
     <div>
-      <p className="text-xs font-medium text-ink/60 mb-1.5">Design Theme</p>
+      <p className="text-xs font-medium text-ink/60 mb-1.5">
+        Design Theme {!activeTheme && <span className="text-ink/35">(none active — using a plain color/image below)</span>}
+      </p>
       <div className="grid grid-cols-4 gap-2">
         {FORM_THEMES.map((t) => (
           <button
@@ -423,12 +435,18 @@ function FieldPalette({ onAdd, onAskAI }) {
 }
 
 // The center canvas doubles as the live preview — what you see while
-// editing is exactly what a respondent sees, with an edit/delete overlay
-// on hover instead of a separate compact field-list + preview pane.
+// editing is exactly what a respondent sees. Edit/delete/drag controls are
+// always visible on touch devices (no hover to reveal them there) and only
+// fade in on hover for pointer devices, so the canvas stays usable on
+// tablets — a plausible device for building a form on.
 function CanvasField({ field, expanded, onToggle, onChange, onDelete, dragHandleProps }) {
   return (
     <div className="group relative border border-border rounded-lg p-3.5 bg-white hover:border-primary/40 transition-colors" {...dragHandleProps}>
-      <div className="absolute top-2 right-2 hidden group-hover:flex items-center gap-1">
+      {/* Tablets/touchscreens have no hover, so opacity-0-until-hover would
+          make these controls permanently unreachable there — only hide by
+          default on devices that can actually hover (fine pointer + hover
+          capability), never based on screen width alone. */}
+      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
         <button onClick={onToggle} className="p-1.5 rounded bg-base text-ink/50 hover:text-primary"><Pencil size={13} /></button>
         <button onClick={onDelete} className="p-1.5 rounded bg-base text-ink/50 hover:text-danger"><Trash2 size={13} /></button>
         <span className="p-1.5 rounded bg-base text-ink/30 cursor-grab"><GripVertical size={13} /></span>
@@ -518,7 +536,7 @@ function AIAssistantPanel({ formId, formName, onApplyResult, onAddField, onClose
   };
 
   return (
-    <div className="border border-border rounded-card bg-white flex flex-col h-[600px]">
+    <div className="border border-border rounded-card bg-white flex flex-col h-[min(600px,70vh)]">
       <div className="flex items-center justify-between px-3.5 py-3 border-b border-border">
         <div className="flex items-center gap-1.5">
           <Sparkles size={15} className="text-primary" />
@@ -564,7 +582,9 @@ function FormBuilder({ form, onSave }) {
   const [expandedId, setExpandedId] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
   const [dirty, setDirty] = useState(false);
-  const [aiOpen, setAiOpen] = useState(true);
+  // Closed by default — most sessions never touch it (especially with no
+  // LLM key configured yet), and it costs 320px of width every time.
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     setFields(form.fields || []);
@@ -626,7 +646,11 @@ function FormBuilder({ form, onSave }) {
   };
 
   return (
-    <div className={`grid ${aiOpen ? "grid-cols-[220px_1fr_320px]" : "grid-cols-[220px_1fr]"} gap-4 items-start`}>
+    <div
+      className={`grid grid-cols-1 ${
+        aiOpen ? "lg:grid-cols-[220px_1fr_320px]" : "lg:grid-cols-[220px_1fr]"
+      } gap-4 items-start`}
+    >
       <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} />
 
       <div>
@@ -823,6 +847,10 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate
   const update = (patch) => onChange({ ...step, ...patch });
   const approver = step.approvers[0] || { type: "role", value: "manager" };
   const updateApprover = (patch) => update({ approvers: [{ ...approver, ...patch }] });
+  // null = confirmed unavailable (this account isn't the owner, so
+  // GET /auth/team 403'd) — don't offer "Specific team member" at all in
+  // that case rather than showing a dead-end once selected.
+  const canAssignTeammate = teammates !== null;
 
   return (
     <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">
@@ -836,19 +864,18 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate
           <div className="flex gap-1.5">
             <select className={inputCls} value={approver.type} onChange={(e) => updateApprover({ type: e.target.value, value: e.target.value === "role" ? "manager" : "" })}>
               <option value="role">By role</option>
-              <option value="user">Specific team member</option>
+              {canAssignTeammate && <option value="user">Specific team member</option>}
             </select>
           </div>
+          {!canAssignTeammate && (
+            <p className="text-[11px] text-ink/35 mt-1">Only the account owner can assign approvals to specific teammates.</p>
+          )}
         </Field>
-        {approver.type === "role" ? (
+        {approver.type === "role" || !canAssignTeammate ? (
           <Field label="Role">
             <select className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })}>
               {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
-          </Field>
-        ) : teammates === null ? (
-          <Field label="Team member">
-            <p className="text-xs text-ink/40 mt-2">Only the account owner can assign approvals to specific teammates.</p>
           </Field>
         ) : teammates.length === 0 ? (
           <Field label="Team member">
@@ -970,7 +997,13 @@ function WorkflowEditor({ form, onSave }) {
 function ApprovalsModal({ open, onClose, onDecided }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState(null);
+  // A single in-flight flag (not per-item) disables every row's buttons
+  // while any decision is submitting — prevents firing a second decision
+  // on a different row before the first one has finished and the pending
+  // list has refreshed.
+  const [busy, setBusy] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [error, setError] = useState("");
 
   const load = () => {
     setLoading(true);
@@ -983,22 +1016,24 @@ function ApprovalsModal({ open, onClose, onDecided }) {
     if (open) load();
   }, [open]);
 
-  const decide = async (item, action) => {
-    setBusyId(item.id);
-    const comment = action === "reject" ? prompt("Reason for rejecting (optional):") || "" : "";
+  const decide = async (item, action, comment = "") => {
+    setBusy(true);
+    setError("");
     try {
       await api.post(`/forms/${item.formId}/responses/${item.id}/workflow/decide`, { action, comment });
       load();
       onDecided?.();
     } catch (err) {
-      alert(err.response?.data?.error || "Failed to record decision.");
+      setError(err.response?.data?.error || "Failed to record decision.");
     } finally {
-      setBusyId(null);
+      setBusy(false);
+      setRejectTarget(null);
     }
   };
 
   return (
     <Modal open={open} onClose={onClose} title="My Approvals" wide>
+      {error && <p className="text-xs text-danger mb-3">{error}</p>}
       {loading ? (
         <div className="text-sm text-ink/40">Loading…</div>
       ) : items.length === 0 ? (
@@ -1023,14 +1058,25 @@ function ApprovalsModal({ open, onClose, onDecided }) {
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => decide(item, "approve")} disabled={busyId === item.id}>Approve</Button>
-                  <Button variant="danger" onClick={() => decide(item, "reject")} disabled={busyId === item.id}>Reject</Button>
+                  <Button onClick={() => decide(item, "approve")} disabled={busy}>Approve</Button>
+                  <Button variant="danger" onClick={() => setRejectTarget(item)} disabled={busy}>Reject</Button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!rejectTarget}
+        title={`Reject this submission?`}
+        withReason
+        reasonLabel="Reason for rejecting (optional)"
+        confirmLabel="Reject"
+        danger
+        onCancel={() => setRejectTarget(null)}
+        onConfirm={(reason) => decide(rejectTarget, "reject", reason)}
+      />
     </Modal>
   );
 }
@@ -1133,7 +1179,9 @@ function NewFormModal({ open, onClose, onCreated }) {
 }
 
 function FormAnalyticsPanel({ form, recentResponses }) {
-  const forThisForm = recentResponses.filter((r) => r.formName === form.name);
+  // Match by id, not name — two forms can share a name (e.g. via
+  // Duplicate), which would otherwise cross-contaminate this list.
+  const forThisForm = recentResponses.filter((r) => r.formId === form.id);
   return (
     <div>
       <div className="grid grid-cols-2 gap-3 mb-4">
@@ -1176,6 +1224,10 @@ export default function Forms() {
   const [loading, setLoading] = useState(true);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [approvalsCount, setApprovalsCount] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  // Disables Publish/Duplicate/Delete while any one of them is in flight,
+  // so a double-click can't fire the same mutation twice.
+  const [actionBusy, setActionBusy] = useState(false);
 
   const load = () => {
     Promise.all([api.get("/forms"), api.get("/forms/stats")]).then(([f, s]) => {
@@ -1199,21 +1251,37 @@ export default function Forms() {
   };
 
   const duplicateForm = async (form) => {
-    await api.post(`/forms/${form.id}/duplicate`);
-    load();
+    setActionBusy(true);
+    try {
+      await api.post(`/forms/${form.id}/duplicate`);
+      load();
+    } finally {
+      setActionBusy(false);
+    }
   };
 
-  const deleteForm = async (form) => {
-    if (!confirm(`Delete "${form.name}"? This also deletes its responses.`)) return;
-    await api.delete(`/forms/${form.id}`);
-    setActive(null);
-    load();
+  const deleteForm = async () => {
+    const form = deleteTarget;
+    setActionBusy(true);
+    try {
+      await api.delete(`/forms/${form.id}`);
+      setActive(null);
+      setDeleteTarget(null);
+      load();
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const togglePublish = async (form) => {
-    const endpoint = form.status === "Published" ? "unpublish" : "publish";
-    await api.put(`/forms/${form.id}/${endpoint}`);
-    load();
+    setActionBusy(true);
+    try {
+      const endpoint = form.status === "Published" ? "unpublish" : "publish";
+      await api.put(`/forms/${form.id}/${endpoint}`);
+      load();
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const saveBuilder = async (patch) => {
@@ -1239,7 +1307,7 @@ export default function Forms() {
       <ApprovalsModal open={approvalsOpen} onClose={() => setApprovalsOpen(false)} onDecided={loadApprovalsCount} />
 
       {stats && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <StatCard label="Total Forms" value={stats.totalForms} />
           <StatCard label="Total Responses" value={stats.totalResponses} />
           <Card className="p-4">
@@ -1294,11 +1362,11 @@ export default function Forms() {
                     </Button>
                     {canManage && (
                       <>
-                        <Button variant="secondary" onClick={() => togglePublish(active)}>
+                        <Button variant="secondary" onClick={() => togglePublish(active)} disabled={actionBusy}>
                           {active.status === "Published" ? "Unpublish" : "Publish"}
                         </Button>
-                        <Button variant="secondary" onClick={() => duplicateForm(active)}><Copy size={14} /></Button>
-                        <Button variant="danger" onClick={() => deleteForm(active)}><Trash2 size={14} /></Button>
+                        <Button variant="secondary" onClick={() => duplicateForm(active)} disabled={actionBusy}><Copy size={14} /></Button>
+                        <Button variant="danger" onClick={() => setDeleteTarget(active)} disabled={actionBusy}><Trash2 size={14} /></Button>
                       </>
                     )}
                   </div>
@@ -1306,13 +1374,17 @@ export default function Forms() {
 
                 {active.status === "Published" && <ShareLink form={active} />}
 
-                <div className="grid grid-cols-[76px_1fr] gap-4">
-                  <div className="flex flex-col gap-1 border-r border-border pr-2">
+                {/* Below lg: a horizontal scrollable tab row above the
+                    content instead of a narrow 76px vertical rail, which
+                    would otherwise squeeze into an unusable column next
+                    to the canvas on tablet/mobile widths. */}
+                <div className="flex flex-col lg:grid lg:grid-cols-[76px_1fr] gap-4">
+                  <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible border-b lg:border-b-0 lg:border-r border-border pb-2 lg:pb-0 lg:pr-2">
                     {STUDIO_NAV.map((item) => (
                       <button
                         key={item.key}
                         onClick={() => setTab(item.key)}
-                        className={`flex flex-col items-center gap-1 py-2.5 rounded-lg text-[11px] font-medium ${
+                        className={`flex flex-row lg:flex-col items-center gap-1.5 lg:gap-1 shrink-0 px-3 lg:px-0 py-2 lg:py-2.5 rounded-lg text-xs lg:text-[11px] font-medium ${
                           tab === item.key ? "bg-primary/8 text-primary" : "text-ink/50 hover:bg-base hover:text-ink"
                         }`}
                       >
@@ -1356,6 +1428,16 @@ export default function Forms() {
       )}
 
       <NewFormModal open={modal} onClose={() => setModal(false)} onCreated={handleFormCreated} />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={`Delete "${deleteTarget?.name}"?`}
+        message="This also deletes its responses. This can't be undone."
+        confirmLabel="Delete"
+        danger
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={deleteForm}
+      />
     </div>
   );
 }

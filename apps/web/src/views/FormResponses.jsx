@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, FileSpreadsheet, FileText as FileTextIcon, Trash2, Eye, FormInput } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Badge, Modal, inputCls, EmptyState } from "../components/ui";
+import { Card, PageHeader, Button, Badge, Modal, inputCls, EmptyState, ConfirmDialog } from "../components/ui";
 import Pagination from "../components/Pagination";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
@@ -22,6 +22,8 @@ function WorkflowPanel({ formId, response, onDecided }) {
   const { user } = useAuth();
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setDetail(null);
@@ -34,17 +36,18 @@ function WorkflowPanel({ formId, response, onDecided }) {
 
   const canDecide = detail.status === "pending" && detail.currentApproverIds.includes(user?.id);
 
-  const decide = async (action) => {
-    const comment = action === "reject" ? prompt("Reason for rejecting (optional):") || "" : "";
+  const decide = async (action, comment = "") => {
     setBusy(true);
+    setError("");
     try {
       const { data } = await api.post(`/forms/${formId}/responses/${response.id}/workflow/decide`, { action, comment });
       setDetail(data);
       onDecided?.();
     } catch (err) {
-      alert(err.response?.data?.error || "Failed to record decision.");
+      setError(err.response?.data?.error || "Failed to record decision.");
     } finally {
       setBusy(false);
+      setRejecting(false);
     }
   };
 
@@ -67,12 +70,24 @@ function WorkflowPanel({ formId, response, onDecided }) {
           ))}
         </div>
       )}
+      {error && <p className="text-xs text-danger mb-2">{error}</p>}
       {canDecide && (
         <div className="flex gap-2">
           <Button onClick={() => decide("approve")} disabled={busy}>Approve</Button>
-          <Button variant="danger" onClick={() => decide("reject")} disabled={busy}>Reject</Button>
+          <Button variant="danger" onClick={() => setRejecting(true)} disabled={busy}>Reject</Button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={rejecting}
+        title="Reject this submission?"
+        withReason
+        reasonLabel="Reason for rejecting (optional)"
+        confirmLabel="Reject"
+        danger
+        onCancel={() => setRejecting(false)}
+        onConfirm={(reason) => decide("reject", reason)}
+      />
     </div>
   );
 }
@@ -113,6 +128,8 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
   const [filterValue, setFilterValue] = useState("");
   const [viewing, setViewing] = useState(null);
   const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadForm = () => api.get(`/forms/${formId}`).then((r) => setForm(r.data));
   const loadResponses = () => {
@@ -151,10 +168,15 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
   }, [formId, q, filterFieldId, filterValue, page]);
   useLiveCollection(["form_responses"], loadResponses);
 
-  const removeResponse = async (id) => {
-    if (!confirm("Delete this response?")) return;
-    await api.delete(`/forms/${formId}/responses/${id}`);
-    loadResponses();
+  const removeResponse = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/forms/${formId}/responses/${deleteTarget}`);
+      setDeleteTarget(null);
+      loadResponses();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (!form) return <div className="text-ink/40 text-sm">Loading…</div>;
@@ -223,7 +245,7 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
                       <Eye size={14} />
                     </button>
                     {canManage && (
-                      <button onClick={() => removeResponse(r.id)} className="text-ink/30 hover:text-danger">
+                      <button onClick={() => setDeleteTarget(r.id)} className="text-ink/30 hover:text-danger">
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -238,6 +260,16 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
       <Pagination {...pageInfo} onPageChange={setPage} />
 
       <ResponseDetailModal formId={formId} form={form} response={viewing} onClose={() => setViewing(null)} onDecided={loadResponses} />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete this response?"
+        message="This can't be undone."
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        danger
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={removeResponse}
+      />
     </div>
   );
 
