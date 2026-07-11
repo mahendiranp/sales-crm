@@ -162,6 +162,26 @@ export function ConfirmDialog({
   );
 }
 
+// A single-button "OK" modal for surfacing an error message — used instead
+// of window.alert() (blocks the JS thread, can't be styled) for errors
+// that can't be prevented in advance by disabling the triggering control
+// (see the disabled+title-tooltip pattern used elsewhere for the cases
+// that can be predicted, e.g. a plan's form/user limit already being hit).
+export function ErrorModal({ open, title = "Something went wrong", message, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-card shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-display font-semibold text-base mb-1.5 text-danger">{title}</h3>
+        <p className="text-sm text-ink/70 mb-4">{message}</p>
+        <div className="flex justify-end">
+          <Button onClick={onClose}>OK</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EmptyState({ icon: Icon, title, subtitle }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
