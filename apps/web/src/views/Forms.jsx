@@ -474,31 +474,47 @@ function matchAddFieldIntent(text) {
   return null;
 }
 
-function AIAssistantPanel({ onClose, onAddField, formName }) {
+// Calls the real backend AI endpoint (POST /forms/:id/ai/build) first. If
+// it comes back 503 "not configured" (no ANTHROPIC_API_KEY set yet), falls
+// back to the local "add a field for X" pattern-matcher so the panel still
+// does something useful before a key is wired up.
+function AIAssistantPanel({ formId, formName, onApplyResult, onAddField, onClose }) {
   const [messages, setMessages] = useState([
     { role: "ai", text: AI_REPLY_INTRO() },
   ]);
   const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
   const listRef = useRef(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages]);
+  }, [messages, busy]);
 
-  const send = () => {
+  const send = async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || busy) return;
     setInput("");
-    const userMsg = { role: "user", text };
-    const match = matchAddFieldIntent(text);
-    let reply;
-    if (match) {
-      onAddField(match.type);
-      reply = { role: "ai", text: `Added a "${match.label}" field to ${formName}.` };
-    } else {
-      reply = { role: "ai", text: AI_REPLY_INTRO() };
+    setMessages((m) => [...m, { role: "user", text }]);
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/forms/${formId}/ai/build`, { prompt: text });
+      onApplyResult(data);
+      setMessages((m) => [...m, { role: "ai", text: data.message || "Updated the form." }]);
+    } catch (err) {
+      if (err.response?.status === 503) {
+        const match = matchAddFieldIntent(text);
+        if (match) {
+          onAddField(match.type);
+          setMessages((m) => [...m, { role: "ai", text: `Added a "${match.label}" field to ${formName}. (Full AI generation needs an API key — not configured yet.)` }]);
+        } else {
+          setMessages((m) => [...m, { role: "ai", text: err.response?.data?.error || AI_REPLY_INTRO() }]);
+        }
+      } else {
+        setMessages((m) => [...m, { role: "ai", text: err.response?.data?.error || "Something went wrong talking to the AI Assistant." }]);
+      }
+    } finally {
+      setBusy(false);
     }
-    setMessages((m) => [...m, userMsg, reply]);
   };
 
   return (
@@ -520,6 +536,9 @@ function AIAssistantPanel({ onClose, onAddField, formName }) {
             </div>
           </div>
         ))}
+        {busy && (
+          <div className="text-sm rounded-lg px-3 py-2 max-w-[85%] bg-base text-ink/50 italic">Thinking…</div>
+        )}
       </div>
 
       <div className="p-3 border-t border-border">
@@ -530,10 +549,11 @@ function AIAssistantPanel({ onClose, onAddField, formName }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
+            disabled={busy}
           />
-          <button onClick={send} className="text-primary shrink-0"><Send size={15} /></button>
+          <button onClick={send} className="text-primary shrink-0" disabled={busy}><Send size={15} /></button>
         </div>
-        <p className="text-[11px] text-ink/35 mt-1.5">Examples: "Add a signature field", "Add a phone field"</p>
+        <p className="text-[11px] text-ink/35 mt-1.5">Examples: "Add a signature field", "Create an employee leave request form"</p>
       </div>
     </div>
   );
@@ -585,6 +605,26 @@ function FormBuilder({ form, onSave }) {
     setDirty(false);
   };
 
+  // Applies an AI-generated result: "add" appends only the new fields
+  // (assigning ids), "replace" swaps in the full list the AI returned,
+  // preserving ids it echoed back for unchanged fields and assigning new
+  // ones only where it omitted an id.
+  const applyAIResult = (result) => {
+    const withIds = (result.fields || []).map((f) => ({
+      id: f.id || `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      type: f.type,
+      label: f.label || fieldTypeLabel(f.type),
+      placeholder: f.placeholder || "",
+      defaultValue: f.defaultValue || "",
+      helpText: f.helpText || "",
+      required: !!f.required,
+      options: OPTION_TYPES.includes(f.type) ? (f.options?.length ? f.options : ["Option 1", "Option 2"]) : undefined,
+      validation: f.validation || {},
+    }));
+    setFields((prev) => (result.action === "add" ? [...prev, ...withIds] : withIds));
+    markDirty();
+  };
+
   return (
     <div className={`grid ${aiOpen ? "grid-cols-[220px_1fr_320px]" : "grid-cols-[220px_1fr]"} gap-4 items-start`}>
       <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} />
@@ -625,7 +665,15 @@ function FormBuilder({ form, onSave }) {
         </div>
       </div>
 
-      {aiOpen && <AIAssistantPanel onClose={() => setAiOpen(false)} onAddField={addField} formName={form.name} />}
+      {aiOpen && (
+        <AIAssistantPanel
+          formId={form.id}
+          formName={form.name}
+          onApplyResult={applyAIResult}
+          onAddField={addField}
+          onClose={() => setAiOpen(false)}
+        />
+      )}
     </div>
   );
 }

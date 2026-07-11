@@ -7,6 +7,7 @@ const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
 const { buildSnapshot, autoAdvance, currentApprovers, applyDecision, applyEscalations } = require("../utils/workflowEngine");
+const { isConfigured: aiConfigured, generateFormFields } = require("../integrations/aiClient");
 
 const router = express.Router();
 // Public routes (/public, /responses POST) bypass auth entirely (see
@@ -128,6 +129,27 @@ router.get("/:id", async (req, res) => {
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
   res.json(await withResponseCount(form));
+});
+
+// Builds or edits a form's field list from a natural-language instruction.
+// Returns the proposed change without saving it — the builder UI applies it
+// to local state, and the user still has to hit Save. 503 (not a crash)
+// when no API key is configured yet, so the frontend can fall back to its
+// local "add a field for X" pattern-matcher instead of erroring out.
+router.post("/:id/ai/build", requireManager, async (req, res) => {
+  const form = await formsFor(req).find(req.params.id);
+  if (!form) return res.status(404).json({ error: "Not found" });
+  if (!aiConfigured()) {
+    return res.status(503).json({ error: "AI Assistant isn't configured yet. Ask your admin to set ANTHROPIC_API_KEY in the backend environment." });
+  }
+  const prompt = (req.body.prompt || "").trim();
+  if (!prompt) return res.status(400).json({ error: "prompt is required." });
+  try {
+    const result = await generateFormFields({ prompt, currentFields: form.fields || [] });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
 router.post("/", requireManager, async (req, res) => {
