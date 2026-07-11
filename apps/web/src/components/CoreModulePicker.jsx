@@ -1,13 +1,20 @@
 import { Check } from "lucide-react";
-import { CORE_MODULES } from "../lib/coreModules";
+import { CORE_MODULES, RELEASED_MODULE_KEYS } from "../lib/coreModules";
+import { useAuth } from "../context/AuthContext";
 
 // Tile picker for core CRM sections (Leads, Deals, Dashboard, etc.) — used
 // on signup and again in Settings → Upgrade Plan so an owner can adjust
-// their selection later without going through the master admin.
+// their selection later without going through the master admin. Only
+// shows modules that are actually released — otherwise an owner could
+// toggle on a section that isn't live yet and get an empty/broken page.
+// Master admin sees the full catalog, same as everywhere else.
 export default function CoreModulePicker({ selected, onToggle }) {
+  const { isMasterAdmin } = useAuth();
+  const visibleModules = isMasterAdmin ? CORE_MODULES : CORE_MODULES.filter((m) => RELEASED_MODULE_KEYS.includes(m.key));
+
   return (
     <div className="grid grid-cols-4 gap-2">
-      {CORE_MODULES.map((mod) => {
+      {visibleModules.map((mod) => {
         const Icon = mod.icon;
         const on = !!selected[mod.key];
         return (

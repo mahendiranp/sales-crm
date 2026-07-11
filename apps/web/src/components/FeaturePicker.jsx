@@ -1,11 +1,16 @@
 import { Check, Sparkles } from "lucide-react";
-import { APP_CATALOG, APP_CATEGORIES } from "../lib/appCatalog";
+import { APP_CATALOG, APP_CATEGORIES, RELEASED_APP_KEYS } from "../lib/appCatalog";
+import { useAuth } from "../context/AuthContext";
 
 // A "build your toolkit" style multi-select: tap a tile to pick it up into
 // your starter kit. Used on signup so picking features feels like putting
-// together a kit rather than filling out a form.
+// together a kit rather than filling out a form. Only offers apps that
+// are actually released (master admin sees the full catalog) — otherwise
+// an owner could turn on something that isn't live yet.
 export default function FeaturePicker({ selected, onToggle, onUseRecommended }) {
-  const pickedApps = APP_CATALOG.filter((a) => a.status === "builtIn" || selected[a.key]);
+  const { isMasterAdmin } = useAuth();
+  const visibleCatalog = isMasterAdmin ? APP_CATALOG : APP_CATALOG.filter((a) => a.status === "builtIn" || RELEASED_APP_KEYS.includes(a.key));
+  const pickedApps = visibleCatalog.filter((a) => a.status === "builtIn" || selected[a.key]);
 
   return (
     <div>
@@ -38,7 +43,8 @@ export default function FeaturePicker({ selected, onToggle, onUseRecommended }) 
 
       <div className="max-h-80 overflow-y-auto pr-1 space-y-4 border border-border rounded-lg p-3 bg-base/40">
         {APP_CATEGORIES.map((category) => {
-          const apps = APP_CATALOG.filter((a) => a.category === category);
+          const apps = visibleCatalog.filter((a) => a.category === category);
+          if (apps.length === 0) return null;
           return (
             <div key={category}>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">
