@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 export function Card({ children, className = "" }) {
@@ -121,6 +122,43 @@ export function Switch({ checked, onChange, disabled }) {
         }`}
       />
     </button>
+  );
+}
+
+// Custom replacement for window.confirm()/prompt() — those block the JS
+// thread, can't be styled, and are jarring next to an otherwise custom UI.
+// Set `withReason` for a prompt-style dialog (e.g. "reason for rejecting",
+// optional); omit it for a plain yes/no confirm.
+export function ConfirmDialog({
+  open, title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", danger,
+  withReason, reasonLabel = "Reason (optional)", onConfirm, onCancel,
+}) {
+  const [reason, setReason] = useState("");
+  useEffect(() => {
+    if (open) setReason("");
+  }, [open]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onCancel}>
+      <div className="bg-white rounded-card shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-display font-semibold text-base mb-1.5">{title}</h3>
+        {message && <p className="text-sm text-ink/60 mb-3">{message}</p>}
+        {withReason && (
+          <textarea
+            className={`${inputCls} mb-3`}
+            rows={3}
+            placeholder={reasonLabel}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            autoFocus
+          />
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onCancel}>{cancelLabel}</Button>
+          <Button variant={danger ? "danger" : "primary"} onClick={() => onConfirm(reason)}>{confirmLabel}</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
