@@ -30,7 +30,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
-import { APP_CATALOG } from "../lib/appCatalog";
+import { APP_CATALOG, RELEASED_APP_KEYS } from "../lib/appCatalog";
+import { RELEASED_MODULE_KEYS } from "../lib/coreModules";
 import useLiveCollection from "../lib/useLiveCollection";
 
 // Each item's `module` key maps to settings.modules (see routes/settings.js)
@@ -138,13 +139,13 @@ export default function Layout({ children }) {
     router.push("/login");
   };
 
-  // UI-only release lock: this build only ships Dashboard + Forms.
+  // UI-only release lock: this build only ships Dashboard + Forms (see
+  // lib/coreModules.js / lib/appCatalog.js for the shared allowlists —
+  // also used by CoreModulePicker/FeaturePicker so the Upgrade Plan and
+  // signup UI can't offer to turn on something that isn't released).
   // Deliberately front-end only — doesn't touch settings.modules/apps in
-  // the database at all, so nothing here needs undoing to widen the
-  // release later beyond just editing these two arrays. Master admin
-  // bypasses this (and everything else) same as always.
-  const RELEASED_MODULE_KEYS = ["dashboard"];
-  const RELEASED_APP_KEYS = ["forms"];
+  // the database at all. Master admin bypasses this (and everything
+  // else) same as always.
 
   // Master admin sees every feature regardless of any tenant's flags — the
   // flags exist to restrict what everyone *else* under this account sees.

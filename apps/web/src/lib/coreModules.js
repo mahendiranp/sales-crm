@@ -43,3 +43,10 @@ export const CORE_MODULES = [
 // WhatsApp, Analytics, Users, Teams, etc.) starts hidden until the owner
 // turns it on from Settings > Upgrade Plan as those areas go live.
 export const RECOMMENDED_MODULE_KEYS = ["dashboard"];
+
+// Single source of truth for what's actually released — used by
+// Layout.jsx's nav (to hide unreleased sections) AND CoreModulePicker (to
+// stop the Upgrade Plan / signup UI from offering to turn on a module that
+// isn't live yet). Master admin bypasses this everywhere, same as every
+// other gate in the app. Widening the release later is editing this array.
+export const RELEASED_MODULE_KEYS = ["dashboard"];

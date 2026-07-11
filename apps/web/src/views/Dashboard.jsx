@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader } from "../components/ui";
 import { formatINR, formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import { RELEASED_MODULE_KEYS } from "../lib/coreModules";
 
 function StatCard({ icon: Icon, label, value, accent }) {
   return (
@@ -79,7 +80,6 @@ export default function Dashboard() {
   // UI-only release lock, same as Layout.jsx's nav — this build only
   // ships Dashboard + Forms, so these widgets stay hidden for
   // non-master-admin regardless of this tenant's stored flags.
-  const RELEASED_MODULE_KEYS = ["dashboard"];
   // Master admin sees every widget regardless of this tenant's flags.
   const on = (key) => isMasterAdmin || (RELEASED_MODULE_KEYS.includes(key) && modules[key] !== false);
   const showLeads = on("leads");

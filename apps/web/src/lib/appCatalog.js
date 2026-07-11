@@ -142,3 +142,9 @@ export const TOGGLEABLE_APPS = APP_CATALOG.filter((a) => a.status !== "builtIn")
 // currently also includes Documents/Expenses/Invoicing) so new signups
 // aren't nudged toward enabling areas that aren't actually launched yet.
 export const RECOMMENDED_APP_KEYS = ["forms"];
+
+// Single source of truth for what's actually released — used by
+// Layout.jsx's Apps grid AND FeaturePicker (so the Upgrade Plan / signup
+// UI doesn't offer to turn on an app that isn't live yet). Master admin
+// bypasses this everywhere, same as every other gate in the app.
+export const RELEASED_APP_KEYS = ["forms"];
