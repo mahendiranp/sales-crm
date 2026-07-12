@@ -1405,9 +1405,17 @@ export default function Forms() {
               <ClipboardCheck size={15} /> My Approvals{approvalsCount > 0 ? ` (${approvalsCount})` : ""}
             </Button>
             {canManage && (
-              <span title={atFormLimit ? `Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.` : undefined}>
-                <Button onClick={() => setModal(true)} disabled={atFormLimit}><Plus size={15} /> New Form</Button>
-              </span>
+              <Button
+                onClick={() => {
+                  if (atFormLimit) {
+                    setSaveError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.`);
+                  } else {
+                    setModal(true);
+                  }
+                }}
+              >
+                <Plus size={15} /> New Form
+              </Button>
             )}
           </div>
         }
