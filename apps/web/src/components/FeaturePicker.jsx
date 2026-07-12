@@ -9,7 +9,11 @@ import { useAuth } from "../context/AuthContext";
 // an owner could turn on something that isn't live yet.
 export default function FeaturePicker({ selected, onToggle, onUseRecommended }) {
   const { isMasterAdmin } = useAuth();
-  const visibleCatalog = isMasterAdmin ? APP_CATALOG : APP_CATALOG.filter((a) => a.status === "builtIn" || RELEASED_APP_KEYS.includes(a.key));
+  // builtIn apps (CRM, Sales, WhatsApp) used to mean "already implemented,
+  // always on" — none of those are actually part of this release either,
+  // so they no longer get a free pass here; gated by RELEASED_APP_KEYS
+  // like everything else. Master admin still sees the full catalog.
+  const visibleCatalog = isMasterAdmin ? APP_CATALOG : APP_CATALOG.filter((a) => RELEASED_APP_KEYS.includes(a.key));
   const pickedApps = visibleCatalog.filter((a) => a.status === "builtIn" || selected[a.key]);
 
   return (
