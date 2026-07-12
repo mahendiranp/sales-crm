@@ -1,38 +1,65 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { Target, ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import api from "../api/client";
 import { Field, inputCls, Button } from "../components/ui";
 import FeaturePicker from "../components/FeaturePicker";
 import CoreModulePicker from "../components/CoreModulePicker";
 import { RECOMMENDED_APP_KEYS } from "../lib/appCatalog";
 import { CORE_MODULES, RECOMMENDED_MODULE_KEYS } from "../lib/coreModules";
 import { APP_NAME } from "../lib/brand";
+import { loadRazorpayScript } from "../lib/razorpay";
 import Seo from "../components/Seo";
 
 const recommendedAppsMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
 const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.map((k) => [k, true]));
 
 export default function Signup() {
+  const router = useRouter();
+  // ?plan=growth on the URL (from the landing page's Growth "Start free
+  // trial" button) means this signup should collect payment right after
+  // email verification — anything else (including no query at all) signs
+  // up free on Starter, matching the existing default behavior.
+  const [selectedPlan, setSelectedPlan] = useState("starter");
+  useEffect(() => {
+    if (router.query.plan === "growth") setSelectedPlan("growth");
+  }, [router.query.plan]);
+
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", email: "", company: "", password: "" });
   const [selectedModules, setSelectedModules] = useState(recommendedModulesMap);
   const [selectedApps, setSelectedApps] = useState(recommendedAppsMap);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const [otp, setOtp] = useState("");
   const [otpError, setOtpError] = useState("");
   const [devOtp, setDevOtp] = useState("");
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState("");
   const { requestSignupOtp, verifySignupOtp } = useAuth();
-  const router = useRouter();
 
   const toggleModule = (key) => setSelectedModules((s) => ({ ...s, [key]: !s[key] }));
   const toggleApp = (key) => setSelectedApps((s) => ({ ...s, [key]: !s[key] }));
 
-  const continueToStep2 = (e) => {
+  const continueToStep2 = async (e) => {
     e.preventDefault();
-    setStep(2);
+    setError("");
+    setCheckingEmail(true);
+    try {
+      const { data } = await api.get("/auth/check-email", { params: { email: form.email } });
+      if (!data.available) {
+        setError("An account with this email already exists. Try logging in instead.");
+        return;
+      }
+      setStep(2);
+    } catch {
+      setError("Couldn't verify that email right now — please try again.");
+    } finally {
+      setCheckingEmail(false);
+    }
   };
 
   const requestCode = async (e) => {
@@ -65,12 +92,64 @@ export default function Signup() {
     setOtpError("");
     setLoading(true);
     try {
+      // Account is created here (on Starter — see POST /auth/signup/verify-otp)
+      // and the session token is now live. Only after that does a Growth
+      // signup move to the payment step — the account already exists and
+      // works either way, so a failed/abandoned payment never blocks access.
       await verifySignupOtp(form.email, otp);
-      router.push("/app");
+      if (selectedPlan === "growth") {
+        setStep(4);
+      } else {
+        router.push("/app");
+      }
     } catch (err) {
       setOtpError(err.response?.data?.error || "Something went wrong.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const payForGrowth = async () => {
+    setPayError("");
+    setPaying(true);
+    try {
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) throw new Error("Couldn't load the payment widget — check your connection and try again.");
+
+      const { data: order } = await api.post("/payments/create-order", { plan: "growth" });
+
+      const checkout = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: APP_NAME,
+        description: `Upgrade to ${order.planLabel}`,
+        image: `${window.location.origin}/favicon.svg`,
+        prefill: { name: form.name, email: form.email },
+        notes: { plan: "growth" },
+        theme: { color: "#2F5D50" },
+        handler: async (response) => {
+          try {
+            await api.post("/payments/verify", {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              plan: "growth",
+            });
+            router.push("/app");
+          } catch (err) {
+            setPayError(err.response?.data?.error || "Payment succeeded but activating Growth failed — you can retry from Settings.");
+          } finally {
+            setPaying(false);
+          }
+        },
+        modal: { ondismiss: () => setPaying(false) },
+      });
+      checkout.open();
+    } catch (err) {
+      setPayError(err.response?.data?.error || err.message || "Couldn't start checkout — please try again.");
+      setPaying(false);
     }
   };
 
@@ -108,14 +187,24 @@ export default function Signup() {
           {step === 1 ? (
             <>
               <h1 className="font-display font-bold text-xl mb-1">Create your account</h1>
-              <p className="text-sm text-ink/50 mb-5">Free forever on the Starter plan. No card required.</p>
+              <p className="text-sm text-ink/50 mb-5">
+                {selectedPlan === "growth"
+                  ? "Signing up for Growth (₹999/month) — you'll pay after verifying your email."
+                  : "Free forever on the Starter plan. No card required."}
+              </p>
 
               <form onSubmit={continueToStep2}>
                 <Field label="Full Name">
                   <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                 </Field>
                 <Field label="Work Email">
-                  <input className={inputCls} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                  <input
+                    className={inputCls}
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => { setForm({ ...form, email: e.target.value }); setError(""); }}
+                    required
+                  />
                 </Field>
                 <Field label="Company">
                   <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
@@ -123,8 +212,9 @@ export default function Signup() {
                 <Field label="Password">
                   <input className={inputCls} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
                 </Field>
-                <Button type="submit" className="w-full justify-center">
-                  Continue
+                {error && <p className="text-sm text-danger mb-3">{error}</p>}
+                <Button type="submit" className="w-full justify-center" disabled={checkingEmail}>
+                  {checkingEmail ? "Checking…" : "Continue"}
                 </Button>
               </form>
             </>
@@ -164,7 +254,7 @@ export default function Signup() {
                 </p>
               </form>
             </>
-          ) : (
+          ) : step === 3 ? (
             <>
               <button
                 onClick={() => setStep(2)}
@@ -197,7 +287,7 @@ export default function Signup() {
                 </Field>
                 {otpError && <p className="text-sm text-danger mb-3">{otpError}</p>}
                 <Button type="submit" className="w-full justify-center" disabled={loading || otp.length !== 6}>
-                  {loading ? "Verifying…" : "Verify & create account"}
+                  {loading ? "Verifying…" : selectedPlan === "growth" ? "Verify & continue to payment" : "Verify & create account"}
                 </Button>
                 <button
                   type="button"
@@ -208,6 +298,33 @@ export default function Signup() {
                   Resend code
                 </button>
               </form>
+            </>
+          ) : (
+            <>
+              <h1 className="font-display font-bold text-xl mb-1">Activate Growth</h1>
+              <p className="text-sm text-ink/50 mb-5">
+                Your account is created — one last step to unlock unlimited forms, approval workflows, WhatsApp
+                delivery, and the AI Assistant.
+              </p>
+
+              <div className="border border-primary/20 bg-primary/5 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">Growth plan</p>
+                  <p className="font-display font-semibold text-lg">₹999/month</p>
+                </div>
+              </div>
+
+              {payError && <p className="text-sm text-danger mb-3">{payError}</p>}
+              <Button onClick={payForGrowth} disabled={paying} className="w-full justify-center">
+                {paying ? "Opening checkout…" : "Pay & activate Growth"}
+              </Button>
+              <button
+                type="button"
+                onClick={() => router.push("/app")}
+                className="w-full text-xs text-ink/40 text-center mt-3 hover:underline"
+              >
+                Skip for now — I'll upgrade later from Settings
+              </button>
             </>
           )}
         </div>

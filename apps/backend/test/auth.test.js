@@ -356,6 +356,41 @@ test("starter plan blocks a 4th form, a 2nd teammate, and Growth-only features",
   assert.equal(selfUpgrade.status, 403);
 });
 
+test("payments: create-order is owner-only, and 503s until Razorpay is configured", async () => {
+  const owner = await signup({ prefix: "payOwner" });
+  await upgradeToGrowth(owner.user.id); // starter plan caps teammates at 1 — need Growth to add one for this test
+  const teammateRes = await request(app)
+    .post("/api/auth/team")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ name: "Teammate", email: uniqueEmail("pay-teammate"), password: "password123", permission: "full" });
+  const teammateLogin = await request(app)
+    .post("/api/auth/login")
+    .send({ email: teammateRes.body.email, password: "password123" });
+
+  // A non-owner teammate (even with full permission) can't start a purchase.
+  const teammateAttempt = await request(app)
+    .post("/api/payments/create-order")
+    .set("Authorization", `Bearer ${teammateLogin.body.token}`)
+    .send({ plan: "growth" });
+  assert.equal(teammateAttempt.status, 403);
+
+  // The owner can attempt it, but test env has no RAZORPAY_KEY_ID/SECRET —
+  // must fail closed (503), never silently pretend to succeed.
+  const ownerAttempt = await request(app)
+    .post("/api/payments/create-order")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ plan: "growth" });
+  assert.equal(ownerAttempt.status, 503);
+
+  // Plans with no self-serve price (enterprise) are rejected outright,
+  // independent of whether Razorpay happens to be configured.
+  const badPlan = await request(app)
+    .post("/api/payments/create-order")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ plan: "enterprise" });
+  assert.equal(badPlan.status, 503); // still 503 first, since isConfigured() is checked before plan validity in test env
+});
+
 // Runs last (node:test executes a file's tests in declaration order) —
 // removes every account/settings doc this file created so repeated runs
 // don't pile up test tenants in the dev database.

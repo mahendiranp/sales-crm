@@ -12,6 +12,8 @@ const PLANS = {
     workflows: false,
     whatsappBot: false,
     aiAssistant: false,
+    // Free — never purchasable through checkout, it's just the default.
+    priceInPaise: null,
   },
   growth: {
     label: "Growth",
@@ -20,6 +22,11 @@ const PLANS = {
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,
+    // ₹999/month flat (matches the landing page's "/user/month" display
+    // copy, but the checkout charges one flat monthly amount rather than
+    // metering per-teammate — per-seat billing would need to recompute
+    // and re-charge as the team's headcount changes, which isn't built).
+    priceInPaise: 99900,
   },
   enterprise: {
     label: "Enterprise",
@@ -28,6 +35,8 @@ const PLANS = {
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,
+    // "Custom" pricing — sales-assisted, not self-serve checkout.
+    priceInPaise: null,
   },
 };
 

@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
-import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkles, Bell, Plug, Rocket } from "lucide-react";
+import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkles, Bell, Plug, LayoutGrid } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Field, inputCls } from "../components/ui";
 import CoreModulePicker from "../components/CoreModulePicker";
 import FeaturePicker from "../components/FeaturePicker";
 import useLiveCollection from "../lib/useLiveCollection";
+import { APP_NAME } from "../lib/brand";
+import { loadRazorpayScript } from "../lib/razorpay";
+
+// Growth is currently the only self-serve-purchasable plan — Starter is
+// free by default and Enterprise is sales-assisted ("Talk to sales" on the
+// landing page), matching utils/plans.js on the backend (only Growth has
+// a priceInPaise).
+const GROWTH_PRICE_LABEL = "₹999/month";
 
 // WhatsApp API / Email Settings / Payment Gateway / AI Configuration /
 // Notifications / Integrations aren't wired to anything real yet — the
@@ -13,13 +21,13 @@ import useLiveCollection from "../lib/useLiveCollection";
 // set at deploy time, not these fields, so filling them in here would
 // silently do nothing. Hidden (not deleted) until each is actually
 // connected — add the key back to this list to bring one back.
-const VISIBLE_SECTION_KEYS = ["companyProfile", "subscription", "upgradePlan"];
+const VISIBLE_SECTION_KEYS = ["companyProfile", "subscription", "sidebarSetup"];
 
 function baseSections(isOwner) {
   return [
     { key: "companyProfile", label: "Company Profile", icon: Building2 },
     { key: "subscription", label: "Subscription", icon: CreditCard },
-    ...(isOwner ? [{ key: "upgradePlan", label: "Upgrade Plan", icon: Rocket }] : []),
+    ...(isOwner ? [{ key: "sidebarSetup", label: "Sidebar Setup", icon: LayoutGrid }] : []),
     { key: "whatsappApi", label: "WhatsApp API", icon: MessageCircle },
     { key: "emailSettings", label: "Email Settings", icon: Mail },
     { key: "paymentGateway", label: "Payment Gateway", icon: Wallet },
@@ -30,11 +38,13 @@ function baseSections(isOwner) {
 }
 
 export default function Settings() {
-  const { canManage, isOwner } = useAuth();
+  const { user, canManage, isOwner } = useAuth();
   const [settings, setSettings] = useState(null);
   const [active, setActive] = useState("companyProfile");
   const [saved, setSaved] = useState(false);
   const [planSaved, setPlanSaved] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState("");
 
   const load = () => api.get("/settings").then((r) => setSettings(r.data));
   useEffect(() => {
@@ -46,7 +56,7 @@ export default function Settings() {
 
   const save = async () => {
     // Plain field edits shouldn't touch apps/modules — those are only sent
-    // from the Upgrade Plan tab's own save, so a non-owner teammate saving
+    // from the Sidebar Setup tab's own save, so a non-owner teammate saving
     // Notifications/Company Profile never trips the owner-only flag check.
     const { apps, modules, ...editable } = settings;
     await api.put("/settings", editable);
@@ -64,6 +74,55 @@ export default function Settings() {
     setTimeout(() => setPlanSaved(false), 1800);
   };
 
+  const upgradeToGrowth = async () => {
+    setUpgradeError("");
+    setUpgrading(true);
+    try {
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) throw new Error("Couldn't load the payment widget — check your connection and try again.");
+
+      const { data: order } = await api.post("/payments/create-order", { plan: "growth" });
+
+      const checkout = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: APP_NAME,
+        description: `Upgrade to ${order.planLabel}`,
+        image: `${window.location.origin}/favicon.svg`,
+        prefill: { name: user?.name, email: user?.email },
+        notes: { plan: "growth" },
+        theme: { color: "#2F5D50" },
+        handler: async (response) => {
+          try {
+            await api.post("/payments/verify", {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              plan: "growth",
+            });
+            load();
+          } catch (err) {
+            setUpgradeError(err.response?.data?.error || "Payment succeeded but upgrading your plan failed — contact support.");
+          } finally {
+            setUpgrading(false);
+          }
+        },
+        modal: {
+          // Razorpay's own dismiss (user closed the widget without paying)
+          // doesn't call `handler` at all, so this is the only place
+          // upgrading needs resetting for that path.
+          ondismiss: () => setUpgrading(false),
+        },
+      });
+      checkout.open();
+    } catch (err) {
+      setUpgradeError(err.response?.data?.error || err.message || "Couldn't start checkout — please try again.");
+      setUpgrading(false);
+    }
+  };
+
   if (!settings) return <div className="text-ink/40 text-sm">Loading…</div>;
 
   return (
@@ -73,8 +132,8 @@ export default function Settings() {
         subtitle="Configure your CRM to match how your business runs."
         action={
           canManage &&
-          (active === "upgradePlan" ? (
-            <Button onClick={savePlan}>{planSaved ? "Saved ✓" : "Save Plan"}</Button>
+          (active === "sidebarSetup" ? (
+            <Button onClick={savePlan}>{planSaved ? "Saved ✓" : "Save Sidebar"}</Button>
           ) : (
             <Button onClick={save}>{saved ? "Saved ✓" : "Save Changes"}</Button>
           ))
@@ -116,19 +175,52 @@ export default function Settings() {
           {active === "subscription" && (
             <div>
               <h3 className="font-display font-semibold mb-4">Subscription</h3>
-              <div className="flex items-center justify-between bg-base rounded-lg p-4">
+              <div className="flex items-center justify-between bg-base rounded-lg p-4 mb-4">
                 <div>
-                  <p className="font-medium">{settings.subscription.plan}</p>
-                  <p className="text-xs text-ink/40">Manage your billing and plan</p>
+                  <p className="font-medium capitalize">{settings.subscription.plan}</p>
+                  <p className="text-xs text-ink/40">
+                    {settings.subscription.renewsOn
+                      ? `Renews ${new Date(settings.subscription.renewsOn).toLocaleDateString()}`
+                      : "Manage your billing and plan"}
+                  </p>
                 </div>
                 <ShieldCheck size={20} className="text-primary" />
               </div>
+
+              {settings.subscription.plan === "starter" && (
+                <div className="border border-primary/20 bg-primary/5 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Upgrade to Growth</p>
+                      <p className="text-xs text-ink/50 mt-0.5">
+                        Unlimited forms, approval workflows, WhatsApp survey bot, AI Assistant, and up to 20 users.
+                      </p>
+                    </div>
+                    <p className="font-display font-semibold text-lg whitespace-nowrap ml-4">{GROWTH_PRICE_LABEL}</p>
+                  </div>
+                  {isOwner ? (
+                    <Button onClick={upgradeToGrowth} disabled={upgrading} className="w-full justify-center mt-3">
+                      {upgrading ? "Opening checkout…" : `Upgrade for ${GROWTH_PRICE_LABEL}`}
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-ink/40 mt-3">Ask your account owner to upgrade the plan.</p>
+                  )}
+                  {upgradeError && <p className="text-xs text-danger mt-2">{upgradeError}</p>}
+                </div>
+              )}
+
+              {settings.subscription.plan === "growth" && (
+                <p className="text-xs text-ink/40">
+                  Need Enterprise (unlimited users, priority support, custom integrations)?{" "}
+                  <a href="mailto:info@floworaone.com" className="text-primary hover:underline">Talk to sales</a>.
+                </p>
+              )}
             </div>
           )}
 
-          {active === "upgradePlan" && (
+          {active === "sidebarSetup" && (
             <div>
-              <h3 className="font-display font-semibold mb-1">Upgrade Plan</h3>
+              <h3 className="font-display font-semibold mb-1">Sidebar Setup</h3>
               <p className="text-sm text-ink/50 mb-4">
                 Pick what's live for your whole team. Only what's checked here shows up in the sidebar — for you and
                 everyone you've added under Team Access.

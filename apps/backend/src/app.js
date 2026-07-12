@@ -21,6 +21,8 @@ const settingsRouter = require("./routes/settings");
 const authRouter = require("./routes/auth");
 const formsRouter = require("./routes/forms");
 const whatsappSurveysRouter = require("./routes/whatsappSurveys");
+const paymentsRouter = require("./routes/payments");
+const feedbackRouter = require("./routes/feedback");
 const { requireAuth } = require("./middleware/auth");
 const { ensureConnected } = require("./db/store");
 
@@ -128,5 +130,7 @@ app.use("/api/performance", performanceRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/forms", formsRouter);
 app.use("/api/whatsapp-surveys", whatsappSurveysRouter);
+app.use("/api/payments", paymentsRouter);
+app.use("/api/feedback", feedbackRouter);
 
 module.exports = app;

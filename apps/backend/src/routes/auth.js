@@ -87,6 +87,16 @@ async function createAccountFromPending(pending) {
   return account;
 }
 
+// Lets the signup form check email availability right after step 1 (before
+// committing to the OTP round-trip), instead of only discovering a
+// duplicate account after typing a password and picking a starter kit.
+router.get("/check-email", async (req, res) => {
+  const email = (req.query.email || "").toLowerCase();
+  if (!email) return res.status(400).json({ error: "Email is required." });
+  const existing = (await accounts.all()).find((a) => a.email.toLowerCase() === email);
+  res.json({ available: !existing });
+});
+
 // ---------------- SIGNUP (email OTP verification) ----------------
 // Two-step: request-otp validates the details, emails a 6-digit code, and
 // stashes the (already-hashed) payload — nothing is written to `accounts`

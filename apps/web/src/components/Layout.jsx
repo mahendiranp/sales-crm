@@ -27,6 +27,7 @@ import {
   UserCheck,
   Menu,
   X,
+  LifeBuoy,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
@@ -81,6 +82,7 @@ const NAV_SECTIONS = [
       { to: "/app/users", label: "Users", icon: UserCog, module: "users" },
       { to: "/app/teams", label: "Teams", icon: Users, module: "teams" },
       { to: "/app/team", label: "Team Access", icon: UserCheck, ownerOnly: true },
+      { to: "/app/feedback", label: "Feedback & Support", icon: LifeBuoy, ownerOnly: true },
       { to: "/app/apps", label: "Admin Portal", icon: ShieldCheck, adminOnly: true },
       { to: "/app/settings", label: "Settings", icon: Settings },
     ],
