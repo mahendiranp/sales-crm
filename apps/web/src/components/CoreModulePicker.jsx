@@ -8,9 +8,18 @@ import { useAuth } from "../context/AuthContext";
 // shows modules that are actually released — otherwise an owner could
 // toggle on a section that isn't live yet and get an empty/broken page.
 // Master admin sees the full catalog, same as everywhere else.
+//
+// Dashboard is excluded from the toggleable grid entirely — it's included
+// in every plan by default, so there's nothing to pick and no reason to
+// let someone accidentally uncheck it.
 export default function CoreModulePicker({ selected, onToggle }) {
   const { isMasterAdmin } = useAuth();
-  const visibleModules = isMasterAdmin ? CORE_MODULES : CORE_MODULES.filter((m) => RELEASED_MODULE_KEYS.includes(m.key));
+  const visibleModules = (isMasterAdmin ? CORE_MODULES : CORE_MODULES.filter((m) => RELEASED_MODULE_KEYS.includes(m.key)))
+    .filter((m) => m.key !== "dashboard");
+
+  if (!isMasterAdmin && visibleModules.length === 0) {
+    return <p className="text-xs text-ink/40">Dashboard is included in every plan — no other core modules are available yet.</p>;
+  }
 
   return (
     <div className="grid grid-cols-4 gap-2">

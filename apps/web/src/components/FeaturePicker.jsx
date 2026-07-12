@@ -1,4 +1,4 @@
-import { Check, Sparkles } from "lucide-react";
+import { Check } from "lucide-react";
 import { APP_CATALOG, APP_CATEGORIES, RELEASED_APP_KEYS } from "../lib/appCatalog";
 import { useAuth } from "../context/AuthContext";
 
@@ -7,38 +7,36 @@ import { useAuth } from "../context/AuthContext";
 // together a kit rather than filling out a form. Only offers apps that
 // are actually released (master admin sees the full catalog) — otherwise
 // an owner could turn on something that isn't live yet.
-export default function FeaturePicker({ selected, onToggle, onUseRecommended }) {
+//
+// No "Use recommended" shortcut — with only one released app (Forms),
+// a one-click "pick the recommended set" button is pointless busywork.
+export default function FeaturePicker({ selected, onToggle }) {
   const { isMasterAdmin } = useAuth();
-  const visibleCatalog = isMasterAdmin ? APP_CATALOG : APP_CATALOG.filter((a) => a.status === "builtIn" || RELEASED_APP_KEYS.includes(a.key));
+  // builtIn apps (CRM, Sales, WhatsApp) used to mean "already implemented,
+  // always on" — none of those are actually part of this release either,
+  // so they no longer get a free pass here; gated by RELEASED_APP_KEYS
+  // like everything else. Master admin still sees the full catalog.
+  const visibleCatalog = isMasterAdmin ? APP_CATALOG : APP_CATALOG.filter((a) => RELEASED_APP_KEYS.includes(a.key));
   const pickedApps = visibleCatalog.filter((a) => a.status === "builtIn" || selected[a.key]);
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3 gap-3">
-        <div className="flex items-center -space-x-2">
-          {pickedApps.slice(0, 8).map((a) => {
-            const Icon = a.icon;
-            return (
-              <div
-                key={a.key}
-                className="w-8 h-8 rounded-full bg-primary/10 border-2 border-white flex items-center justify-center shrink-0"
-                title={a.label}
-              >
-                <Icon size={14} className="text-primary" />
-              </div>
-            );
-          })}
-          <span className="pl-4 text-xs text-ink/50 font-medium">
-            {pickedApps.length} in your kit
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={onUseRecommended}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/8 hover:bg-primary/15 px-3 py-1.5 rounded-full transition-colors shrink-0"
-        >
-          <Sparkles size={13} /> Use recommended
-        </button>
+      <div className="flex items-center -space-x-2 mb-3">
+        {pickedApps.slice(0, 8).map((a) => {
+          const Icon = a.icon;
+          return (
+            <div
+              key={a.key}
+              className="w-8 h-8 rounded-full bg-primary/10 border-2 border-white flex items-center justify-center shrink-0"
+              title={a.label}
+            >
+              <Icon size={14} className="text-primary" />
+            </div>
+          );
+        })}
+        <span className="pl-4 text-xs text-ink/50 font-medium">
+          {pickedApps.length} in your kit
+        </span>
       </div>
 
       <div className="max-h-80 overflow-y-auto pr-1 space-y-4 border border-border rounded-lg p-3 bg-base/40">

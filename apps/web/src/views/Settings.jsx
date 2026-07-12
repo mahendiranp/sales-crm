@@ -5,7 +5,6 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Field, inputCls } from "../components/ui";
 import CoreModulePicker from "../components/CoreModulePicker";
 import FeaturePicker from "../components/FeaturePicker";
-import { RECOMMENDED_APP_KEYS } from "../lib/appCatalog";
 import useLiveCollection from "../lib/useLiveCollection";
 
 // WhatsApp API / Email Settings / Payment Gateway / AI Configuration /
@@ -139,16 +138,7 @@ export default function Settings() {
               <CoreModulePicker selected={settings.modules} onToggle={toggleModule} />
 
               <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2 mt-5">Add-on Apps</p>
-              <FeaturePicker
-                selected={settings.apps}
-                onToggle={toggleApp}
-                onUseRecommended={() =>
-                  setSettings((s) => ({
-                    ...s,
-                    apps: { ...s.apps, ...Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true])) },
-                  }))
-                }
-              />
+              <FeaturePicker selected={settings.apps} onToggle={toggleApp} />
             </div>
           )}
 

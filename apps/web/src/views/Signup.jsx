@@ -24,10 +24,6 @@ export default function Signup() {
 
   const toggleModule = (key) => setSelectedModules((s) => ({ ...s, [key]: !s[key] }));
   const toggleApp = (key) => setSelectedApps((s) => ({ ...s, [key]: !s[key] }));
-  const useRecommended = () => {
-    setSelectedModules(recommendedModulesMap());
-    setSelectedApps(recommendedAppsMap());
-  };
 
   const continueToStep2 = (e) => {
     e.preventDefault();
@@ -111,7 +107,7 @@ export default function Signup() {
 
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2">Add-on Apps</p>
-                  <FeaturePicker selected={selectedApps} onToggle={toggleApp} onUseRecommended={useRecommended} />
+                  <FeaturePicker selected={selectedApps} onToggle={toggleApp} />
                 </div>
 
                 {error && <p className="text-sm text-danger">{error}</p>}
