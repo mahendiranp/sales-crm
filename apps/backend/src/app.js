@@ -22,8 +22,15 @@ const authRouter = require("./routes/auth");
 const formsRouter = require("./routes/forms");
 const whatsappSurveysRouter = require("./routes/whatsappSurveys");
 const { requireAuth } = require("./middleware/auth");
+const { ensureConnected } = require("./db/store");
 
 const app = express();
+
+// Deployed behind Vercel's proxy, which sets X-Forwarded-For — without this,
+// express-rate-limit refuses to trust that header and throws on every
+// request (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR). "1" trusts exactly the
+// first hop, matching a single reverse proxy in front of the app.
+app.set("trust proxy", 1);
 
 // This is a pure JSON API (no HTML rendered here), so helmet's defaults are
 // safe as-is — no inline scripts/styles to worry about breaking.
@@ -45,6 +52,20 @@ app.use(
 );
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+// In a traditional server (index.js) connectDB() already ran before any
+// request arrives. In a serverless deployment there's no bootstrap step —
+// this is the entry point itself — so every route that touches the DB
+// needs the connection guaranteed first. ensureConnected() caches the
+// promise, so warm invocations skip straight through.
+app.use(async (req, res, next) => {
+  try {
+    await ensureConnected();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Rate limiting is a production/staging concern — under automated tests,
 // every request comes from the same in-process client with no real IP

@@ -23,6 +23,16 @@ async function closeDB() {
   if (client) await client.close();
 }
 
+// Connects at most once per process. On a traditional server (index.js)
+// this runs once at startup; in a serverless environment (Vercel), where
+// the entry point is the Express app itself with no bootstrap step, warm
+// invocations reuse the cached promise instead of reconnecting per request.
+let connectPromise = null;
+function ensureConnected() {
+  if (!connectPromise) connectPromise = connectDB();
+  return connectPromise;
+}
+
 // Called once at startup so mutations can broadcast live updates.
 function setIO(server) {
   io = server;
@@ -138,4 +148,4 @@ function scopedCollection(name, accountId) {
   };
 }
 
-module.exports = { connectDB, closeDB, setIO, collection, scopedCollection };
+module.exports = { connectDB, closeDB, ensureConnected, setIO, collection, scopedCollection };
