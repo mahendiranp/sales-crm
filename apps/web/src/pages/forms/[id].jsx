@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckCircle2, FormInput, Eye, X } from "lucide-react";
 import api from "../../api/client";
 import FormFieldInput from "../../components/FormFieldInput";
+import Seo from "../../components/Seo";
 
 function validateField(field, value) {
   const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
@@ -47,6 +48,7 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     if (!id || !router.isReady) return;
@@ -79,17 +81,24 @@ export default function PublicFormPage() {
       setErrors(nextErrors);
       return;
     }
+    setSubmitError("");
     setSubmitting(true);
-    if (!isPreview) {
-      await api.post(`/forms/${id}/responses`, { answers });
+    try {
+      if (!isPreview) {
+        await api.post(`/forms/${id}/responses`, { answers });
+      }
+      setSubmitted(true);
+    } catch (err) {
+      setSubmitError(err.response?.data?.error || "Couldn't submit this form — please try again.");
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
-    setSubmitted(true);
   };
 
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base p-4">
+        <Seo title="Form unavailable" noindex path={`/forms/${id || ""}`} />
         <div className="bg-white border border-border rounded-card shadow-card p-8 max-w-md text-center">
           <FormInput size={28} className="text-ink/30 mx-auto mb-3" />
           <p className="font-medium text-ink/70">This form isn't available</p>
@@ -166,6 +175,7 @@ export default function PublicFormPage() {
 
   return (
     <div>
+      <Seo title={form.name} description={form.description || undefined} noindex path={`/forms/${id}`} />
       {PreviewBanner}
       <div className={`min-h-screen p-4 flex justify-center ${pageClass}`} style={pageStyle}>
       {Overlay}
@@ -180,7 +190,7 @@ export default function PublicFormPage() {
               <label className="block text-sm font-medium mb-1.5">
                 {f.label} {f.required && <span className="text-danger">*</span>}
               </label>
-              <FormFieldInput field={f} value={answers[f.id]} onChange={(v) => setAnswer(f.id, v)} invalid={!!errors[f.id]} accentColor={accentColor} />
+              <FormFieldInput field={f} value={answers[f.id]} onChange={(v) => setAnswer(f.id, v)} invalid={!!errors[f.id]} accentColor={accentColor} formId={id} />
               {errors[f.id] ? (
                 <p className="text-xs text-danger mt-1">{errors[f.id]}</p>
               ) : (
@@ -188,6 +198,8 @@ export default function PublicFormPage() {
               )}
             </div>
           ))}
+
+          {submitError && <p className="text-sm text-danger">{submitError}</p>}
 
           <button
             type="submit"

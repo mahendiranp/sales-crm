@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import {
   Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, ClipboardCheck,
-  LayoutGrid, Inbox, Workflow as WorkflowIcon, BarChart3, Plug, Settings as SettingsIcon, Sparkles, Send, X as XIcon,
+  LayoutGrid, Inbox, BarChart3, Plug, Settings as SettingsIcon, Sparkles, Send, X as XIcon,
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -29,7 +29,18 @@ const FIELD_TYPES = [
   { type: "file", label: "File Upload" },
   { type: "rating", label: "Rating" },
   { type: "yesno", label: "Yes/No" },
+  { type: "booking", label: "Meeting Booking" },
 ];
+
+// Specific calendar dates, not a recurring weekly pattern — the owner
+// picks exactly which days they're free (e.g. "July 15" and "July 20"),
+// each with its own time window. Matches how a one-off availability
+// window actually gets set in practice more often than "every Monday."
+const DEFAULT_BOOKING_CONFIG = {
+  durationMinutes: 30,
+  bufferMinutes: 0,
+  dates: [],
+};
 
 const BASIC_FIELD_TYPES = ["text", "longtext", "email", "phone", "number", "date", "dropdown", "checkbox"];
 const FIELD_CATEGORIES = [
@@ -39,11 +50,10 @@ const FIELD_CATEGORIES = [
 
 const STUDIO_NAV = [
   { key: "builder", label: "Build", icon: LayoutGrid },
+  { key: "settings", label: "Settings", icon: SettingsIcon },
   { key: "responses", label: "Submissions", icon: Inbox },
-  { key: "workflow", label: "Workflow", icon: WorkflowIcon },
   { key: "analytics", label: "Analytics", icon: BarChart3 },
   { key: "whatsapp", label: "Integrations", icon: Plug },
-  { key: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
 const OPTION_TYPES = ["dropdown", "radio", "checkbox"];
@@ -62,6 +72,7 @@ function newField(type) {
     helpText: "",
     required: false,
     options: OPTION_TYPES.includes(type) ? ["Option 1", "Option 2"] : undefined,
+    bookingConfig: type === "booking" ? { ...DEFAULT_BOOKING_CONFIG } : undefined,
     validation: {},
   };
 }
@@ -75,22 +86,277 @@ function StatCard({ label, value }) {
   );
 }
 
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function weekdayFor(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? "" : WEEKDAY_SHORT[d.getDay()];
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Bulk-add panel: pick a date range + which weekdays within it + one time
+// window, and it generates one date entry per matching day. Exists so
+// "I'm free every weekday for the next two weeks" doesn't mean clicking
+// "Add Date" ten separate times — the underlying model stays a flat list
+// of specific dates (what respondents actually see), this is just a
+// faster way to populate it.
+function BulkAddDates({ onAdd, onClose }) {
+  const [from, setFrom] = useState(todayStr());
+  const [to, setTo] = useState(todayStr());
+  const [weekdays, setWeekdays] = useState([1, 2, 3, 4, 5]); // Mon-Fri by default
+  const [start, setStart] = useState("09:00");
+  const [end, setEnd] = useState("17:00");
+  const [error, setError] = useState("");
+
+  const toggleWeekday = (d) => setWeekdays((w) => (w.includes(d) ? w.filter((x) => x !== d) : [...w, d]));
+
+  const apply = () => {
+    setError("");
+    if (end <= start) {
+      setError("End time must be after start time.");
+      return;
+    }
+    if (to < from) {
+      setError("End date must be on or after the start date.");
+      return;
+    }
+    if (weekdays.length === 0) {
+      setError("Pick at least one day of the week.");
+      return;
+    }
+    const generated = [];
+    let cursor = new Date(`${from}T00:00:00`);
+    const last = new Date(`${to}T00:00:00`);
+    while (cursor <= last) {
+      if (weekdays.includes(cursor.getDay())) {
+        generated.push({ date: cursor.toISOString().slice(0, 10), start, end });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    onAdd(generated);
+    onClose();
+  };
+
+  return (
+    <div className="border border-primary/30 bg-primary/5 rounded-lg p-3 space-y-2.5">
+      <div className="grid grid-cols-2 gap-2.5">
+        <Field label="From">
+          <input type="date" className={`${inputCls} py-1`} value={from} onChange={(e) => setFrom(e.target.value)} />
+        </Field>
+        <Field label="To">
+          <input type="date" className={`${inputCls} py-1`} value={to} onChange={(e) => setTo(e.target.value)} />
+        </Field>
+      </div>
+      <div>
+        <p className="text-xs font-medium text-ink/60 mb-1.5">On these days</p>
+        <div className="flex gap-1">
+          {WEEKDAY_SHORT.map((label, d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => toggleWeekday(d)}
+              className={`px-2 py-1 rounded text-[11px] font-medium border ${
+                weekdays.includes(d) ? "bg-primary text-white border-primary" : "border-border text-ink/50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input type="time" className={`${inputCls} py-1`} value={start} onChange={(e) => setStart(e.target.value)} />
+        <span className="text-xs text-ink/40">to</span>
+        <input type="time" className={`${inputCls} py-1`} value={end} onChange={(e) => setEnd(e.target.value)} />
+      </div>
+      {error && <p className="text-xs text-danger">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button onClick={apply}>Add These Dates</Button>
+      </div>
+    </div>
+  );
+}
+
+// Specific-dates availability editor for a "booking" field — the owner
+// adds individual calendar dates, each with its own start/end time
+// window, matching the shape utils/bookingSlots.js (the backend's
+// slot-generation logic) expects. Dates always render sorted
+// chronologically regardless of the order they were added in, since
+// that's the order a respondent will see them.
+function BookingConfigEditor({ config, onChange }) {
+  const cfg = config || DEFAULT_BOOKING_CONFIG;
+  const dates = cfg.dates || [];
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [rowErrors, setRowErrors] = useState({});
+  const update = (patch) => onChange({ ...cfg, ...patch });
+
+  const sortedIndices = dates.map((_, i) => i).sort((a, b) => (dates[a].date > dates[b].date ? 1 : dates[a].date < dates[b].date ? -1 : 0));
+
+  const validateRow = (i, d) => {
+    const errs = { ...rowErrors };
+    if (d.end <= d.start) errs[i] = "End must be after start";
+    else delete errs[i];
+    setRowErrors(errs);
+  };
+
+  const addDate = () => {
+    const entry = { date: todayStr(), start: "09:00", end: "17:00" };
+    update({ dates: [...dates, entry] });
+  };
+  // Same date, a different time window — e.g. morning + evening on one
+  // day with a gap in between. The slot-generation logic (utils/
+  // bookingSlots.js) already treats every entry as an independent
+  // window and unions them per date, so this is just another row that
+  // happens to share a date value with an existing one.
+  const addWindowForDate = (dateStr) => {
+    update({ dates: [...dates, { date: dateStr, start: "09:00", end: "12:00" }] });
+  };
+  const addBulk = (generated) => {
+    update({ dates: [...dates, ...generated] });
+  };
+  const updateDate = (i, patch) => {
+    const next = dates.map((d, idx) => (idx === i ? { ...d, ...patch } : d));
+    update({ dates: next });
+    validateRow(i, next[i]);
+  };
+  const removeDate = (i) => {
+    update({ dates: dates.filter((_, idx) => idx !== i) });
+    const errs = { ...rowErrors };
+    delete errs[i];
+    setRowErrors(errs);
+  };
+
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">
+      <div>
+        <h5 className="text-xs font-semibold text-ink/60">Availability</h5>
+        <p className="text-[11px] text-ink/40 mt-0.5">
+          Add every date you can take a meeting, and the hours you're free that day. Respondents will only be able to pick from these exact dates.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        <Field label="Meeting length (minutes)">
+          <input
+            type="number"
+            className={inputCls}
+            value={cfg.durationMinutes}
+            onChange={(e) => update({ durationMinutes: Number(e.target.value) || 30 })}
+          />
+        </Field>
+        <Field label="Buffer between meetings (minutes)">
+          <input
+            type="number"
+            className={inputCls}
+            value={cfg.bufferMinutes || 0}
+            onChange={(e) => update({ bufferMinutes: Number(e.target.value) || 0 })}
+          />
+        </Field>
+      </div>
+
+      <div className="space-y-2.5">
+        {dates.length === 0 && <p className="text-xs text-ink/40">No available dates added yet — add one below, or add several at once.</p>}
+        {(() => {
+          // Group sorted indices by date so multiple time windows on the
+          // same day (e.g. a morning block and a separate evening block)
+          // render together under one date heading instead of as
+          // unrelated-looking rows that happen to repeat the same date.
+          const groups = [];
+          for (const i of sortedIndices) {
+            const last = groups[groups.length - 1];
+            if (last && last.date === dates[i].date) last.indices.push(i);
+            else groups.push({ date: dates[i].date, indices: [i] });
+          }
+          return groups.map((group) => (
+            <div key={group.date} className="border border-border/60 rounded-lg p-2 bg-white">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[11px] font-medium text-ink/40 w-8 shrink-0">{weekdayFor(group.date)}</span>
+                <input
+                  type="date"
+                  className={`${inputCls} py-1`}
+                  value={group.date}
+                  onChange={(e) => group.indices.forEach((i) => updateDate(i, { date: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1 ml-10">
+                {group.indices.map((i) => {
+                  const d = dates[i];
+                  return (
+                    <div key={i}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          className={`${inputCls} py-1 ${rowErrors[i] ? "border-danger" : ""}`}
+                          value={d.start}
+                          onChange={(e) => updateDate(i, { start: e.target.value })}
+                        />
+                        <span className="text-xs text-ink/40">to</span>
+                        <input
+                          type="time"
+                          className={`${inputCls} py-1 ${rowErrors[i] ? "border-danger" : ""}`}
+                          value={d.end}
+                          onChange={(e) => updateDate(i, { end: e.target.value })}
+                        />
+                        <button type="button" onClick={() => removeDate(i)} className="text-danger shrink-0"><Trash2 size={13} /></button>
+                      </div>
+                      {rowErrors[i] && <p className="text-[11px] text-danger mt-0.5">{rowErrors[i]}</p>}
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => addWindowForDate(group.date)}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  + Add another time window this day (e.g. morning + evening)
+                </button>
+              </div>
+            </div>
+          ));
+        })()}
+      </div>
+
+      {bulkOpen ? (
+        <BulkAddDates onAdd={addBulk} onClose={() => setBulkOpen(false)} />
+      ) : (
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={addDate}><Plus size={13} /> Add One Date</Button>
+          <Button variant="secondary" onClick={() => setBulkOpen(true)}><Plus size={13} /> Add Several at Once</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldEditor({ field, onChange, onDelete }) {
   const update = (patch) => onChange({ ...field, ...patch });
+  // Placeholder/Default Value don't mean anything for a booking field
+  // (there's no text box to place text in, and no sensible "default"
+  // meeting time) — hiding them instead of leaving irrelevant, empty-
+  // looking inputs in the editor.
+  const isBooking = field.type === "booking";
   return (
     <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">
       <div className="grid grid-cols-2 gap-2.5">
         <Field label="Label">
           <input className={inputCls} value={field.label} onChange={(e) => update({ label: e.target.value })} />
         </Field>
-        <Field label="Placeholder">
-          <input className={inputCls} value={field.placeholder || ""} onChange={(e) => update({ placeholder: e.target.value })} />
-        </Field>
+        {!isBooking && (
+          <Field label="Placeholder">
+            <input className={inputCls} value={field.placeholder || ""} onChange={(e) => update({ placeholder: e.target.value })} />
+          </Field>
+        )}
       </div>
-      <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Default Value">
-          <input className={inputCls} value={field.defaultValue || ""} onChange={(e) => update({ defaultValue: e.target.value })} />
-        </Field>
+      <div className={isBooking ? "" : "grid grid-cols-2 gap-2.5"}>
+        {!isBooking && (
+          <Field label="Default Value">
+            <input className={inputCls} value={field.defaultValue || ""} onChange={(e) => update({ defaultValue: e.target.value })} />
+          </Field>
+        )}
         <Field label="Help Text">
           <input className={inputCls} value={field.helpText || ""} onChange={(e) => update({ helpText: e.target.value })} />
         </Field>
@@ -104,6 +370,10 @@ function FieldEditor({ field, onChange, onDelete }) {
             onChange={(e) => update({ options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
           />
         </Field>
+      )}
+
+      {field.type === "booking" && (
+        <BookingConfigEditor config={field.bookingConfig} onChange={(bookingConfig) => update({ bookingConfig })} />
       )}
 
       {field.type === "number" && (
@@ -649,9 +919,17 @@ function FormBuilder({ form, onSave, planLimits }) {
   // Closed by default — most sessions never touch it (especially with no
   // LLM key configured yet), and it costs 320px of width every time.
   const [aiOpen, setAiOpen] = useState(false);
+  const [approvalEnabled, setApprovalEnabled] = useState(!!form.workflow?.enabled);
+  const [approverIds, setApproverIds] = useState(
+    (form.workflow?.steps?.[0]?.approvers || []).filter((a) => a.type === "user").map((a) => a.value)
+  );
+  const [branding, setBranding] = useState(form.settings?.branding || {});
 
   useEffect(() => {
     setFields(form.fields || []);
+    setApprovalEnabled(!!form.workflow?.enabled);
+    setApproverIds((form.workflow?.steps?.[0]?.approvers || []).filter((a) => a.type === "user").map((a) => a.value));
+    setBranding(form.settings?.branding || {});
     setDirty(false);
   }, [form.id]);
 
@@ -684,8 +962,33 @@ function FormBuilder({ form, onSave, planLimits }) {
     markDirty();
   };
 
+  // One Save button for everything on this tab (fields, approval, branding)
+  // — separate per-section buttons were confusing when nothing indicated
+  // which one applied to which change.
   const save = () => {
-    onSave({ fields });
+    const cleanBranding = {
+      logoType: branding.logoType || (branding.logoDataUrl ? "image" : "none"),
+      logoDataUrl: branding.logoDataUrl || "",
+      logoText: branding.logoText || "",
+      theme: branding.theme || "",
+      accentColor: branding.accentColor || "",
+      backgroundCss: branding.backgroundCss || "",
+      backgroundColor: branding.backgroundColor || "",
+      backgroundImageDataUrl: (branding.backgroundImageDataUrl || "").trim(),
+      backgroundImageFit: branding.backgroundImageFit || "cover",
+      backgroundImagePosition: branding.backgroundImagePosition || "center",
+      backgroundImageOverlay: branding.backgroundImageOverlay || 0,
+    };
+    onSave({
+      fields,
+      settings: { ...form.settings, branding: cleanBranding },
+      workflow: {
+        enabled: approvalEnabled,
+        steps: approvalEnabled
+          ? [{ id: "approval", name: "Approval", mode: "any", approvers: approverIds.map((id) => ({ type: "user", value: id })) }]
+          : [],
+      },
+    });
     setDirty(false);
   };
 
@@ -712,22 +1015,33 @@ function FormBuilder({ form, onSave, planLimits }) {
   return (
     <div
       className={`grid grid-cols-1 ${
-        aiOpen && aiAllowed ? "lg:grid-cols-[220px_1fr_320px]" : "lg:grid-cols-[220px_1fr]"
+        aiOpen && aiAllowed ? "lg:grid-cols-[300px_1fr_320px]" : "lg:grid-cols-[300px_1fr]"
       } gap-4 items-start`}
     >
-      <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} showAI={aiAllowed} />
+      <div className="space-y-4">
+        <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} showAI={aiAllowed} />
+
+        <ApprovalRequirementEditor
+          enabled={approvalEnabled}
+          approverIds={approverIds}
+          onChange={({ enabled, approverIds: next }) => {
+            setApprovalEnabled(enabled);
+            setApproverIds(next);
+            markDirty();
+          }}
+        />
+
+        <BrandingEditor branding={branding} onChange={(next) => { setBranding(next); markDirty(); }} />
+      </div>
 
       <div>
         <div className="flex items-center justify-between mb-3">
           <h4 className="font-display font-semibold text-sm">Canvas</h4>
-          <div className="flex items-center gap-2">
-            {aiAllowed && !aiOpen && (
-              <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
-                <Sparkles size={13} /> AI Assistant
-              </button>
-            )}
-            <Button onClick={save} disabled={!dirty}>Save Changes</Button>
-          </div>
+          {aiAllowed && !aiOpen && (
+            <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
+              <Sparkles size={13} /> AI Assistant
+            </button>
+          )}
         </div>
 
         <div className="border border-border rounded-card bg-base/30 p-4">
@@ -751,6 +1065,10 @@ function FormBuilder({ form, onSave, planLimits }) {
             </div>
           )}
         </div>
+
+        <div className="flex justify-end mt-4">
+          <Button onClick={save} disabled={!dirty}>Save Changes</Button>
+        </div>
       </div>
 
       {aiAllowed && aiOpen && (
@@ -768,36 +1086,163 @@ function FormBuilder({ form, onSave, planLimits }) {
 
 // Name/description + branding, split out of the field canvas so "Settings"
 // is its own left-rail destination, matching the studio layout.
+// Every submission to this form needs a sign-off before the owner treats it
+// as accepted — the owner (authRole "admin") can always approve/reject
+// regardless of who's picked here (see resolveApprovers in
+// workflowEngine.js), so this list is really "who ELSE, besides me, can
+// also approve" — not the exclusive set.
+const emptyTeammateForm = { name: "", email: "", password: "", permission: "edit" };
+
+// Quick-add teammate, inline in the approval picker so "there's no one to
+// pick" isn't a dead end — no need to leave the form builder and go to
+// Settings → Team just to create the account. Owner-only (same as
+// Team.jsx's Add Teammate flow), since POST /auth/team is owner-gated.
+function AddTeammateInlineModal({ open, onClose, onCreated }) {
+  const [form, setForm] = useState(emptyTeammateForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setForm(emptyTeammateForm);
+      setError("");
+    }
+  }, [open]);
+
+  const create = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+      setError("Name, email, and password are all required.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const { data } = await api.post("/auth/team", form);
+      onCreated(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't create that account.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add Team Member">
+      <Field label="Full Name">
+        <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
+      </Field>
+      <Field label="Email">
+        <input className={inputCls} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+      </Field>
+      <Field label="Password">
+        <input className={inputCls} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={8} />
+      </Field>
+      {error && <p className="text-xs text-danger mb-2">{error}</p>}
+      <div className="flex justify-end gap-2 mt-2">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button onClick={create} disabled={saving}>{saving ? "Creating…" : "Create Login"}</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function ApprovalRequirementEditor({ enabled, approverIds, onChange }) {
+  const { isOwner } = useAuth();
+  const [teammates, setTeammates] = useState(null);
+  const [addingTeammate, setAddingTeammate] = useState(false);
+
+  const loadTeammates = () => api.get("/auth/team").then((r) => setTeammates(r.data)).catch(() => setTeammates([]));
+  useEffect(() => {
+    loadTeammates();
+  }, []);
+
+  const toggleApprover = (id) => {
+    onChange({
+      enabled,
+      approverIds: approverIds.includes(id) ? approverIds.filter((x) => x !== id) : [...approverIds, id],
+    });
+  };
+
+  return (
+    <div className="border border-border rounded-lg p-4 mt-4">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange({ enabled: e.target.checked, approverIds })}
+        />
+        Require approval before submissions are accepted
+      </label>
+      <p className="text-xs text-ink/40 mt-1 mb-3">
+        The account owner can always approve or reject. Optionally pick other teammates who should be able to as well.
+      </p>
+
+      {enabled && (
+        teammates === null ? (
+          <p className="text-xs text-ink/40">Loading teammates…</p>
+        ) : teammates.length === 0 ? (
+          <div className="text-xs text-ink/40">
+            <p className="mb-2">No other teammates yet — only the account owner will be able to approve.</p>
+            {isOwner && (
+              <button type="button" onClick={() => setAddingTeammate(true)} className="text-primary font-medium hover:underline">
+                + Add Team Member
+              </button>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div className="space-y-1.5">
+              {teammates.map((t) => (
+                <label key={t.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={approverIds.includes(t.id)} onChange={() => toggleApprover(t.id)} />
+                  {t.name} <span className="text-ink/40 text-xs">({t.authRole})</span>
+                </label>
+              ))}
+            </div>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => setAddingTeammate(true)}
+                className="text-xs text-primary font-medium hover:underline mt-2"
+              >
+                + Add Team Member
+              </button>
+            )}
+          </div>
+        )
+      )}
+
+      <AddTeammateInlineModal
+        open={addingTeammate}
+        onClose={() => setAddingTeammate(false)}
+        onCreated={(newMember) => {
+          setAddingTeammate(false);
+          loadTeammates();
+          onChange({ enabled, approverIds: [...approverIds, newMember.id] });
+        }}
+      />
+    </div>
+  );
+}
+
+// Branding (background/logo) lives on the Build tab now, alongside the
+// field canvas — see FormBuilder's BrandingEditor block — so Settings is
+// just the form's identity (name/description).
 function FormSettingsPanel({ form, onSave }) {
   const [name, setName] = useState(form.name);
   const [description, setDescription] = useState(form.description || "");
-  const [branding, setBranding] = useState(form.settings?.branding || {});
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     setName(form.name);
     setDescription(form.description || "");
-    setBranding(form.settings?.branding || {});
     setDirty(false);
   }, [form.id]);
 
   const markDirty = () => setDirty(true);
 
   const save = () => {
-    const cleanBranding = {
-      logoType: branding.logoType || (branding.logoDataUrl ? "image" : "none"),
-      logoDataUrl: branding.logoDataUrl || "",
-      logoText: branding.logoText || "",
-      theme: branding.theme || "",
-      accentColor: branding.accentColor || "",
-      backgroundCss: branding.backgroundCss || "",
-      backgroundColor: branding.backgroundColor || "",
-      backgroundImageDataUrl: (branding.backgroundImageDataUrl || "").trim(),
-      backgroundImageFit: branding.backgroundImageFit || "cover",
-      backgroundImagePosition: branding.backgroundImagePosition || "center",
-      backgroundImageOverlay: branding.backgroundImageOverlay || 0,
-    };
-    onSave({ name, description, settings: { ...form.settings, branding: cleanBranding } });
+    onSave({ name, description });
     setDirty(false);
   };
 
@@ -812,8 +1257,6 @@ function FormSettingsPanel({ form, onSave }) {
         </Field>
       </div>
 
-      <BrandingEditor branding={branding} onChange={(next) => { setBranding(next); markDirty(); }} />
-
       <div className="flex justify-end mt-4">
         <Button onClick={save} disabled={!dirty}>Save Settings</Button>
       </div>
@@ -821,263 +1264,6 @@ function FormSettingsPanel({ form, onSave }) {
   );
 }
 
-const ROLE_OPTIONS = [
-  { value: "admin", label: "Owner/Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "viewer", label: "Viewer" },
-];
-
-function newStep() {
-  return {
-    id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    name: "Approval Step",
-    mode: "all",
-    approvers: [{ type: "role", value: "manager" }],
-    autoApprove: false,
-    escalateAfterHours: "",
-    escalateTo: null,
-  };
-}
-
-const emptyTeammateForm = { name: "", email: "", password: "", permission: "edit" };
-
-// Lets someone assigning a workflow approver add a teammate without
-// leaving the builder — same POST /auth/team used by the full Team
-// settings page, just surfaced inline where it's needed.
-function AddTeammateModal({ open, onClose, onCreated }) {
-  const [form, setForm] = useState(emptyTeammateForm);
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setForm(emptyTeammateForm);
-      setError("");
-    }
-  }, [open]);
-
-  const create = async () => {
-    setError("");
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
-      setError("Name, email, and password are all required.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const { data } = await api.post("/auth/team", form);
-      onCreated(data);
-    } catch (err) {
-      setError(err.response?.data?.error || "Couldn't create that account.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal open={open} onClose={onClose} title="Add Team Member">
-      <div className="space-y-3">
-        <Field label="Name">
-          <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
-        </Field>
-        <Field label="Email">
-          <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        </Field>
-        <Field label="Password">
-          <input type="password" className={inputCls} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-        </Field>
-        <Field label="Permission">
-          <select className={inputCls} value={form.permission} onChange={(e) => setForm({ ...form, permission: e.target.value })}>
-            <option value="view">View Only</option>
-            <option value="edit">Edit Only</option>
-            <option value="full">View, Edit & Delete</option>
-          </select>
-        </Field>
-        {error && <p className="text-xs text-danger">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={create} disabled={saving}>{saving ? "Adding…" : "Add Team Member"}</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// Employee → Manager → HR style sequential approval routing, attached to
-// a form so every submission gets its own approval instance. Approvers
-// are role-based (resolved against the tenant's current team each time)
-// or a specific teammate; steps run in order, each step can require every
-// assigned approver ("all") or just the first one ("any").
-function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate }) {
-  const update = (patch) => onChange({ ...step, ...patch });
-  const approver = step.approvers[0] || { type: "role", value: "manager" };
-  const updateApprover = (patch) => update({ approvers: [{ ...approver, ...patch }] });
-  // null = confirmed unavailable (this account isn't the owner, so
-  // GET /auth/team 403'd) — don't offer "Specific team member" at all in
-  // that case rather than showing a dead-end once selected.
-  const canAssignTeammate = teammates !== null;
-
-  return (
-    <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">
-      <div className="flex items-center gap-2">
-        <input className={`${inputCls} flex-1`} value={step.name} onChange={(e) => update({ name: e.target.value })} placeholder="Step name" />
-        <button onClick={onDelete} className="text-danger shrink-0"><Trash2 size={14} /></button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Approver">
-          <div className="flex gap-1.5">
-            <select className={inputCls} value={approver.type} onChange={(e) => updateApprover({ type: e.target.value, value: e.target.value === "role" ? "manager" : "" })}>
-              <option value="role">By role</option>
-              {canAssignTeammate && <option value="user">Specific team member</option>}
-            </select>
-          </div>
-          {!canAssignTeammate && (
-            <p className="text-[11px] text-ink/35 mt-1">Only the account owner can assign approvals to specific teammates.</p>
-          )}
-        </Field>
-        {approver.type === "role" || !canAssignTeammate ? (
-          <Field label="Role">
-            <select className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })}>
-              {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
-          </Field>
-        ) : teammates.length === 0 ? (
-          <Field label="Team member">
-            <p className="text-xs text-ink/40 mb-1.5">No team members yet.</p>
-            <Button variant="secondary" onClick={onAddTeammate}><Plus size={13} /> Add Team Member</Button>
-          </Field>
-        ) : (
-          <Field label="Team member">
-            <select className={inputCls} value={approver.value} onChange={(e) => updateApprover({ value: e.target.value })}>
-              <option value="">Select…</option>
-              {teammates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.email})</option>)}
-            </select>
-            <button type="button" onClick={onAddTeammate} className="text-xs mt-1 text-primary hover:underline">
-              + Add another team member
-            </button>
-          </Field>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2.5">
-        <Field label="If role resolves to multiple people">
-          <select className={inputCls} value={step.mode} onChange={(e) => update({ mode: e.target.value })}>
-            <option value="all">All must approve</option>
-            <option value="any">Any one approval advances</option>
-          </select>
-        </Field>
-        <Field label="Escalate after (hours, optional)">
-          <input type="number" className={inputCls} value={step.escalateAfterHours} onChange={(e) => update({ escalateAfterHours: e.target.value })} placeholder="e.g. 24" />
-        </Field>
-      </div>
-
-      <label className="flex items-center gap-2 text-sm text-ink/70">
-        <input type="checkbox" checked={!!step.autoApprove} onChange={(e) => update({ autoApprove: e.target.checked })} />
-        Auto-approve this step (skip, useful as a placeholder step)
-      </label>
-    </div>
-  );
-}
-
-function WorkflowEditor({ form, onSave, planLimits }) {
-  const workflowsAllowed = !planLimits || planLimits.workflows;
-  const [enabled, setEnabled] = useState(!!form.workflow?.enabled);
-  const [steps, setSteps] = useState(form.workflow?.steps || []);
-  const [dirty, setDirty] = useState(false);
-  // null = not loaded yet / unavailable (e.g. this account isn't the
-  // owner, so GET /auth/team 403s) — WorkflowStepEditor falls back to a
-  // manual account-id field in that case instead of an empty dropdown.
-  const [teammates, setTeammates] = useState(null);
-  const [addTeammateOpen, setAddTeammateOpen] = useState(false);
-  const [limitError, setLimitError] = useState("");
-  // +1 for the owner — teammates only ever holds the OTHER members.
-  const atUserLimit = planLimits && teammates && teammates.length + 1 >= planLimits.maxUsers;
-
-  const openAddTeammate = () => {
-    if (atUserLimit) {
-      setLimitError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxUsers} user${planLimits.maxUsers === 1 ? "" : "s"}. Upgrade to add more.`);
-    } else {
-      setAddTeammateOpen(true);
-    }
-  };
-
-  useEffect(() => {
-    setEnabled(!!form.workflow?.enabled);
-    setSteps(form.workflow?.steps || []);
-    setDirty(false);
-  }, [form.id]);
-
-  const loadTeammates = () => api.get("/auth/team").then((r) => setTeammates(r.data)).catch(() => setTeammates(null));
-  useEffect(() => {
-    loadTeammates();
-  }, []);
-
-  const markDirty = () => setDirty(true);
-  const addStep = () => { setSteps((s) => [...s, newStep()]); markDirty(); };
-  const updateStep = (id, updated) => { setSteps((s) => s.map((x) => (x.id === id ? updated : x))); markDirty(); };
-  const removeStep = (id) => { setSteps((s) => s.filter((x) => x.id !== id)); markDirty(); };
-
-  const save = () => {
-    onSave({ workflow: { enabled, steps } });
-    setDirty(false);
-  };
-
-  return (
-    <div>
-      <label
-        className={`flex items-center gap-2 text-sm font-medium mb-4 ${!workflowsAllowed ? "opacity-50 cursor-not-allowed" : ""}`}
-        title={!workflowsAllowed ? `Approval workflows require the Growth plan or higher. Your account is on ${planLimits.label}.` : undefined}
-      >
-        <input
-          type="checkbox"
-          checked={enabled}
-          disabled={!workflowsAllowed}
-          onChange={(e) => { setEnabled(e.target.checked); markDirty(); }}
-        />
-        Require approval workflow before a submission counts as final
-      </label>
-
-      {enabled && (
-        <>
-          {steps.length === 0 ? (
-            <div className="text-sm text-ink/40 border border-dashed border-border rounded-lg p-6 text-center mb-3">
-              No steps yet — add one below. Each submission routes through steps in order.
-            </div>
-          ) : (
-            <div className="space-y-2.5 mb-3">
-              {steps.map((s, i) => (
-                <div key={s.id} className="flex items-start gap-2">
-                  <span className="text-xs font-semibold text-ink/30 mt-3 shrink-0 w-5">{i + 1}.</span>
-                  <div className="flex-1">
-                    <WorkflowStepEditor
-                      step={s}
-                      onChange={(u) => updateStep(s.id, u)}
-                      onDelete={() => removeStep(s.id)}
-                      teammates={teammates}
-                      onAddTeammate={openAddTeammate}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <Button variant="secondary" onClick={addStep}><Plus size={14} /> Add Step</Button>
-        </>
-      )}
-
-      <div className="flex justify-end mt-4">
-        <Button onClick={save} disabled={!dirty}>Save Workflow</Button>
-      </div>
-
-      <AddTeammateModal
-        open={addTeammateOpen}
-        onClose={() => setAddTeammateOpen(false)}
-        onCreated={() => { setAddTeammateOpen(false); loadTeammates(); }}
-      />
-      <ErrorModal open={!!limitError} message={limitError} onClose={() => setLimitError("")} />
-    </div>
-  );
-}
 
 // Cross-form inbox of everything waiting on the current user's decision —
 // opened from the header button on the Forms list page.
@@ -1538,8 +1724,6 @@ export default function Forms() {
 
                     {tab === "builder" ? (
                       <FormBuilder form={active} onSave={saveBuilder} planLimits={planLimits} />
-                    ) : tab === "workflow" ? (
-                      <WorkflowEditor form={active} onSave={saveBuilder} planLimits={planLimits} />
                     ) : tab === "responses" ? (
                       <FormResponses formId={active.id} headerless />
                     ) : tab === "whatsapp" ? (

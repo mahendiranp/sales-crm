@@ -8,6 +8,11 @@ const nodemailer = require("nodemailer");
 let transporter = null;
 
 function isConfigured() {
+  // Automated tests must never depend on (or trigger) a real network call
+  // to a live mail server, even if a real SMTP_* is present in .env for
+  // local dev — same reasoning as the rate limiter being skipped under
+  // NODE_ENV=test in app.js. Always mocked (console-logged) in test.
+  if (process.env.NODE_ENV === "test") return false;
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 

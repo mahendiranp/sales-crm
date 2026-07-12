@@ -33,6 +33,7 @@ import api from "../api/client";
 import { APP_CATALOG, RELEASED_APP_KEYS } from "../lib/appCatalog";
 import { RELEASED_MODULE_KEYS } from "../lib/coreModules";
 import useLiveCollection from "../lib/useLiveCollection";
+import { APP_NAME } from "../lib/brand";
 
 // Each item's `module` key maps to settings.modules (see routes/settings.js)
 // — omit it (like Admin Portal / Settings) to always show it regardless of
@@ -195,7 +196,7 @@ export default function Layout({ children }) {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Target size={17} className="text-white" />
           </div>
-          <span className="font-display font-bold text-lg tracking-tight flex-1">Pipeline</span>
+          <span className="font-display font-bold text-lg tracking-tight flex-1">{APP_NAME}</span>
           <button onClick={() => setMobileOpen(false)} className="text-ink/40 hover:text-ink md:hidden">
             <X size={18} />
           </button>

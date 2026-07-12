@@ -13,43 +13,73 @@ function workflowStatusLabel(status) {
   return status === "approved" ? "Approved" : status === "rejected" ? "Rejected" : "Pending";
 }
 
+// Booking answers are stored as a raw ISO datetime string — display them
+// as a real date/time instead of e.g. "2026-07-13T09:00:00.000Z". File
+// answers are a { name, type, dataUrl } object (see FormFieldInput.jsx) —
+// this plain-text version (used in the table cell) just shows the filename.
+function formatAnswer(field, value) {
+  if (field?.type === "file" && value?.name) return value.name;
+  if (Array.isArray(value)) return value.join(", ") || "—";
+  if (field?.type === "booking" && value) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  }
+  return String(value ?? "—");
+}
+
+// Richer version for the response detail modal — an uploaded image renders
+// inline, any other file type gets a download link, everything else falls
+// back to the plain-text formatAnswer.
+function AnswerValue({ field, value }) {
+  if (field?.type === "file" && value?.dataUrl) {
+    const isImage = (value.type || "").startsWith("image/");
+    return (
+      <div>
+        {isImage && (
+          <a href={value.dataUrl} target="_blank" rel="noreferrer">
+            <img src={value.dataUrl} alt={value.name} className="max-h-64 rounded-lg border border-border mb-1.5" />
+          </a>
+        )}
+        <a href={value.dataUrl} download={value.name} className="text-sm text-primary hover:underline">
+          Download {value.name}
+        </a>
+      </div>
+    );
+  }
+  return <p className="text-sm whitespace-pre-wrap">{formatAnswer(field, value)}</p>;
+}
+
 // Approval history + (if the current user is an eligible approver of the
 // current step) Approve/Reject actions for a single response. Fetches the
 // workflow detail on demand (it includes currentApproverIds, which the
 // list endpoint doesn't compute for every row) rather than eagerly for
 // every response in the table.
-function WorkflowPanel({ formId, response, onDecided }) {
+// Read-only approval status + history for a response. Whether the current
+// viewer is an eligible approver (and can therefore act) is reported up to
+// ResponseDetailModal via onCanDecideChange — the actual Approve/Reject
+// buttons live in the modal's footer alongside Close, not here, so there's
+// exactly one action row instead of two.
+function WorkflowPanel({ formId, response, refreshKey, onCanDecideChange }) {
   const { user } = useAuth();
   const [detail, setDetail] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     setDetail(null);
     if (response?.workflow) {
       api.get(`/forms/${formId}/responses/${response.id}/workflow`).then((r) => setDetail(r.data));
+    } else {
+      onCanDecideChange?.(false);
     }
-  }, [formId, response?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formId, response?.id, refreshKey]);
+
+  useEffect(() => {
+    if (!detail) return;
+    onCanDecideChange?.(detail.status === "pending" && detail.currentApproverIds.includes(user?.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail]);
 
   if (!response?.workflow || !detail) return null;
-
-  const canDecide = detail.status === "pending" && detail.currentApproverIds.includes(user?.id);
-
-  const decide = async (action, comment = "") => {
-    setBusy(true);
-    setError("");
-    try {
-      const { data } = await api.post(`/forms/${formId}/responses/${response.id}/workflow/decide`, { action, comment });
-      setDetail(data);
-      onDecided?.();
-    } catch (err) {
-      setError(err.response?.data?.error || "Failed to record decision.");
-    } finally {
-      setBusy(false);
-      setRejecting(false);
-    }
-  };
 
   return (
     <div className="border-t border-border pt-4 mt-4">
@@ -70,29 +100,41 @@ function WorkflowPanel({ formId, response, onDecided }) {
           ))}
         </div>
       )}
-      {error && <p className="text-xs text-danger mb-2">{error}</p>}
-      {canDecide && (
-        <div className="flex gap-2">
-          <Button onClick={() => decide("approve")} disabled={busy}>Approve</Button>
-          <Button variant="danger" onClick={() => setRejecting(true)} disabled={busy}>Reject</Button>
-        </div>
-      )}
-
-      <ConfirmDialog
-        open={rejecting}
-        title="Reject this submission?"
-        withReason
-        reasonLabel="Reason for rejecting (optional)"
-        confirmLabel="Reject"
-        danger
-        onCancel={() => setRejecting(false)}
-        onConfirm={(reason) => decide("reject", reason)}
-      />
     </div>
   );
 }
 
+// The modal footer is intentionally always "Close" plus, only when the
+// current viewer is an eligible approver of the pending step, "Reject"/
+// "Approve" — non-approvers (or anyone once a decision's been made) get a
+// plain read-only view with no action buttons to click.
 function ResponseDetailModal({ formId, form, response, onClose, onDecided }) {
+  const [canDecide, setCanDecide] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    setCanDecide(false);
+    setError("");
+  }, [response?.id]);
+
+  const decide = async (action, comment = "") => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/forms/${formId}/responses/${response.id}/workflow/decide`, { action, comment });
+      onDecided?.();
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to record decision.");
+    } finally {
+      setBusy(false);
+      setRejecting(false);
+    }
+  };
+
   return (
     <Modal open={!!response} onClose={onClose} title="Response Details">
       {response && (
@@ -101,14 +143,33 @@ function ResponseDetailModal({ formId, form, response, onClose, onDecided }) {
           {form.fields.map((f) => (
             <div key={f.id}>
               <p className="text-xs font-medium text-ink/50 mb-0.5">{f.label}</p>
-              <p className="text-sm whitespace-pre-wrap">
-                {Array.isArray(response.answers?.[f.id])
-                  ? response.answers[f.id].join(", ") || "—"
-                  : String(response.answers?.[f.id] ?? "—")}
-              </p>
+              <AnswerValue field={f} value={response.answers?.[f.id]} />
             </div>
           ))}
-          <WorkflowPanel formId={formId} response={response} onDecided={onDecided} />
+          <WorkflowPanel formId={formId} response={response} refreshKey={refreshKey} onCanDecideChange={setCanDecide} />
+
+          {error && <p className="text-xs text-danger">{error}</p>}
+
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <Button variant="secondary" onClick={onClose}>Close</Button>
+            {canDecide && (
+              <>
+                <Button variant="danger" onClick={() => setRejecting(true)} disabled={busy}>Reject</Button>
+                <Button onClick={() => decide("approve")} disabled={busy}>Approve</Button>
+              </>
+            )}
+          </div>
+
+          <ConfirmDialog
+            open={rejecting}
+            title="Reject this submission?"
+            withReason
+            reasonLabel="Reason for rejecting (optional)"
+            confirmLabel="Reject"
+            danger
+            onCancel={() => setRejecting(false)}
+            onConfirm={(reason) => decide("reject", reason)}
+          />
         </div>
       )}
     </Modal>
@@ -227,7 +288,13 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
                 {form.fields.map((f) => (
                   <th key={f.id} className="p-2.5 font-medium text-ink/50 text-xs">{f.label}</th>
                 ))}
-                {form.workflow?.enabled && <th className="p-2.5 font-medium text-ink/50 text-xs">Approval</th>}
+                {/* Not just form.workflow?.enabled — a booking field gets an
+                    implicit approval workflow (see routes/forms.js) even
+                    when the owner never explicitly turned the workflow
+                    toggle on, so check the actual responses too. */}
+                {(form.workflow?.enabled || responses.some((r) => r.workflow)) && (
+                  <th className="p-2.5 font-medium text-ink/50 text-xs">Approval</th>
+                )}
                 <th className="p-2.5" />
               </tr>
             </thead>
@@ -237,10 +304,10 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
                   <td className="p-2.5 text-ink/50 text-xs whitespace-nowrap">{formatDate(r.submittedAt)}</td>
                   {form.fields.map((f) => (
                     <td key={f.id} className="p-2.5 max-w-[200px] truncate">
-                      {Array.isArray(r.answers?.[f.id]) ? r.answers[f.id].join(", ") || "—" : String(r.answers?.[f.id] ?? "—")}
+                      {formatAnswer(f, r.answers?.[f.id])}
                     </td>
                   ))}
-                  {form.workflow?.enabled && (
+                  {(form.workflow?.enabled || responses.some((x) => x.workflow)) && (
                     <td className="p-2.5">{r.workflow ? <Badge>{workflowStatusLabel(r.workflow.status)}</Badge> : "—"}</td>
                   )}
                   <td className="p-2.5 whitespace-nowrap">

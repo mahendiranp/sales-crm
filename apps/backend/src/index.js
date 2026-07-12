@@ -1,5 +1,7 @@
+require("dotenv").config();
 const http = require("http");
 const { Server } = require("socket.io");
+const { APP_NAME } = require("./utils/brand");
 
 const PORT = process.env.PORT || 4000;
 
@@ -44,7 +46,7 @@ async function main() {
   await ensureConnected();
   await seed(); // seeds demo data on first run (no-op once collections are populated)
   httpServer.listen(PORT, () => {
-    console.log(`🚀 Sales CRM API running at http://localhost:${PORT}`);
+    console.log(`🚀 ${APP_NAME} API running at http://localhost:${PORT}`);
   });
 }
 

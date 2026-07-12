@@ -3,6 +3,8 @@ import {
   Target, Sparkles, ArrowRight, Check, Mail, TrendingUp,
   FormInput, Workflow, Share2, BarChart3, MessageCircle,
 } from "lucide-react";
+import { APP_NAME } from "../lib/brand";
+import Seo from "../components/Seo";
 
 const FEATURES = [
   { icon: FormInput, title: "Drag-and-drop builder", desc: "13 field types, branding, and a live canvas that's exactly what respondents see — no separate preview pane to keep in sync." },
@@ -49,7 +51,7 @@ function NavBar() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Target size={17} className="text-white" />
           </div>
-          <span className="font-display font-bold text-lg tracking-tight">Pipeline</span>
+          <span className="font-display font-bold text-lg tracking-tight">{APP_NAME}</span>
         </div>
         <nav className="hidden md:flex items-center gap-8 text-sm text-ink/60">
           <a href="#features" className="hover:text-ink">Features</a>
@@ -68,9 +70,30 @@ function NavBar() {
   );
 }
 
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: APP_NAME,
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description:
+    "A drag-and-drop form builder with approval workflows, WhatsApp delivery, and an AI assistant that builds fields for you.",
+  offers: PLANS.map((p) => ({
+    "@type": "Offer",
+    name: p.name,
+    price: p.price === "Custom" ? undefined : p.price.replace(/[^\d]/g, "") || "0",
+    priceCurrency: p.price.startsWith("₹") ? "INR" : undefined,
+  })),
+};
+
 export default function Landing() {
   return (
     <div className="font-body text-ink">
+      <Seo
+        description={`${APP_NAME} is a drag-and-drop form builder with approval workflows, WhatsApp delivery, and an AI assistant that builds fields for you. Free forever on the Starter plan.`}
+        path="/"
+        jsonLd={JSON_LD}
+      />
       <NavBar />
 
       {/* Hero */}
@@ -209,9 +232,9 @@ export default function Landing() {
             <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
               <Target size={14} className="text-white" />
             </div>
-            <span className="font-display font-semibold">Pipeline</span>
+            <span className="font-display font-semibold">{APP_NAME}</span>
           </div>
-          <p className="text-xs text-ink/40">© 2026 Pipeline. Forms that route themselves.</p>
+          <p className="text-xs text-ink/40">© 2026 {APP_NAME}. Forms that route themselves.</p>
           <div className="flex items-center gap-4 text-xs text-ink/50">
             <span className="flex items-center gap-1"><Mail size={12} /> hello@pipeline.app</span>
             <span className="flex items-center gap-1"><TrendingUp size={12} /> Made in Bengaluru</span>

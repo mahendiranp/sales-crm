@@ -17,6 +17,10 @@ function resolveApprovers(step, tenantAccounts) {
       tenantAccounts.filter((acc) => acc.authRole === a.value).forEach((acc) => ids.add(acc.id));
     }
   }
+  // The tenant owner (authRole "admin") can always approve/reject, on every
+  // step of every form's workflow — regardless of who was explicitly picked
+  // as an approver — so they're never locked out of their own team's queue.
+  tenantAccounts.filter((acc) => acc.authRole === "admin").forEach((acc) => ids.add(acc.id));
   return [...ids];
 }
 

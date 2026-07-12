@@ -45,12 +45,21 @@ function uniqueEmail(prefix) {
   return email;
 }
 
+// Signup is now two-step (email OTP — see routes/auth.js): request-otp
+// validates + emails a code without creating anything, verify-otp checks it
+// and creates the account. In test env (no SMTP configured) request-otp
+// echoes the code back as devOtp instead of actually sending mail, so this
+// helper can complete both steps in one call the same way tests used to
+// call the old single-step /api/auth/signup.
 async function signup(overrides = {}) {
   await ready;
   const email = uniqueEmail(overrides.prefix || "test");
-  const res = await request(app)
-    .post("/api/auth/signup")
+  const requested = await request(app)
+    .post("/api/auth/signup/request-otp")
     .send({ name: "Test User", email, password: "password123", company: "Test Co", ...overrides });
+  const res = await request(app)
+    .post("/api/auth/signup/verify-otp")
+    .send({ email, otp: requested.body.devOtp });
   return res.body;
 }
 
@@ -69,16 +78,37 @@ async function upgradeToGrowth(accountId) {
 
 test("signup requires name, email, and password", async () => {
   await ready;
-  const res = await request(app).post("/api/auth/signup").send({ email: "missing@example.com" });
+  const res = await request(app).post("/api/auth/signup/request-otp").send({ email: "missing@example.com" });
   assert.equal(res.status, 400);
 });
 
 test("signup rejects short passwords", async () => {
   await ready;
   const res = await request(app)
-    .post("/api/auth/signup")
+    .post("/api/auth/signup/request-otp")
     .send({ name: "X", email: uniqueEmail("short"), password: "short" });
   assert.equal(res.status, 400);
+});
+
+test("signup OTP: wrong code is rejected, correct code creates the account exactly once", async () => {
+  await ready;
+  const email = uniqueEmail("otpflow");
+  const requested = await request(app)
+    .post("/api/auth/signup/request-otp")
+    .send({ name: "OTP Test", email, password: "password123" });
+  assert.equal(requested.status, 200);
+  assert.ok(requested.body.devOtp, "test env with no SMTP should echo the code back");
+
+  const wrong = await request(app).post("/api/auth/signup/verify-otp").send({ email, otp: "000000" });
+  assert.equal(wrong.status, 400);
+
+  const right = await request(app).post("/api/auth/signup/verify-otp").send({ email, otp: requested.body.devOtp });
+  assert.equal(right.status, 201);
+  assert.equal(right.body.user.email, email);
+
+  // The code is single-use — a second verify with the same (now-consumed) code must fail.
+  const reused = await request(app).post("/api/auth/signup/verify-otp").send({ email, otp: requested.body.devOtp });
+  assert.equal(reused.status, 400);
 });
 
 test("login fails with wrong password", async () => {

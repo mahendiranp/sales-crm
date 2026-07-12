@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Target } from "lucide-react";
+import { APP_NAME } from "../lib/brand";
+import Seo from "../components/Seo";
 
 function LegalHeader() {
   return (
@@ -9,7 +11,7 @@ function LegalHeader() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Target size={17} className="text-white" />
           </div>
-          <span className="font-display font-bold text-lg tracking-tight">Pipeline</span>
+          <span className="font-display font-bold text-lg tracking-tight">{APP_NAME}</span>
         </Link>
         <Link href="/signup" className="px-3.5 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary-dark">
           Sign up free
@@ -31,6 +33,7 @@ function Section({ title, children }) {
 export default function Privacy() {
   return (
     <div className="font-body text-ink">
+      <Seo title="Privacy Policy" description={`${APP_NAME}'s Privacy Policy.`} path="/privacy" />
       <LegalHeader />
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="font-display font-bold text-3xl mb-2">Privacy Policy</h1>
