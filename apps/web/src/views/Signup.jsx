@@ -9,6 +9,7 @@ import CoreModulePicker from "../components/CoreModulePicker";
 import { RECOMMENDED_APP_KEYS } from "../lib/appCatalog";
 import { CORE_MODULES, RECOMMENDED_MODULE_KEYS } from "../lib/coreModules";
 import { APP_NAME } from "../lib/brand";
+import Seo from "../components/Seo";
 
 const recommendedAppsMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
 const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.map((k) => [k, true]));
@@ -90,6 +91,11 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-base flex items-center justify-center p-6">
+      <Seo
+        title="Sign up"
+        description={`Create your free ${APP_NAME} account — drag-and-drop form builder with approval workflows and WhatsApp delivery. No card required.`}
+        path="/signup"
+      />
       <div className={`w-full transition-all ${step === 2 ? "max-w-2xl" : "max-w-md"}`}>
         <Link href="/" className="flex items-center justify-center gap-2 mb-8">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /app/
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /forms/
+
+Sitemap: https://sales-crm-web-sigma.vercel.app/sitemap.xml

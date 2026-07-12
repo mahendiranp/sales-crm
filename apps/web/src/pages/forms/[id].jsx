@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckCircle2, FormInput, Eye, X } from "lucide-react";
 import api from "../../api/client";
 import FormFieldInput from "../../components/FormFieldInput";
+import Seo from "../../components/Seo";
 
 function validateField(field, value) {
   const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
@@ -97,6 +98,7 @@ export default function PublicFormPage() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base p-4">
+        <Seo title="Form unavailable" noindex path={`/forms/${id || ""}`} />
         <div className="bg-white border border-border rounded-card shadow-card p-8 max-w-md text-center">
           <FormInput size={28} className="text-ink/30 mx-auto mb-3" />
           <p className="font-medium text-ink/70">This form isn't available</p>
@@ -173,6 +175,7 @@ export default function PublicFormPage() {
 
   return (
     <div>
+      <Seo title={form.name} description={form.description || undefined} noindex path={`/forms/${id}`} />
       {PreviewBanner}
       <div className={`min-h-screen p-4 flex justify-center ${pageClass}`} style={pageStyle}>
       {Overlay}

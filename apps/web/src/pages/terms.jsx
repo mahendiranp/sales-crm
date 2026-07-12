@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Target } from "lucide-react";
 import { APP_NAME } from "../lib/brand";
+import Seo from "../components/Seo";
 
 function LegalHeader() {
   return (
@@ -32,6 +33,7 @@ function Section({ title, children }) {
 export default function Terms() {
   return (
     <div className="font-body text-ink">
+      <Seo title="Terms of Service" description={`${APP_NAME}'s Terms of Service.`} path="/terms" />
       <LegalHeader />
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="font-display font-bold text-3xl mb-2">Terms of Service</h1>

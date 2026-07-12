@@ -5,6 +5,7 @@ import { Target, ShieldCheck, UserCog, Eye, ArrowRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Field, inputCls, Button } from "../components/ui";
 import { APP_NAME } from "../lib/brand";
+import Seo from "../components/Seo";
 
 // Demo passwords come from env (must be NEXT_PUBLIC_ to reach the client
 // bundle) so they're never hardcoded in source and stay in sync with the
@@ -81,6 +82,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-base flex items-center justify-center p-6">
+      <Seo title="Log in" description={`Log in to your ${APP_NAME} account.`} path="/login" />
       <div className="w-full max-w-md">
         <Link href="/" className="flex items-center justify-center gap-2 mb-8">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">

@@ -4,6 +4,7 @@ import {
   FormInput, Workflow, Share2, BarChart3, MessageCircle,
 } from "lucide-react";
 import { APP_NAME } from "../lib/brand";
+import Seo from "../components/Seo";
 
 const FEATURES = [
   { icon: FormInput, title: "Drag-and-drop builder", desc: "13 field types, branding, and a live canvas that's exactly what respondents see — no separate preview pane to keep in sync." },
@@ -69,9 +70,30 @@ function NavBar() {
   );
 }
 
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: APP_NAME,
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description:
+    "A drag-and-drop form builder with approval workflows, WhatsApp delivery, and an AI assistant that builds fields for you.",
+  offers: PLANS.map((p) => ({
+    "@type": "Offer",
+    name: p.name,
+    price: p.price === "Custom" ? undefined : p.price.replace(/[^\d]/g, "") || "0",
+    priceCurrency: p.price.startsWith("₹") ? "INR" : undefined,
+  })),
+};
+
 export default function Landing() {
   return (
     <div className="font-body text-ink">
+      <Seo
+        description={`${APP_NAME} is a drag-and-drop form builder with approval workflows, WhatsApp delivery, and an AI assistant that builds fields for you. Free forever on the Starter plan.`}
+        path="/"
+        jsonLd={JSON_LD}
+      />
       <NavBar />
 
       {/* Hero */}
