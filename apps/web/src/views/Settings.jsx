@@ -8,6 +8,14 @@ import FeaturePicker from "../components/FeaturePicker";
 import { RECOMMENDED_APP_KEYS } from "../lib/appCatalog";
 import useLiveCollection from "../lib/useLiveCollection";
 
+// WhatsApp API / Email Settings / Payment Gateway / AI Configuration /
+// Notifications / Integrations aren't wired to anything real yet — the
+// actual WhatsApp/email/AI integrations all read from backend env vars
+// set at deploy time, not these fields, so filling them in here would
+// silently do nothing. Hidden (not deleted) until each is actually
+// connected — add the key back to this list to bring one back.
+const VISIBLE_SECTION_KEYS = ["companyProfile", "subscription", "upgradePlan"];
+
 function baseSections(isOwner) {
   return [
     { key: "companyProfile", label: "Company Profile", icon: Building2 },
@@ -19,7 +27,7 @@ function baseSections(isOwner) {
     { key: "aiConfiguration", label: "AI Configuration", icon: Sparkles },
     { key: "notifications", label: "Notifications", icon: Bell },
     { key: "integrations", label: "Integrations", icon: Plug },
-  ];
+  ].filter((s) => VISIBLE_SECTION_KEYS.includes(s.key));
 }
 
 export default function Settings() {
