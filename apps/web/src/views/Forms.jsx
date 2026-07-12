@@ -395,7 +395,7 @@ function BrandingEditor({ branding, onChange }) {
   );
 }
 
-function FieldPalette({ onAdd, onAskAI }) {
+function FieldPalette({ onAdd, onAskAI, showAI }) {
   const [cat, setCat] = useState("basic");
   const active = FIELD_CATEGORIES.find((c) => c.key === cat);
   return (
@@ -425,12 +425,14 @@ function FieldPalette({ onAdd, onAskAI }) {
           </button>
         ))}
       </div>
-      <button
-        onClick={onAskAI}
-        className="w-full mt-3 flex items-center justify-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-2 hover:bg-primary/10"
-      >
-        <Sparkles size={13} /> Ask AI to add a field
-      </button>
+      {showAI && (
+        <button
+          onClick={onAskAI}
+          className="w-full mt-3 flex items-center justify-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-2 hover:bg-primary/10"
+        >
+          <Sparkles size={13} /> Ask AI to add a field
+        </button>
+      )}
     </div>
   );
 }
@@ -634,7 +636,12 @@ function AIAssistantPanel({ formId, formName, onApplyResult, onAddField, onClose
   );
 }
 
-function FormBuilder({ form, onSave }) {
+function FormBuilder({ form, onSave, planLimits }) {
+  // Hidden outright rather than shown-then-erroring — a Starter account
+  // clicking into the AI Assistant only to get a 403 is worse than never
+  // seeing the option in the first place. Unknown (still loading) treated
+  // as allowed so the UI doesn't flash the panel away after first paint.
+  const aiAllowed = !planLimits || planLimits.aiAssistant;
   const [fields, setFields] = useState(form.fields || []);
   const [expandedId, setExpandedId] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
@@ -705,16 +712,16 @@ function FormBuilder({ form, onSave }) {
   return (
     <div
       className={`grid grid-cols-1 ${
-        aiOpen ? "lg:grid-cols-[220px_1fr_320px]" : "lg:grid-cols-[220px_1fr]"
+        aiOpen && aiAllowed ? "lg:grid-cols-[220px_1fr_320px]" : "lg:grid-cols-[220px_1fr]"
       } gap-4 items-start`}
     >
-      <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} />
+      <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} showAI={aiAllowed} />
 
       <div>
         <div className="flex items-center justify-between mb-3">
           <h4 className="font-display font-semibold text-sm">Canvas</h4>
           <div className="flex items-center gap-2">
-            {!aiOpen && (
+            {aiAllowed && !aiOpen && (
               <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
                 <Sparkles size={13} /> AI Assistant
               </button>
@@ -726,7 +733,7 @@ function FormBuilder({ form, onSave }) {
         <div className="border border-border rounded-card bg-base/30 p-4">
           {fields.length === 0 ? (
             <div className="text-sm text-ink/40 border border-dashed border-border rounded-lg p-8 text-center bg-white">
-              No fields yet — add one from the palette on the left, or ask the AI Assistant.
+              No fields yet — add one from the palette on the left{aiAllowed ? ", or ask the AI Assistant" : ""}.
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -746,7 +753,7 @@ function FormBuilder({ form, onSave }) {
         </div>
       </div>
 
-      {aiOpen && (
+      {aiAllowed && aiOpen && (
         <AIAssistantPanel
           formId={form.id}
           formName={form.name}
@@ -1355,6 +1362,8 @@ export default function Forms() {
     try {
       await api.post(`/forms/${form.id}/duplicate`);
       load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't duplicate that form.");
     } finally {
       setActionBusy(false);
     }
@@ -1368,6 +1377,8 @@ export default function Forms() {
       setActive(null);
       setDeleteTarget(null);
       load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't delete that form.");
     } finally {
       setActionBusy(false);
     }
@@ -1379,6 +1390,8 @@ export default function Forms() {
       const endpoint = form.status === "Published" ? "unpublish" : "publish";
       await api.put(`/forms/${form.id}/${endpoint}`);
       load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't update that form's publish status.");
     } finally {
       setActionBusy(false);
     }
@@ -1524,7 +1537,7 @@ export default function Forms() {
                     )}
 
                     {tab === "builder" ? (
-                      <FormBuilder form={active} onSave={saveBuilder} />
+                      <FormBuilder form={active} onSave={saveBuilder} planLimits={planLimits} />
                     ) : tab === "workflow" ? (
                       <WorkflowEditor form={active} onSave={saveBuilder} planLimits={planLimits} />
                     ) : tab === "responses" ? (

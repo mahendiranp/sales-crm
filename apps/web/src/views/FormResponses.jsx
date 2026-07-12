@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, FileSpreadsheet, FileText as FileTextIcon, Trash2, Eye, FormInput } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Badge, Modal, inputCls, EmptyState, ConfirmDialog } from "../components/ui";
+import { Card, PageHeader, Button, Badge, Modal, inputCls, EmptyState, ConfirmDialog, ErrorModal } from "../components/ui";
 import Pagination from "../components/Pagination";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
@@ -130,6 +130,7 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const loadForm = () => api.get(`/forms/${formId}`).then((r) => setForm(r.data));
   const loadResponses = () => {
@@ -174,6 +175,8 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
       await api.delete(`/forms/${formId}/responses/${deleteTarget}`);
       setDeleteTarget(null);
       loadResponses();
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || "Couldn't delete that response.");
     } finally {
       setDeleting(false);
     }
@@ -270,6 +273,8 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
         onCancel={() => setDeleteTarget(null)}
         onConfirm={removeResponse}
       />
+
+      <ErrorModal open={!!deleteError} message={deleteError} onClose={() => setDeleteError("")} />
     </div>
   );
 
