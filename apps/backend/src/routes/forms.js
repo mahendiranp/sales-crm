@@ -9,6 +9,10 @@ const { listTemplates, getTemplate } = require("../data/formTemplates");
 const { buildSnapshot, autoAdvance, currentApprovers, applyDecision, applyEscalations } = require("../utils/workflowEngine");
 const { isConfigured: aiConfigured, generateFormFields } = require("../integrations/aiClient");
 const { getLimitsForAccount } = require("./settings");
+const { availableDates, allSlotsForDate, slotsForDate, extractBookedTimes } = require("../utils/bookingSlots");
+const { validateFileAnswer } = require("../utils/fileUploads");
+const emailClient = require("../integrations/emailClient");
+const { emailLayout } = require("../utils/emailTemplate");
 
 const router = express.Router();
 // Public routes (/public, /responses POST) bypass auth entirely (see
@@ -131,6 +135,42 @@ router.get("/:id/public", async (req, res) => {
   const form = await rawForms.find(req.params.id);
   if (!form || form.status !== "Published") return res.status(404).json({ error: "Form not found or not published" });
   res.json({ id: form.id, name: form.name, description: form.description, fields: form.fields, settings: form.settings });
+});
+
+// Public, unauthenticated: the specific dates the form owner marked
+// available for a "booking" field (today or later only). Called first by
+// the public form page so it can show a list of pickable dates instead of
+// an open-ended date input — the owner set specific dates, not a
+// recurring pattern, so an arbitrary date picker would mostly land on
+// unavailable days.
+router.get("/:id/booking-dates", async (req, res) => {
+  const form = await rawForms.find(req.params.id);
+  if (!form || form.status !== "Published") return res.status(404).json({ error: "Form not found or not published" });
+  const field = form.fields.find((f) => f.id === req.query.fieldId && f.type === "booking");
+  if (!field) return res.status(404).json({ error: "Booking field not found on this form." });
+  res.json({ dates: availableDates(field) });
+});
+
+// Public, unauthenticated: every meeting slot for a "booking" field on a
+// given date, each tagged with whether it's already booked — computed
+// from the field's availability config plus whatever's already booked by
+// existing responses. Called by the public form page after the
+// respondent picks one of the dates from /booking-dates, before they've
+// submitted anything (so no auth, same as /public and POST /responses).
+// Returns already-booked slots too (not just available ones) so the
+// picker can show them as visibly taken instead of silently vanishing.
+router.get("/:id/booking-slots", async (req, res) => {
+  const form = await rawForms.find(req.params.id);
+  if (!form || form.status !== "Published") return res.status(404).json({ error: "Form not found or not published" });
+  const field = form.fields.find((f) => f.id === req.query.fieldId && f.type === "booking");
+  if (!field) return res.status(404).json({ error: "Booking field not found on this form." });
+  if (!req.query.date) return res.status(400).json({ error: "date is required (YYYY-MM-DD)." });
+
+  const responses = await rawResponses.query((r) => r.formId === form.id);
+  const decryptedAnswers = responses.map((r) => decryptResponse(r).answers);
+  const bookedIsoTimes = extractBookedTimes(field, decryptedAnswers);
+  const slots = allSlotsForDate(field, req.query.date, bookedIsoTimes);
+  res.json({ slots });
 });
 
 // Manager-only: same shape as /public but works regardless of publish
@@ -287,6 +327,35 @@ router.get("/:id/responses", async (req, res) => {
 router.post("/:id/responses", async (req, res) => {
   const form = await rawForms.find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
+
+  // Re-check every file field server-side — the client's checks are just
+  // UX, not a security boundary; a submission can be crafted directly
+  // against this endpoint. See utils/fileUploads.js for what's enforced
+  // (allowlisted types, size cap, magic-byte sniff).
+  for (const field of form.fields.filter((f) => f.type === "file")) {
+    const err = validateFileAnswer(field.label, req.body.answers?.[field.id]);
+    if (err) return res.status(400).json({ error: err });
+  }
+
+  // Re-check every booking field server-side — the slot list the
+  // respondent saw could be stale by the time they submit (someone else
+  // grabbed it, or the availability config changed underneath them).
+  const bookingFields = form.fields.filter((f) => f.type === "booking");
+  if (bookingFields.length > 0) {
+    const existingResponses = await rawResponses.query((r) => r.formId === form.id);
+    const decryptedAnswers = existingResponses.map((r) => decryptResponse(r).answers);
+    for (const field of bookingFields) {
+      const chosen = req.body.answers?.[field.id];
+      if (!chosen) continue; // not required at this layer — required-field validation is the client's/field's job
+      const dateStr = chosen.slice(0, 10);
+      const bookedIsoTimes = extractBookedTimes(field, decryptedAnswers);
+      const available = slotsForDate(field, dateStr, bookedIsoTimes);
+      if (!available.includes(chosen)) {
+        return res.status(409).json({ error: `That time slot for "${field.label}" was just taken — please pick another.` });
+      }
+    }
+  }
+
   const response = {
     id: uuid(),
     formId: req.params.id,
@@ -300,6 +369,20 @@ router.post("/:id/responses", async (req, res) => {
   // config don't retroactively change an approval already in flight.
   if (form.workflow?.enabled && form.workflow.steps?.length) {
     response.workflow = autoAdvance(buildSnapshot(form.workflow));
+  } else if (bookingFields.length > 0) {
+    // A booking field with no explicitly configured workflow still gets
+    // routed for approval — the form owner should always get a chance to
+    // confirm/decline a meeting request, not just when they remembered to
+    // set up a workflow by hand. Single step, resolves to the tenant
+    // owner (authRole "admin") via the same role-based approver mechanism
+    // as an explicit workflow — the whole approve/reject UI (My Approvals,
+    // response detail panel) already works for any response with a
+    // .workflow snapshot, no frontend changes needed for this to show up.
+    response.workflow = autoAdvance(
+      buildSnapshot({
+        steps: [{ id: "confirm-booking", name: "Confirm Booking", mode: "all", approvers: [{ type: "role", value: "admin" }] }],
+      })
+    );
   }
   await rawResponses.insert(response);
   res.status(201).json(decryptResponse(response));
@@ -311,6 +394,42 @@ router.get("/:id/responses/:responseId/workflow", async (req, res) => {
   const tenantAccounts = await tenantAccountsFor(req);
   res.json({ ...response.workflow, currentApproverIds: currentApprovers(response.workflow, tenantAccounts) });
 });
+
+// Best-effort confirmation email to whoever submitted the response, once
+// the workflow reaches a final "approved" state — looks for the first
+// email-type field's answer (there's no login/session tied to a public
+// form submission, so that's the only address we have). Never throws:
+// a missing email field or a transient SMTP failure shouldn't turn an
+// otherwise-successful approval into a 500 for the approving admin.
+async function notifyApprovalIfEmailAvailable(form, response) {
+  try {
+    const emailField = form.fields.find((f) => f.type === "email");
+    if (!emailField) return;
+    const { answers } = decryptResponse(response);
+    const to = answers?.[emailField.id];
+    if (!to || typeof to !== "string") return;
+
+    const bookingField = form.fields.find((f) => f.type === "booking");
+    const bookingTime = bookingField ? answers?.[bookingField.id] : null;
+    const subject = bookingField ? `Your appointment for "${form.name}" is confirmed` : `Your submission for "${form.name}" was approved`;
+    const bodyHtml = bookingField
+      ? `<p>Good news — your appointment request for <strong>${form.name}</strong> has been approved${
+          bookingTime ? ` for <strong>${new Date(bookingTime).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</strong>` : ""
+        }.</p>`
+      : `<p>Good news — your submission for <strong>${form.name}</strong> has been approved.</p>`;
+    await emailClient.sendMail({
+      to,
+      subject,
+      html: emailLayout({
+        preheader: subject,
+        heading: bookingField ? "Appointment confirmed ✅" : "Submission approved ✅",
+        bodyHtml,
+      }),
+    });
+  } catch {
+    // Notification is a nice-to-have — the approval itself already succeeded.
+  }
+}
 
 router.post("/:id/responses/:responseId/workflow/decide", async (req, res) => {
   const response = await responsesFor(req).find(req.params.responseId);
@@ -326,6 +445,12 @@ router.post("/:id/responses/:responseId/workflow/decide", async (req, res) => {
     return res.status(403).json({ error: err.message });
   }
   await responsesFor(req).update(req.params.responseId, { workflow });
+
+  if (workflow.status === "approved") {
+    const form = await formsFor(req).find(req.params.id);
+    if (form) await notifyApprovalIfEmailAvailable(form, response);
+  }
+
   res.json({ ...workflow, currentApproverIds: currentApprovers(workflow, tenantAccounts) });
 });
 
@@ -349,7 +474,11 @@ function responseRows(form, formResponses) {
   return formResponses.map((r) => {
     const row = { "Submitted At": dayjs(r.submittedAt).format("YYYY-MM-DD HH:mm") };
     form.fields.forEach((f) => {
-      row[f.label] = sanitizeCsvCell(r.answers?.[f.id] ?? "");
+      const answer = r.answers?.[f.id];
+      // File answers are a { name, type, dataUrl } object — export just the
+      // filename, not the (potentially megabytes-long) base64 payload.
+      const cell = f.type === "file" && answer?.name ? answer.name : answer;
+      row[f.label] = sanitizeCsvCell(cell ?? "");
     });
     return row;
   });

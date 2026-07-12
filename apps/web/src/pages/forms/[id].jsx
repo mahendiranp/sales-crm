@@ -47,6 +47,7 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     if (!id || !router.isReady) return;
@@ -79,12 +80,18 @@ export default function PublicFormPage() {
       setErrors(nextErrors);
       return;
     }
+    setSubmitError("");
     setSubmitting(true);
-    if (!isPreview) {
-      await api.post(`/forms/${id}/responses`, { answers });
+    try {
+      if (!isPreview) {
+        await api.post(`/forms/${id}/responses`, { answers });
+      }
+      setSubmitted(true);
+    } catch (err) {
+      setSubmitError(err.response?.data?.error || "Couldn't submit this form — please try again.");
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
-    setSubmitted(true);
   };
 
   if (error) {
@@ -180,7 +187,7 @@ export default function PublicFormPage() {
               <label className="block text-sm font-medium mb-1.5">
                 {f.label} {f.required && <span className="text-danger">*</span>}
               </label>
-              <FormFieldInput field={f} value={answers[f.id]} onChange={(v) => setAnswer(f.id, v)} invalid={!!errors[f.id]} accentColor={accentColor} />
+              <FormFieldInput field={f} value={answers[f.id]} onChange={(v) => setAnswer(f.id, v)} invalid={!!errors[f.id]} accentColor={accentColor} formId={id} />
               {errors[f.id] ? (
                 <p className="text-xs text-danger mt-1">{errors[f.id]}</p>
               ) : (
@@ -188,6 +195,8 @@ export default function PublicFormPage() {
               )}
             </div>
           ))}
+
+          {submitError && <p className="text-sm text-danger">{submitError}</p>}
 
           <button
             type="submit"

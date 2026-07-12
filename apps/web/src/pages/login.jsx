@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { Target, ShieldCheck, UserCog, Eye, ArrowRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Field, inputCls, Button } from "../components/ui";
+import { APP_NAME } from "../lib/brand";
 
 // Demo passwords come from env (must be NEXT_PUBLIC_ to reach the client
 // bundle) so they're never hardcoded in source and stay in sync with the
@@ -85,7 +86,7 @@ export default function Login() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Target size={17} className="text-white" />
           </div>
-          <span className="font-display font-bold text-lg">Pipeline</span>
+          <span className="font-display font-bold text-lg">{APP_NAME}</span>
         </Link>
 
         <div className="bg-white border border-border rounded-card shadow-card p-6">

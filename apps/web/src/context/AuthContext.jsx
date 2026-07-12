@@ -42,8 +42,16 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  const signup = async (payload) => {
-    const { data } = await api.post("/auth/signup", payload);
+  // Two-step now — see auth.js: requestSignupOtp emails a 6-digit code
+  // without creating anything yet, verifySignupOtp checks it and actually
+  // creates the account (persisting the session exactly like signup used to).
+  const requestSignupOtp = async (payload) => {
+    const { data } = await api.post("/auth/signup/request-otp", payload);
+    return data;
+  };
+
+  const verifySignupOtp = async (email, otp) => {
+    const { data } = await api.post("/auth/signup/verify-otp", { email, otp });
     persist(data.user, data.token);
     return data.user;
   };
@@ -63,7 +71,9 @@ export function AuthProvider({ children }) {
   const isOwner = user ? user.isMasterAdmin || user.authRole === "admin" : false;
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, demoLogin, signup, logout, canManage, canDelete, isMasterAdmin, isOwner }}>
+    <AuthContext.Provider
+      value={{ user, ready, login, demoLogin, requestSignupOtp, verifySignupOtp, logout, canManage, canDelete, isMasterAdmin, isOwner }}
+    >
       {children}
     </AuthContext.Provider>
   );

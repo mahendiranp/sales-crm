@@ -103,6 +103,8 @@ app.use("/api", apiLimiter);
 // and the WhatsApp webhook, which Meta calls directly with no session).
 const PUBLIC_ROUTES = [
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/public$/ },
+  { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-dates$/ },
+  { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-slots$/ },
   { method: "POST", pattern: /^\/api\/forms\/[^/]+\/responses$/ },
   { method: "GET", pattern: /^\/api\/whatsapp-surveys\/webhook$/ },
   { method: "POST", pattern: /^\/api\/whatsapp-surveys\/webhook$/ },

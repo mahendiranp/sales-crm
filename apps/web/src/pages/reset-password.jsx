@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { Target, CheckCircle2 } from "lucide-react";
 import api from "../api/client";
 import { Field, inputCls, Button } from "../components/ui";
+import { APP_NAME } from "../lib/brand";
 
 export default function ResetPassword() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function ResetPassword() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Target size={17} className="text-white" />
           </div>
-          <span className="font-display font-bold text-lg">Pipeline</span>
+          <span className="font-display font-bold text-lg">{APP_NAME}</span>
         </Link>
 
         <div className="bg-white border border-border rounded-card shadow-card p-6">

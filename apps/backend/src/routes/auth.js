@@ -6,13 +6,18 @@ const { collection } = require("../db/store");
 const { signToken, requireAuth, requireFullAccess, effectivePermission } = require("../middleware/auth");
 const { defaults: settingsDefaults, getLimitsForAccount } = require("./settings");
 const emailClient = require("../integrations/emailClient");
+const { APP_NAME } = require("../utils/brand");
+const { emailLayout } = require("../utils/emailTemplate");
 
 const router = express.Router();
 const accounts = collection("accounts");
 const settings = collection("settings");
+const signupOtps = collection("signup_otps");
 
 const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const OTP_MAX_ATTEMPTS = 5;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 function hashToken(token) {
@@ -27,23 +32,16 @@ function publicAccount(acc) {
   return { ...rest, permission: effectivePermission(acc) };
 }
 
-router.post("/signup", async (req, res) => {
-  const { name, email, password, company, apps, modules } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "Name, email, and password are required." });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "Password must be at least 8 characters." });
-  }
-  const existing = (await accounts.all()).find((a) => a.email.toLowerCase() === email.toLowerCase());
-  if (existing) {
-    return res.status(409).json({ error: "An account with this email already exists." });
-  }
+// Actually creates the account + initial settings once an OTP has been
+// verified — shared by /signup/verify-otp below. Not exposed directly:
+// nothing creates an account without going through the OTP step first.
+async function createAccountFromPending(pending) {
+  const { name, email, passwordHash, company, apps, modules } = pending.payload;
   const account = {
     id: uuid(),
     name,
     email,
-    password: await bcrypt.hash(password, BCRYPT_ROUNDS),
+    password: passwordHash,
     company: company || "",
     // Signup always creates the owner/admin of a new company account. Role
     // is never taken from the client — additional users (managers,
@@ -70,6 +68,116 @@ router.post("/signup", async (req, res) => {
   }
   await settings.insert(initialSettings);
 
+  // Best-effort — a slow/misconfigured mail server shouldn't block account
+  // creation. Mocked (console-logged) locally the same as every other
+  // transactional email when SMTP isn't configured.
+  emailClient
+    .sendMail({
+      to: account.email,
+      subject: `Welcome to ${APP_NAME}`,
+      html: emailLayout({
+        preheader: "Your account is ready to go.",
+        heading: `Welcome, ${account.name.split(" ")[0]} 👋`,
+        bodyHtml: `<p>Your ${APP_NAME} account is ready. Log in whenever you like to start building forms and managing your pipeline.</p>`,
+        cta: { label: "Log in", url: `${FRONTEND_URL}/login` },
+      }),
+    })
+    .catch(() => {});
+
+  return account;
+}
+
+// ---------------- SIGNUP (email OTP verification) ----------------
+// Two-step: request-otp validates the details, emails a 6-digit code, and
+// stashes the (already-hashed) payload — nothing is written to `accounts`
+// yet. verify-otp checks the code and only then actually creates the
+// account. This confirms the signup email is real/reachable before it
+// becomes the tenant owner's login.
+router.post("/signup/request-otp", async (req, res) => {
+  const { name, email, password, company, apps, modules } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: "Name, email, and password are required." });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters." });
+  }
+  const normalizedEmail = email.toLowerCase();
+  const existing = (await accounts.all()).find((a) => a.email.toLowerCase() === normalizedEmail);
+  if (existing) {
+    return res.status(409).json({ error: "An account with this email already exists." });
+  }
+
+  const otp = String(crypto.randomInt(100000, 1000000)); // 6 digits
+  const pending = {
+    id: normalizedEmail,
+    email: normalizedEmail,
+    otpHash: hashToken(otp),
+    expiresAt: new Date(Date.now() + OTP_TTL_MS).toISOString(),
+    attempts: 0,
+    payload: {
+      name,
+      email,
+      passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+      company: company || "",
+      apps: apps && typeof apps === "object" ? apps : {},
+      modules: modules && typeof modules === "object" ? modules : {},
+    },
+  };
+  // Re-requesting (e.g. "resend code") replaces any earlier pending OTP for
+  // this email rather than stacking them.
+  const existingPending = await signupOtps.find(normalizedEmail);
+  if (existingPending) await signupOtps.update(normalizedEmail, pending);
+  else await signupOtps.insert(pending);
+
+  const mailResult = await emailClient.sendMail({
+    to: email,
+    subject: `Your ${APP_NAME} verification code`,
+    html: emailLayout({
+      preheader: `Your verification code is ${otp}`,
+      heading: "Verify your email",
+      bodyHtml: `<p>Hi ${name},</p><p>Enter this code to finish creating your ${APP_NAME} account. It expires in 10 minutes.</p>`,
+      highlight: otp,
+    }),
+  });
+
+  // Dev convenience only, mirroring /forgot-password: with no real SMTP
+  // configured there's no other way to see the code locally.
+  if (mailResult.mocked && process.env.NODE_ENV !== "production") {
+    return res.json({ message: "Verification code sent.", devOtp: otp });
+  }
+  res.json({ message: "Verification code sent." });
+});
+
+router.post("/signup/verify-otp", async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) return res.status(400).json({ error: "Email and code are required." });
+  const normalizedEmail = email.toLowerCase();
+
+  const pending = await signupOtps.find(normalizedEmail);
+  if (!pending) return res.status(400).json({ error: "No pending signup for that email — start over." });
+
+  if (new Date(pending.expiresAt) < new Date()) {
+    await signupOtps.remove(normalizedEmail);
+    return res.status(400).json({ error: "This code has expired — request a new one." });
+  }
+  if (pending.attempts >= OTP_MAX_ATTEMPTS) {
+    await signupOtps.remove(normalizedEmail);
+    return res.status(429).json({ error: "Too many incorrect attempts — request a new code." });
+  }
+  if (hashToken(String(otp)) !== pending.otpHash) {
+    await signupOtps.update(normalizedEmail, { attempts: pending.attempts + 1 });
+    return res.status(400).json({ error: "Incorrect code — please try again." });
+  }
+
+  // Someone else could've claimed this email while the code was pending.
+  const existing = (await accounts.all()).find((a) => a.email.toLowerCase() === normalizedEmail);
+  if (existing) {
+    await signupOtps.remove(normalizedEmail);
+    return res.status(409).json({ error: "An account with this email already exists." });
+  }
+
+  const account = await createAccountFromPending(pending);
+  await signupOtps.remove(normalizedEmail);
   res.status(201).json({ user: publicAccount(account), token: signToken(account) });
 });
 
@@ -117,7 +225,12 @@ router.post("/forgot-password", async (req, res) => {
   const mailResult = await emailClient.sendMail({
     to: account.email,
     subject: "Reset your password",
-    html: `<p>Hi ${account.name},</p><p>Click below to reset your password. This link expires in 30 minutes.</p><p><a href="${resetLink}">${resetLink}</a></p><p>If you didn't request this, you can ignore this email.</p>`,
+    html: emailLayout({
+      preheader: "Reset your password — this link expires in 30 minutes.",
+      heading: "Reset your password",
+      bodyHtml: `<p>Hi ${account.name},</p><p>Click below to choose a new password. This link expires in 30 minutes. If you didn't request this, you can safely ignore this email.</p>`,
+      cta: { label: "Reset password", url: resetLink },
+    }),
   });
 
   // Dev convenience only: with no real SMTP configured, there's no other
@@ -156,6 +269,22 @@ router.post("/reset-password", async (req, res) => {
     resetTokenHash: null,
     resetTokenExpiresAt: null,
   });
+
+  // Confirms the change actually happened, and doubles as an alert if the
+  // account holder didn't do this themselves. Best-effort, same as every
+  // other transactional email here.
+  emailClient
+    .sendMail({
+      to: account.email,
+      subject: "Your password was changed",
+      html: emailLayout({
+        preheader: "Your password was just changed.",
+        heading: "Password changed",
+        bodyHtml: `<p>Hi ${account.name},</p><p>Your ${APP_NAME} password was just changed. If this wasn't you, reset your password again immediately or contact support.</p>`,
+      }),
+    })
+    .catch(() => {});
+
   res.json({ message: "Password updated — you can log in now." });
 });
 
