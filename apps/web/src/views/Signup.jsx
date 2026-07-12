@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Target, ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import api from "../api/client";
 import { Field, inputCls, Button } from "../components/ui";
 import FeaturePicker from "../components/FeaturePicker";
 import CoreModulePicker from "../components/CoreModulePicker";
@@ -21,6 +22,7 @@ export default function Signup() {
   const [selectedApps, setSelectedApps] = useState(recommendedAppsMap);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const [otp, setOtp] = useState("");
   const [otpError, setOtpError] = useState("");
   const [devOtp, setDevOtp] = useState("");
@@ -30,9 +32,22 @@ export default function Signup() {
   const toggleModule = (key) => setSelectedModules((s) => ({ ...s, [key]: !s[key] }));
   const toggleApp = (key) => setSelectedApps((s) => ({ ...s, [key]: !s[key] }));
 
-  const continueToStep2 = (e) => {
+  const continueToStep2 = async (e) => {
     e.preventDefault();
-    setStep(2);
+    setError("");
+    setCheckingEmail(true);
+    try {
+      const { data } = await api.get("/auth/check-email", { params: { email: form.email } });
+      if (!data.available) {
+        setError("An account with this email already exists. Try logging in instead.");
+        return;
+      }
+      setStep(2);
+    } catch {
+      setError("Couldn't verify that email right now — please try again.");
+    } finally {
+      setCheckingEmail(false);
+    }
   };
 
   const requestCode = async (e) => {
@@ -115,7 +130,13 @@ export default function Signup() {
                   <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                 </Field>
                 <Field label="Work Email">
-                  <input className={inputCls} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                  <input
+                    className={inputCls}
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => { setForm({ ...form, email: e.target.value }); setError(""); }}
+                    required
+                  />
                 </Field>
                 <Field label="Company">
                   <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
@@ -123,8 +144,9 @@ export default function Signup() {
                 <Field label="Password">
                   <input className={inputCls} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
                 </Field>
-                <Button type="submit" className="w-full justify-center">
-                  Continue
+                {error && <p className="text-sm text-danger mb-3">{error}</p>}
+                <Button type="submit" className="w-full justify-center" disabled={checkingEmail}>
+                  {checkingEmail ? "Checking…" : "Continue"}
                 </Button>
               </form>
             </>
