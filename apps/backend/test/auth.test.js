@@ -19,16 +19,22 @@ const { MongoMemoryServer } = require("mongodb-memory-server");
 // required, since store.js reads process.env.MONGODB_URI at module load.
 let mongod;
 let app;
-let connectDB;
 let closeDB;
 let collection;
 
 const ready = (async () => {
   mongod = await MongoMemoryServer.create();
   process.env.MONGODB_URI = mongod.getUri("sales_crm_test");
+  // Requiring app.js triggers its own ensureConnected() middleware on the
+  // first request, which shares this same cached connection — using
+  // connectDB() directly here would open a second, separate MongoClient
+  // that closeDB() (which only tracks the most recently opened one) would
+  // never close, leaving the process hanging after tests finish.
+  const { ensureConnected, closeDB: close, collection: col } = require("../src/db/store");
+  closeDB = close;
+  collection = col;
   app = require("../src/app");
-  ({ connectDB, closeDB, collection } = require("../src/db/store"));
-  await connectDB();
+  await ensureConnected();
 })();
 
 const cleanupEmails = [];

@@ -21,7 +21,7 @@ async function main() {
   await ensureMongoUri();
   // Required after MONGODB_URI is set, since db/store.js reads it at module load.
   const app = require("./app");
-  const { connectDB, setIO } = require("./db/store");
+  const { ensureConnected, setIO } = require("./db/store");
   const { seed } = require("./db/seed");
   const { verifyToken } = require("./middleware/auth");
 
@@ -41,7 +41,7 @@ async function main() {
   });
   setIO(io);
 
-  await connectDB();
+  await ensureConnected();
   await seed(); // seeds demo data on first run (no-op once collections are populated)
   httpServer.listen(PORT, () => {
     console.log(`🚀 Sales CRM API running at http://localhost:${PORT}`);
