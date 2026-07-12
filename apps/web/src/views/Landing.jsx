@@ -17,14 +17,17 @@ const FEATURES = [
 
 const PLANS = [
   {
+    key: "starter",
     name: "Starter",
     price: "₹0",
     period: "forever",
     tagline: "For getting your first form live and collecting responses.",
     features: ["Up to 3 forms", "Unlimited responses", "CSV/Excel export", "1 user"],
     cta: "Start free",
+    href: "/signup",
   },
   {
+    key: "growth",
     name: "Growth",
     price: "₹999",
     period: "/user/month",
@@ -32,14 +35,19 @@ const PLANS = [
     features: ["Unlimited forms", "Approval workflows", "WhatsApp survey bot", "AI form-building assistant", "Up to 20 users"],
     cta: "Start free trial",
     highlighted: true,
+    // Signup collects payment for this plan right after email verification
+    // (see Signup.jsx) — Enterprise below stays sales-assisted, not self-serve.
+    href: "/signup?plan=growth",
   },
   {
+    key: "enterprise",
     name: "Enterprise",
     price: "Custom",
     period: "",
     tagline: "For larger orgs that need admin controls and dedicated support.",
     features: ["Everything in Growth", "Role-based permissions", "Priority support", "Custom integrations"],
     cta: "Talk to sales",
+    href: "mailto:info@floworaone.com?subject=Enterprise%20plan%20inquiry",
   },
 ];
 
@@ -213,7 +221,7 @@ export default function Landing() {
                 ))}
               </ul>
               <Link
-                href="/signup"
+                href={p.href}
                 className={`block text-center py-2.5 rounded-lg text-sm font-medium ${
                   p.highlighted ? "bg-primary text-white hover:bg-primary-dark" : "border border-border hover:bg-base"
                 }`}
