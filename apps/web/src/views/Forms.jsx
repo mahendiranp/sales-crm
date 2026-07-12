@@ -900,7 +900,7 @@ function AddTeammateModal({ open, onClose, onCreated }) {
 // are role-based (resolved against the tenant's current team each time)
 // or a specific teammate; steps run in order, each step can require every
 // assigned approver ("all") or just the first one ("any").
-function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate, atUserLimit, planLabel }) {
+function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate }) {
   const update = (patch) => onChange({ ...step, ...patch });
   const approver = step.approvers[0] || { type: "role", value: "manager" };
   const updateApprover = (patch) => update({ approvers: [{ ...approver, ...patch }] });
@@ -937,9 +937,7 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate
         ) : teammates.length === 0 ? (
           <Field label="Team member">
             <p className="text-xs text-ink/40 mb-1.5">No team members yet.</p>
-            <span title={atUserLimit ? `Your plan (${planLabel}) doesn't allow adding teammates. Upgrade to add more.` : undefined}>
-              <Button variant="secondary" onClick={onAddTeammate} disabled={atUserLimit}><Plus size={13} /> Add Team Member</Button>
-            </span>
+            <Button variant="secondary" onClick={onAddTeammate}><Plus size={13} /> Add Team Member</Button>
           </Field>
         ) : (
           <Field label="Team member">
@@ -947,13 +945,7 @@ function WorkflowStepEditor({ step, onChange, onDelete, teammates, onAddTeammate
               <option value="">Select…</option>
               {teammates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.email})</option>)}
             </select>
-            <button
-              type="button"
-              onClick={onAddTeammate}
-              disabled={atUserLimit}
-              title={atUserLimit ? `Your plan (${planLabel}) allows up to that many teammates already. Upgrade to add more.` : undefined}
-              className={`text-xs mt-1 ${atUserLimit ? "text-ink/30 cursor-not-allowed" : "text-primary hover:underline"}`}
-            >
+            <button type="button" onClick={onAddTeammate} className="text-xs mt-1 text-primary hover:underline">
               + Add another team member
             </button>
           </Field>
@@ -990,8 +982,17 @@ function WorkflowEditor({ form, onSave, planLimits }) {
   // manual account-id field in that case instead of an empty dropdown.
   const [teammates, setTeammates] = useState(null);
   const [addTeammateOpen, setAddTeammateOpen] = useState(false);
+  const [limitError, setLimitError] = useState("");
   // +1 for the owner — teammates only ever holds the OTHER members.
   const atUserLimit = planLimits && teammates && teammates.length + 1 >= planLimits.maxUsers;
+
+  const openAddTeammate = () => {
+    if (atUserLimit) {
+      setLimitError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxUsers} user${planLimits.maxUsers === 1 ? "" : "s"}. Upgrade to add more.`);
+    } else {
+      setAddTeammateOpen(true);
+    }
+  };
 
   useEffect(() => {
     setEnabled(!!form.workflow?.enabled);
@@ -1046,9 +1047,7 @@ function WorkflowEditor({ form, onSave, planLimits }) {
                       onChange={(u) => updateStep(s.id, u)}
                       onDelete={() => removeStep(s.id)}
                       teammates={teammates}
-                      onAddTeammate={() => setAddTeammateOpen(true)}
-                      atUserLimit={atUserLimit}
-                      planLabel={planLimits?.label}
+                      onAddTeammate={openAddTeammate}
                     />
                   </div>
                 </div>
@@ -1068,6 +1067,7 @@ function WorkflowEditor({ form, onSave, planLimits }) {
         onClose={() => setAddTeammateOpen(false)}
         onCreated={() => { setAddTeammateOpen(false); loadTeammates(); }}
       />
+      <ErrorModal open={!!limitError} message={limitError} onClose={() => setLimitError("")} />
     </div>
   );
 }
@@ -1405,9 +1405,17 @@ export default function Forms() {
               <ClipboardCheck size={15} /> My Approvals{approvalsCount > 0 ? ` (${approvalsCount})` : ""}
             </Button>
             {canManage && (
-              <span title={atFormLimit ? `Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.` : undefined}>
-                <Button onClick={() => setModal(true)} disabled={atFormLimit}><Plus size={15} /> New Form</Button>
-              </span>
+              <Button
+                onClick={() => {
+                  if (atFormLimit) {
+                    setSaveError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.`);
+                  } else {
+                    setModal(true);
+                  }
+                }}
+              >
+                <Plus size={15} /> New Form
+              </Button>
             )}
           </div>
         }

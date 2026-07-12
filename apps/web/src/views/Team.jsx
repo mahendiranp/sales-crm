@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, Eye, Pencil, ShieldCheck, Users as UsersIcon } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
+import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState, ErrorModal } from "../components/ui";
 import { formatDate } from "../lib/format";
 import { limitsFor } from "../lib/plans";
 
@@ -23,6 +23,7 @@ export default function Team() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [planLimits, setPlanLimits] = useState(null);
+  const [limitError, setLimitError] = useState("");
 
   const load = () => api.get("/auth/team").then((r) => { setTeam(r.data); setLoading(false); }).catch(() => setLoading(false));
   useEffect(() => {
@@ -82,9 +83,17 @@ export default function Team() {
         title="Team"
         subtitle="Create logins for your teammates and control exactly what each one can do."
         action={
-          <span title={atUserLimit ? `Your plan (${planLimits.label}) allows up to ${planLimits.maxUsers} user${planLimits.maxUsers === 1 ? "" : "s"}. Upgrade to add more.` : undefined}>
-            <Button onClick={() => setModal(true)} disabled={atUserLimit}><Plus size={15} /> Add Teammate</Button>
-          </span>
+          <Button
+            onClick={() => {
+              if (atUserLimit) {
+                setLimitError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxUsers} user${planLimits.maxUsers === 1 ? "" : "s"}. Upgrade to add more.`);
+              } else {
+                setModal(true);
+              }
+            }}
+          >
+            <Plus size={15} /> Add Teammate
+          </Button>
         }
       />
 
@@ -167,6 +176,8 @@ export default function Team() {
           <Button onClick={createTeammate} disabled={saving}>{saving ? "Creating…" : "Create Login"}</Button>
         </div>
       </Modal>
+
+      <ErrorModal open={!!limitError} message={limitError} onClose={() => setLimitError("")} />
     </div>
   );
 }
