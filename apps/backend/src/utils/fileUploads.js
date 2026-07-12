@@ -58,9 +58,13 @@ function matchesMagicBytes(buffer, mime) {
   return signatures.some((sig) => sig.every((byte, i) => buffer[i] === byte));
 }
 
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
+
 // Validates one { name, type, dataUrl } file answer. Returns an error
-// string, or null if it passes every check.
-function validateFileAnswer(fieldLabel, answer) {
+// string, or null if it passes every check. `allowedExtensions` narrows
+// the allowlist for contexts that only want a subset (e.g. images for a
+// feedback-ticket attachment) — defaults to every type forms support.
+function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(ALLOWED_EXTENSIONS)) {
   if (!answer || typeof answer !== "object" || !answer.dataUrl) return null; // not a file answer — nothing to check
   const { name = "", type = "", dataUrl } = answer;
 
@@ -69,9 +73,9 @@ function validateFileAnswer(fieldLabel, answer) {
   const [, declaredMime, base64] = match;
 
   const ext = extensionOf(name);
-  const allowedMimes = ALLOWED_EXTENSIONS[ext];
+  const allowedMimes = allowedExtensions.includes(ext) ? ALLOWED_EXTENSIONS[ext] : null;
   if (!allowedMimes) {
-    return `"${fieldLabel}": file type ".${ext || "unknown"}" isn't allowed. Allowed: ${Object.keys(ALLOWED_EXTENSIONS).join(", ")}.`;
+    return `"${fieldLabel}": file type ".${ext || "unknown"}" isn't allowed. Allowed: ${allowedExtensions.join(", ")}.`;
   }
   if (!allowedMimes.includes(declaredMime) && !allowedMimes.includes(type)) {
     return `"${fieldLabel}": file content doesn't match its extension.`;
@@ -88,4 +92,9 @@ function validateFileAnswer(fieldLabel, answer) {
   return null;
 }
 
-module.exports = { validateFileAnswer, MAX_FILE_BYTES, ALLOWED_EXTENSIONS };
+// Convenience wrapper for image-only contexts (feedback ticket attachments).
+function validateImageAnswer(fieldLabel, answer) {
+  return validateFileAnswer(fieldLabel, answer, IMAGE_EXTENSIONS);
+}
+
+module.exports = { validateFileAnswer, validateImageAnswer, MAX_FILE_BYTES, ALLOWED_EXTENSIONS, IMAGE_EXTENSIONS };
