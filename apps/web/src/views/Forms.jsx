@@ -1362,6 +1362,8 @@ export default function Forms() {
     try {
       await api.post(`/forms/${form.id}/duplicate`);
       load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't duplicate that form.");
     } finally {
       setActionBusy(false);
     }
@@ -1375,6 +1377,8 @@ export default function Forms() {
       setActive(null);
       setDeleteTarget(null);
       load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't delete that form.");
     } finally {
       setActionBusy(false);
     }
@@ -1386,6 +1390,8 @@ export default function Forms() {
       const endpoint = form.status === "Published" ? "unpublish" : "publish";
       await api.put(`/forms/${form.id}/${endpoint}`);
       load();
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't update that form's publish status.");
     } finally {
       setActionBusy(false);
     }
