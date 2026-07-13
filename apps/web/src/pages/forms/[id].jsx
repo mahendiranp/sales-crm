@@ -5,6 +5,7 @@ import { CheckCircle2, FormInput, Eye, X } from "lucide-react";
 import api from "../../api/client";
 import FormFieldInput from "../../components/FormFieldInput";
 import Seo from "../../components/Seo";
+import { WIDE_FIELD_TYPES, LAYOUT_GRID_COLS_CLASS } from "../../lib/formLayout";
 
 function validateField(field, value) {
   const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
@@ -127,6 +128,11 @@ export default function PublicFormPage() {
   const pageClass = pageStyle ? "relative" : "bg-base relative";
   const overlayOpacity = hasBackgroundImage ? (branding.backgroundImageOverlay || 0) / 100 : 0;
   const accentColor = branding.accentColor || "";
+  const layoutColumns = form.settings?.layoutColumns || 1;
+  // Wider card for a multi-column layout — the default max-w-xl is sized
+  // for a single vertical stack of fields and would cram 2-3 side-by-side
+  // fields into too little space otherwise.
+  const cardWidthClass = layoutColumns === 3 ? "max-w-4xl" : layoutColumns === 2 ? "max-w-2xl" : "max-w-xl";
 
   const Overlay = overlayOpacity > 0 && (
     <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0,0,0,${overlayOpacity})` }} />
@@ -179,14 +185,14 @@ export default function PublicFormPage() {
       {PreviewBanner}
       <div className={`min-h-screen p-4 flex justify-center ${pageClass}`} style={pageStyle}>
       {Overlay}
-      <div className="relative z-10 bg-white border border-border rounded-card shadow-card p-6 sm:p-8 max-w-xl w-full h-fit my-8">
+      <div className={`relative z-10 bg-white border border-border rounded-card shadow-card p-6 sm:p-8 ${cardWidthClass} w-full h-fit my-8`}>
         <Logo />
         <h1 className="font-display font-bold text-2xl mb-1">{form.name}</h1>
         {form.description && <p className="text-sm text-ink/50 mb-6">{form.description}</p>}
 
-        <form onSubmit={submit} noValidate className="space-y-5">
+        <form onSubmit={submit} noValidate className={`grid grid-cols-1 ${LAYOUT_GRID_COLS_CLASS[layoutColumns]} gap-x-4 gap-y-5`}>
           {form.fields.map((f) => (
-            <div key={f.id}>
+            <div key={f.id} className={WIDE_FIELD_TYPES.includes(f.type) ? "sm:col-span-full" : ""}>
               <label className="block text-sm font-medium mb-1.5">
                 {f.label} {f.required && <span className="text-danger">*</span>}
               </label>
@@ -199,13 +205,13 @@ export default function PublicFormPage() {
             </div>
           ))}
 
-          {submitError && <p className="text-sm text-danger">{submitError}</p>}
+          {submitError && <p className="text-sm text-danger sm:col-span-full">{submitError}</p>}
 
           <button
             type="submit"
             disabled={submitting}
             style={accentColor ? { backgroundColor: accentColor } : undefined}
-            className="w-full bg-primary text-white rounded-lg py-2.5 text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
+            className="w-full bg-primary text-white rounded-lg py-2.5 text-sm font-medium hover:bg-primary-dark disabled:opacity-50 sm:col-span-full"
           >
             {submitting ? "Submitting…" : form.settings?.submitButtonText || "Submit"}
           </button>
