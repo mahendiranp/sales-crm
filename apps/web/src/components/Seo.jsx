@@ -1,7 +1,7 @@
 import Head from "next/head";
 import { APP_NAME } from "../lib/brand";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://sales-crm-web-sigma.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://floworaone.com";
 
 // One shared way to set per-page <title>/description/robots/Open-Graph tags
 // instead of every page hand-rolling its own <Head>, so the title format

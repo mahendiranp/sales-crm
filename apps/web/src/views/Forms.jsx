@@ -14,6 +14,7 @@ import WhatsAppSurveyPanel from "./WhatsAppSurveyPanel";
 import FormFieldInput from "../components/FormFieldInput";
 import { FORM_THEMES } from "../lib/formThemes";
 import { limitsFor } from "../lib/plans";
+import { WIDE_FIELD_TYPES, LAYOUT_GRID_COLS_CLASS } from "../lib/formLayout";
 
 const FIELD_TYPES = [
   { type: "text", label: "Short Text" },
@@ -332,35 +333,35 @@ function BookingConfigEditor({ config, onChange }) {
   );
 }
 
-function FieldEditor({ field, onChange, onDelete }) {
+// The field-editing controls, shared by both the old inline-in-canvas
+// layout and the FieldPropertiesPanel (right-side dedicated panel) —
+// `bare` skips the outer card chrome since FieldPropertiesPanel supplies
+// its own.
+function FieldEditor({ field, onChange, onDelete, bare }) {
   const update = (patch) => onChange({ ...field, ...patch });
   // Placeholder/Default Value don't mean anything for a booking field
   // (there's no text box to place text in, and no sensible "default"
   // meeting time) — hiding them instead of leaving irrelevant, empty-
   // looking inputs in the editor.
   const isBooking = field.type === "booking";
-  return (
-    <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">
-      <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Label">
-          <input className={inputCls} value={field.label} onChange={(e) => update({ label: e.target.value })} />
+  const body = (
+    <>
+      <Field label="Label">
+        <input className={inputCls} value={field.label} onChange={(e) => update({ label: e.target.value })} />
+      </Field>
+      {!isBooking && (
+        <Field label="Placeholder">
+          <input className={inputCls} value={field.placeholder || ""} onChange={(e) => update({ placeholder: e.target.value })} />
         </Field>
-        {!isBooking && (
-          <Field label="Placeholder">
-            <input className={inputCls} value={field.placeholder || ""} onChange={(e) => update({ placeholder: e.target.value })} />
-          </Field>
-        )}
-      </div>
-      <div className={isBooking ? "" : "grid grid-cols-2 gap-2.5"}>
-        {!isBooking && (
-          <Field label="Default Value">
-            <input className={inputCls} value={field.defaultValue || ""} onChange={(e) => update({ defaultValue: e.target.value })} />
-          </Field>
-        )}
-        <Field label="Help Text">
-          <input className={inputCls} value={field.helpText || ""} onChange={(e) => update({ helpText: e.target.value })} />
+      )}
+      {!isBooking && (
+        <Field label="Default Value">
+          <input className={inputCls} value={field.defaultValue || ""} onChange={(e) => update({ defaultValue: e.target.value })} />
         </Field>
-      </div>
+      )}
+      <Field label="Help Text">
+        <input className={inputCls} value={field.helpText || ""} onChange={(e) => update({ helpText: e.target.value })} />
+      </Field>
 
       {OPTION_TYPES.includes(field.type) && (
         <Field label="Options (comma-separated)">
@@ -418,14 +419,37 @@ function FieldEditor({ field, onChange, onDelete }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-1">
-        <label className="flex items-center gap-2 text-sm text-ink/70">
-          <input type="checkbox" checked={!!field.required} onChange={(e) => update({ required: e.target.checked })} />
-          Required field
-        </label>
-        <button onClick={onDelete} className="text-danger text-xs font-medium flex items-center gap-1 hover:underline">
-          <Trash2 size={13} /> Remove field
+      <label className="flex items-center gap-2 text-sm text-ink/70 pt-1">
+        <input type="checkbox" checked={!!field.required} onChange={(e) => update({ required: e.target.checked })} />
+        Required field
+      </label>
+      <button onClick={onDelete} className="text-danger text-xs font-medium flex items-center gap-1 hover:underline pt-1">
+        <Trash2 size={13} /> Remove field
+      </button>
+    </>
+  );
+
+  if (bare) return <div className="space-y-2.5">{body}</div>;
+  return <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">{body}</div>;
+}
+
+// Right-side panel for editing the currently-selected canvas field — the
+// field-properties-panel pattern (vs. expanding the editor inline inside
+// the canvas card, which pushed every field below it down the page).
+function FieldPropertiesPanel({ field, onChange, onDelete, onClose }) {
+  return (
+    <div className="border border-border rounded-card bg-white h-fit lg:sticky lg:top-4">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div>
+          <h4 className="font-display font-semibold text-sm">Field Properties</h4>
+          <p className="text-xs text-ink/40 mt-0.5">{fieldTypeLabel(field.type)}</p>
+        </div>
+        <button onClick={onClose} className="text-ink/30 hover:text-ink p-1" title="Close">
+          <XIcon size={16} />
         </button>
+      </div>
+      <div className="p-4">
+        <FieldEditor field={field} onChange={onChange} onDelete={onDelete} bare />
       </div>
     </div>
   );
@@ -770,27 +794,27 @@ function EditableLabel({ field, onChange }) {
 // always visible on touch devices (no hover to reveal them there) and only
 // fade in on hover for pointer devices, so the canvas stays usable on
 // tablets — a plausible device for building a form on.
-function CanvasField({ field, expanded, onToggle, onChange, onDelete, dragHandleProps }) {
+function CanvasField({ field, accentColor, selected, onSelect, onChange, onDelete, dragHandleProps }) {
   return (
-    <div className="group relative border border-border rounded-lg p-3.5 bg-white hover:border-primary/40 transition-colors" {...dragHandleProps}>
+    <div
+      onClick={onSelect}
+      className={`group relative border rounded-lg p-3.5 bg-white transition-colors cursor-pointer ${
+        selected ? "border-primary ring-1 ring-primary/30" : "border-border hover:border-primary/40"
+      }`}
+      {...dragHandleProps}
+    >
       {/* Tablets/touchscreens have no hover, so opacity-0-until-hover would
           make these controls permanently unreachable there — only hide by
           default on devices that can actually hover (fine pointer + hover
           capability), never based on screen width alone. */}
       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
-        <button onClick={onToggle} className="p-1.5 rounded bg-base text-ink/50 hover:text-primary"><Pencil size={13} /></button>
-        <button onClick={onDelete} className="p-1.5 rounded bg-base text-ink/50 hover:text-danger"><Trash2 size={13} /></button>
+        <button onClick={onSelect} className="p-1.5 rounded bg-base text-ink/50 hover:text-primary"><Pencil size={13} /></button>
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1.5 rounded bg-base text-ink/50 hover:text-danger"><Trash2 size={13} /></button>
         <span className="p-1.5 rounded bg-base text-ink/30 cursor-grab"><GripVertical size={13} /></span>
       </div>
       <EditableLabel field={field} onChange={onChange} />
-      <FormFieldInput field={field} value={field.type === "checkbox" ? [] : ""} onChange={() => {}} />
+      <FormFieldInput field={field} value={field.type === "checkbox" ? [] : ""} onChange={() => {}} accentColor={accentColor} />
       {field.helpText && <p className="text-xs text-ink/40 mt-1">{field.helpText}</p>}
-
-      {expanded && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <FieldEditor field={field} onChange={onChange} onDelete={onDelete} />
-        </div>
-      )}
     </div>
   );
 }
@@ -913,7 +937,7 @@ function FormBuilder({ form, onSave, planLimits }) {
   // as allowed so the UI doesn't flash the panel away after first paint.
   const aiAllowed = !planLimits || planLimits.aiAssistant;
   const [fields, setFields] = useState(form.fields || []);
-  const [expandedId, setExpandedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
   const [dirty, setDirty] = useState(false);
   // Closed by default — most sessions never touch it (especially with no
@@ -924,12 +948,14 @@ function FormBuilder({ form, onSave, planLimits }) {
     (form.workflow?.steps?.[0]?.approvers || []).filter((a) => a.type === "user").map((a) => a.value)
   );
   const [branding, setBranding] = useState(form.settings?.branding || {});
+  const [layoutColumns, setLayoutColumns] = useState(form.settings?.layoutColumns || 1);
 
   useEffect(() => {
     setFields(form.fields || []);
     setApprovalEnabled(!!form.workflow?.enabled);
     setApproverIds((form.workflow?.steps?.[0]?.approvers || []).filter((a) => a.type === "user").map((a) => a.value));
     setBranding(form.settings?.branding || {});
+    setLayoutColumns(form.settings?.layoutColumns || 1);
     setDirty(false);
   }, [form.id]);
 
@@ -938,7 +964,7 @@ function FormBuilder({ form, onSave, planLimits }) {
   const addField = (type) => {
     const f = newField(type);
     setFields((prev) => [...prev, f]);
-    setExpandedId(f.id);
+    setSelectedId(f.id);
     markDirty();
   };
   const updateField = (id, updated) => {
@@ -946,6 +972,7 @@ function FormBuilder({ form, onSave, planLimits }) {
     markDirty();
   };
   const removeField = (id) => {
+    if (selectedId === id) setSelectedId(null);
     setFields((f) => f.filter((x) => x.id !== id));
     markDirty();
   };
@@ -981,7 +1008,7 @@ function FormBuilder({ form, onSave, planLimits }) {
     };
     onSave({
       fields,
-      settings: { ...form.settings, branding: cleanBranding },
+      settings: { ...form.settings, branding: cleanBranding, layoutColumns },
       workflow: {
         enabled: approvalEnabled,
         steps: approvalEnabled
@@ -1012,12 +1039,42 @@ function FormBuilder({ form, onSave, planLimits }) {
     markDirty();
   };
 
+  const selectedField = fields.find((f) => f.id === selectedId) || null;
+  const showAiPanel = aiAllowed && aiOpen;
+
+  // Same branding-to-style logic as the public form page (pages/forms/[id].jsx)
+  // — the canvas is a live preview, so it should actually look like what
+  // respondents will see instead of a plain gray box, right as branding
+  // choices are made rather than only after publishing.
+  const hasBackgroundImage = !!branding.backgroundImageDataUrl?.trim();
+  const canvasBgStyle = hasBackgroundImage
+    ? {
+        backgroundImage: `url(${branding.backgroundImageDataUrl})`,
+        backgroundSize: branding.backgroundImageFit === "repeat" ? "auto" : branding.backgroundImageFit || "cover",
+        backgroundRepeat: branding.backgroundImageFit === "repeat" ? "repeat" : "no-repeat",
+        backgroundPosition: branding.backgroundImagePosition || "center",
+      }
+    : branding.backgroundCss
+    ? { background: branding.backgroundCss }
+    : branding.backgroundColor
+    ? { backgroundColor: branding.backgroundColor }
+    : undefined;
+  const canvasOverlayOpacity = hasBackgroundImage ? (branding.backgroundImageOverlay || 0) / 100 : 0;
+  const canvasAccentColor = branding.accentColor || "";
+  const canvasLogoType = branding.logoType || (branding.logoDataUrl ? "image" : "none");
+  // Tailwind's JIT only picks up class names that appear literally in the
+  // source, so this has to be an explicit lookup of full strings rather
+  // than building the arbitrary-value string at runtime.
+  const gridColsClass = selectedField
+    ? showAiPanel
+      ? "lg:grid-cols-[300px_1fr_300px_320px]"
+      : "lg:grid-cols-[300px_1fr_300px]"
+    : showAiPanel
+    ? "lg:grid-cols-[300px_1fr_320px]"
+    : "lg:grid-cols-[300px_1fr]";
+
   return (
-    <div
-      className={`grid grid-cols-1 ${
-        aiOpen && aiAllowed ? "lg:grid-cols-[300px_1fr_320px]" : "lg:grid-cols-[300px_1fr]"
-      } gap-4 items-start`}
-    >
+    <div className={`grid grid-cols-1 ${gridColsClass} gap-4 items-start`}>
       <div className="space-y-4">
         <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} showAI={aiAllowed} />
 
@@ -1037,33 +1094,68 @@ function FormBuilder({ form, onSave, planLimits }) {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h4 className="font-display font-semibold text-sm">Canvas</h4>
-          {aiAllowed && !aiOpen && (
-            <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
-              <Sparkles size={13} /> AI Assistant
-            </button>
-          )}
-        </div>
-
-        <div className="border border-border rounded-card bg-base/30 p-4">
-          {fields.length === 0 ? (
-            <div className="text-sm text-ink/40 border border-dashed border-border rounded-lg p-8 text-center bg-white">
-              No fields yet — add one from the palette on the left{aiAllowed ? ", or ask the AI Assistant" : ""}.
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {fields.map((f, i) => (
-                <div key={f.id} draggable onDragStart={() => setDragIndex(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop(i)}>
-                  <CanvasField
-                    field={f}
-                    expanded={expandedId === f.id}
-                    onToggle={() => setExpandedId(expandedId === f.id ? null : f.id)}
-                    onChange={(updated) => updateField(f.id, updated)}
-                    onDelete={() => removeField(f.id)}
-                  />
-                </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 border border-border rounded-lg p-0.5">
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => { setLayoutColumns(n); markDirty(); }}
+                  title={`${n} column${n === 1 ? "" : "s"}`}
+                  className={`w-7 h-6 rounded text-xs font-medium ${
+                    layoutColumns === n ? "bg-primary text-white" : "text-ink/50 hover:bg-base"
+                  }`}
+                >
+                  {n}
+                </button>
               ))}
             </div>
+            {aiAllowed && !aiOpen && (
+              <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
+                <Sparkles size={13} /> AI Assistant
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="relative border border-border rounded-card bg-base/30 p-4 overflow-hidden" style={canvasBgStyle}>
+          {canvasOverlayOpacity > 0 && (
+            <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0,0,0,${canvasOverlayOpacity})` }} />
           )}
+          <div className="relative">
+            {canvasLogoType === "image" && branding.logoDataUrl && (
+              <img src={branding.logoDataUrl} alt="" className="h-12 mb-3 object-contain" />
+            )}
+            {canvasLogoType === "text" && branding.logoText && (
+              <div className="font-display font-bold text-lg mb-3">{branding.logoText}</div>
+            )}
+            {fields.length === 0 ? (
+              <div className="text-sm text-ink/40 border border-dashed border-border rounded-lg p-8 text-center bg-white">
+                No fields yet — add one from the palette on the left{aiAllowed ? ", or ask the AI Assistant" : ""}.
+              </div>
+            ) : (
+              <div className={`grid grid-cols-1 ${LAYOUT_GRID_COLS_CLASS[layoutColumns]} gap-2.5`}>
+                {fields.map((f, i) => (
+                  <div
+                    key={f.id}
+                    className={WIDE_FIELD_TYPES.includes(f.type) ? "sm:col-span-full" : ""}
+                    draggable
+                    onDragStart={() => setDragIndex(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => handleDrop(i)}
+                  >
+                    <CanvasField
+                      field={f}
+                      accentColor={canvasAccentColor}
+                      selected={selectedId === f.id}
+                      onSelect={() => setSelectedId(f.id)}
+                      onChange={(updated) => updateField(f.id, updated)}
+                      onDelete={() => removeField(f.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex justify-end mt-4">
@@ -1071,7 +1163,16 @@ function FormBuilder({ form, onSave, planLimits }) {
         </div>
       </div>
 
-      {aiAllowed && aiOpen && (
+      {selectedField && (
+        <FieldPropertiesPanel
+          field={selectedField}
+          onChange={(updated) => updateField(selectedField.id, updated)}
+          onDelete={() => removeField(selectedField.id)}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
+
+      {showAiPanel && (
         <AIAssistantPanel
           formId={form.id}
           formName={form.name}
