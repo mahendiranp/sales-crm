@@ -15,13 +15,16 @@ import { loadRazorpayScript } from "../lib/razorpay";
 // a priceInPaise).
 const GROWTH_PRICE_LABEL = "₹999/month";
 
-// WhatsApp API / Email Settings / Payment Gateway / AI Configuration /
-// Notifications / Integrations aren't wired to anything real yet — the
-// actual WhatsApp/email/AI integrations all read from backend env vars
-// set at deploy time, not these fields, so filling them in here would
-// silently do nothing. Hidden (not deleted) until each is actually
-// connected — add the key back to this list to bring one back.
-const VISIBLE_SECTION_KEYS = ["companyProfile", "subscription", "sidebarSetup"];
+// WhatsApp API / Email Settings / Payment Gateway / Notifications /
+// Integrations aren't wired to anything real yet — the actual WhatsApp/
+// email integrations all read from backend env vars set at deploy time,
+// not these fields, so filling them in here would silently do nothing.
+// Hidden (not deleted) until each is actually connected — add the key
+// back to this list to bring one back. AI Configuration IS wired up (see
+// routes/settings.js's getAiProviderForAccount) — it only picks which
+// platform-configured provider (Anthropic/Gemini) this account's AI
+// Assistant calls, not a per-account API key.
+const VISIBLE_SECTION_KEYS = ["companyProfile", "subscription", "sidebarSetup", "aiConfiguration"];
 
 function baseSections(isOwner) {
   return [
@@ -269,18 +272,31 @@ export default function Settings() {
 
           {active === "aiConfiguration" && (
             <div>
-              <h3 className="font-display font-semibold mb-4">AI Configuration</h3>
-              <p className="text-sm text-ink/50 mb-4">Plug in an LLM provider to power AI suggestions, WhatsApp auto-replies, and template personalization.</p>
-              <Field label="Provider">
-                <input className={inputCls} value={settings.aiConfiguration.provider} onChange={(e) => update("aiConfiguration", { provider: e.target.value })} />
-              </Field>
-              <Field label="API Key">
-                <input className={inputCls} type="password" value={settings.aiConfiguration.apiKey} onChange={(e) => update("aiConfiguration", { apiKey: e.target.value })} />
-              </Field>
-              <label className="flex items-center gap-2 text-sm mt-2">
-                <input type="checkbox" checked={settings.aiConfiguration.enabled} onChange={(e) => update("aiConfiguration", { enabled: e.target.checked })} />
-                Enable AI features
-              </label>
+              <h3 className="font-display font-semibold mb-1">AI Configuration</h3>
+              <p className="text-sm text-ink/50 mb-4">
+                Choose which AI provider powers the Form Builder's AI Assistant (Growth plan and up). API access is
+                configured platform-wide by your admin — this only picks which one your account uses.
+              </p>
+              <p className="text-xs font-medium text-ink/60 mb-1.5">Provider</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { key: "anthropic", label: "Anthropic (Claude)" },
+                  { key: "gemini", label: "Google Gemini" },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => update("aiConfiguration", { provider: p.key })}
+                    className={`text-left px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      (settings.aiConfiguration.provider || "anthropic") === p.key
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-ink/60 hover:border-primary/30"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

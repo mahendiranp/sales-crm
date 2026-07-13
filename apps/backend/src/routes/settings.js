@@ -1,10 +1,11 @@
 const express = require("express");
 const { collection } = require("../db/store");
-const { requireManager } = require("../middleware/auth");
+const { requireManager, requireMasterAdmin } = require("../middleware/auth");
 const { limitsFor } = require("../utils/plans");
 
 const router = express.Router();
 const settings = collection("settings");
+const accounts = collection("accounts");
 
 function defaults(accountId) {
   return {
@@ -19,7 +20,11 @@ function defaults(accountId) {
     whatsappApi: { provider: "", apiKey: "", connected: false },
     emailSettings: { provider: "SMTP", fromAddress: "", connected: false },
     paymentGateway: { provider: "Razorpay", connected: false },
-    aiConfiguration: { provider: "Anthropic (Claude)", apiKey: "", enabled: false },
+    // "anthropic" | "gemini" — which LLM the Form Builder's AI Assistant
+    // calls for this account (see integrations/aiClient.js). Both providers
+    // are configured platform-wide via env vars (ANTHROPIC_API_KEY /
+    // GEMINI_API_KEY), not per-account keys — this only picks which one.
+    aiConfiguration: { provider: "anthropic" },
     notifications: { email: true, sms: false, push: true },
     integrations: [],
     // Core CRM sections — unlike `apps` (the Odoo-style optional-modules
@@ -113,6 +118,29 @@ router.get("/", async (req, res) => {
   res.json(current);
 });
 
+// Master-admin-only, platform-wide view: every tenant (one row per owner
+// account — authRole "admin") with which AI provider they've picked in
+// Settings → AI Configuration, alongside plan/company for context. Lets
+// the platform admin see at a glance who's using Anthropic vs. Gemini
+// without opening each tenant's Settings individually.
+router.get("/accounts", requireMasterAdmin, async (req, res) => {
+  const [allAccounts, allSettings] = await Promise.all([accounts.all(), settings.all()]);
+  const owners = allAccounts.filter((a) => a.authRole === "admin");
+  const rows = owners.map((a) => {
+    const s = allSettings.find((s) => s.accountId === a.id);
+    return {
+      accountId: a.id,
+      name: a.name,
+      email: a.email,
+      company: a.company || s?.companyProfile?.name || "",
+      plan: s?.subscription?.plan || "starter",
+      aiProvider: s?.aiConfiguration?.provider || "anthropic",
+      isMasterAdmin: !!a.isMasterAdmin,
+    };
+  });
+  res.json(rows);
+});
+
 router.put("/", requireManager, async (req, res) => {
   // Feature flags (Admin Portal apps + core module visibility) can be
   // changed by the tenant owner (their own account/plan) or the platform's
@@ -157,6 +185,15 @@ async function getLimitsForAccount(accountId) {
   return limitsFor((current || defaults(accountId)).subscription?.plan);
 }
 
+// Which AI provider (Anthropic or Gemini) this account picked in
+// Settings → AI Configuration — used by the Form Builder's AI Assistant
+// route (forms.js) to route the request to the right client.
+async function getAiProviderForAccount(accountId) {
+  const current = await settings.find(`settings-${accountId}`);
+  return current?.aiConfiguration?.provider || "anthropic";
+}
+
 module.exports = router;
 module.exports.defaults = defaults;
 module.exports.getLimitsForAccount = getLimitsForAccount;
+module.exports.getAiProviderForAccount = getAiProviderForAccount;

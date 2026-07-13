@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X, Eye, EyeOff } from "lucide-react";
 
 export function Card({ children, className = "" }) {
   return (
@@ -103,6 +103,27 @@ export function Field({ label, children }) {
 
 export const inputCls =
   "w-full px-3 py-2 border border-border rounded-lg text-sm outline-none focus:border-primary transition-colors";
+
+// A password <input> with a show/hide toggle — same inputCls styling as
+// every other field, just with an eye icon button overlaid so it doesn't
+// need its own wrapper markup at every call site (login, signup, reset).
+export function PasswordInput({ className = "", ...props }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={visible ? "text" : "password"} className={`${inputCls} pr-9 ${className}`} />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        tabIndex={-1}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink/35 hover:text-ink/60"
+        title={visible ? "Hide password" : "Show password"}
+      >
+        {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
+  );
+}
 
 export function Switch({ checked, onChange, disabled }) {
   return (

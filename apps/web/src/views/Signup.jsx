@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import { Target, ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
-import { Field, inputCls, Button } from "../components/ui";
+import { Field, inputCls, Button, PasswordInput } from "../components/ui";
 import FeaturePicker from "../components/FeaturePicker";
 import CoreModulePicker from "../components/CoreModulePicker";
 import { RECOMMENDED_APP_KEYS } from "../lib/appCatalog";
@@ -210,7 +210,7 @@ export default function Signup() {
                   <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
                 </Field>
                 <Field label="Password">
-                  <input className={inputCls} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
+                  <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
                 </Field>
                 {error && <p className="text-sm text-danger mb-3">{error}</p>}
                 <Button type="submit" className="w-full justify-center" disabled={checkingEmail}>
