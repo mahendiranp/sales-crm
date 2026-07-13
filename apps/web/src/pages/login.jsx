@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Target, ShieldCheck, UserCog, Eye, ArrowRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { Field, inputCls, Button } from "../components/ui";
+import { Field, inputCls, Button, PasswordInput } from "../components/ui";
 import { APP_NAME } from "../lib/brand";
 import Seo from "../components/Seo";
 
@@ -135,7 +135,7 @@ export default function Login() {
               <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </Field>
             <Field label="Password">
-              <input className={inputCls} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
             </Field>
             <div className="text-right -mt-2 mb-3">
               <Link href="/forgot-password" className="text-xs text-primary font-medium hover:underline">

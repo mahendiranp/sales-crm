@@ -8,7 +8,7 @@ const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
 const { buildSnapshot, autoAdvance, currentApprovers, applyDecision, applyEscalations } = require("../utils/workflowEngine");
 const { isConfigured: aiConfigured, generateFormFields } = require("../integrations/aiClient");
-const { getLimitsForAccount } = require("./settings");
+const { getLimitsForAccount, getAiProviderForAccount } = require("./settings");
 const { availableDates, allSlotsForDate, slotsForDate, extractBookedTimes } = require("../utils/bookingSlots");
 const { validateFileAnswer } = require("../utils/fileUploads");
 const emailClient = require("../integrations/emailClient");
@@ -201,13 +201,16 @@ router.post("/:id/ai/build", requireManager, async (req, res) => {
       return res.status(403).json({ error: `The AI Assistant requires the Growth plan or higher. Your account is on ${limits.label}.` });
     }
   }
-  if (!aiConfigured()) {
-    return res.status(503).json({ error: "AI Assistant isn't configured yet. Ask your admin to set ANTHROPIC_API_KEY in the backend environment." });
+  const provider = await getAiProviderForAccount(req.user.accountId);
+  if (!aiConfigured(provider)) {
+    const providerLabel = provider === "gemini" ? "Gemini" : "Anthropic";
+    const envVar = provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY";
+    return res.status(503).json({ error: `${providerLabel} isn't configured yet. Ask your admin to set ${envVar} in the backend environment.` });
   }
   const prompt = (req.body.prompt || "").trim();
   if (!prompt) return res.status(400).json({ error: "prompt is required." });
   try {
-    const result = await generateFormFields({ prompt, currentFields: form.fields || [] });
+    const result = await generateFormFields({ provider, prompt, currentFields: form.fields || [] });
     res.json(result);
   } catch (err) {
     res.status(502).json({ error: err.message });
