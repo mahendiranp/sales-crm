@@ -19,6 +19,10 @@ export default function Login() {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    if (!email.trim() || !password.trim()) {
+      setError("Email and password are required.");
+      return;
+    }
     setLoading(true);
     try {
       await login(email, password);
@@ -45,12 +49,12 @@ export default function Login() {
           <h1 className="font-display font-bold text-xl mb-1">Welcome back</h1>
           <p className="text-sm text-ink/50 mb-5">Log in to your account.</p>
 
-          <form onSubmit={submit}>
+          <form onSubmit={submit} noValidate>
             <Field label="Email">
-              <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </Field>
             <Field label="Password">
-              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} />
             </Field>
             <div className="text-right -mt-2 mb-3">
               <Link href="/forgot-password" className="text-xs text-primary font-medium hover:underline">
