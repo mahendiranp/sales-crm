@@ -40,4 +40,14 @@ export function reconnectSocket() {
   if (getToken()) socket.connect();
 }
 
+// A held-open WebSocket makes Chrome refuse to bfcache the page (instant
+// back/forward navigation) — disconnect right before the page is hidden and
+// reconnect if it's restored from bfcache instead of a fresh load.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => socket.disconnect());
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) reconnectSocket();
+  });
+}
+
 export default socket;
