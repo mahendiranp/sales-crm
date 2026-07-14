@@ -14,6 +14,9 @@ export function AuthProvider({ children }) {
     if (stored) {
       try {
         setUser(JSON.parse(stored));
+        // Socket doesn't autoConnect (see lib/socket.js) — a returning,
+        // already-logged-in visitor (page refresh) still needs it dialed.
+        reconnectSocket();
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
