@@ -26,6 +26,10 @@ function getToken() {
 const socket = io(SOCKET_URL, {
   autoConnect: false,
   auth: (cb) => cb({ token: getToken() }),
+  // Skips socket.io's default polling-then-upgrade handshake (several
+  // sequential HTTP round-trips before it ever opens a WebSocket) and
+  // dials straight into a WebSocket connection instead.
+  transports: ["websocket"],
 });
 
 // Call after login/signup/logout, and once on app load, so the socket's
