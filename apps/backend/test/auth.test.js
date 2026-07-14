@@ -430,13 +430,17 @@ test("payments: signature verification rejects a forged signature and accepts a 
   const orderId = "order_test123";
   const paymentId = "pay_test456";
 
-  const forged = verifySignature({ orderId, paymentId, signature: "not-the-real-signature" });
-  assert.equal(forged, false);
-
-  const real = crypto.createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex");
+  // verifySignature reads RAZORPAY_KEY_SECRET from the environment itself,
+  // which may be unset entirely (e.g. CI, no .env) — must be set for the
+  // whole assertion, not just the "real signature" half, or the forged-
+  // signature check throws instead of returning false.
   const previousSecret = process.env.RAZORPAY_KEY_SECRET;
   process.env.RAZORPAY_KEY_SECRET = secret;
   try {
+    const forged = verifySignature({ orderId, paymentId, signature: "not-the-real-signature" });
+    assert.equal(forged, false);
+
+    const real = crypto.createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex");
     assert.equal(verifySignature({ orderId, paymentId, signature: real }), true);
   } finally {
     process.env.RAZORPAY_KEY_SECRET = previousSecret;
