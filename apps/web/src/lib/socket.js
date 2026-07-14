@@ -26,6 +26,10 @@ function getToken() {
 const socket = io(SOCKET_URL, {
   autoConnect: false,
   auth: (cb) => cb({ token: getToken() }),
+  // Skips socket.io's default polling-then-upgrade handshake (several
+  // sequential HTTP round-trips before it ever opens a WebSocket) and
+  // dials straight into a WebSocket connection instead.
+  transports: ["websocket"],
 });
 
 // Call after login/signup/logout, and once on app load, so the socket's
@@ -34,6 +38,16 @@ const socket = io(SOCKET_URL, {
 export function reconnectSocket() {
   socket.disconnect();
   if (getToken()) socket.connect();
+}
+
+// A held-open WebSocket makes Chrome refuse to bfcache the page (instant
+// back/forward navigation) — disconnect right before the page is hidden and
+// reconnect if it's restored from bfcache instead of a fresh load.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => socket.disconnect());
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) reconnectSocket();
+  });
 }
 
 export default socket;
