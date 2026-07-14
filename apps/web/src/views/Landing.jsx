@@ -99,6 +99,18 @@ export default function Landing() {
     <div className="font-body text-ink">
       <Seo
         description={`${APP_NAME} is a drag-and-drop form builder with approval workflows, WhatsApp delivery, and an AI assistant that builds fields for you. Free forever on the Starter plan.`}
+        keywords={[
+          "form builder",
+          "drag and drop form builder",
+          "online form builder",
+          "CRM software",
+          "sales CRM",
+          "approval workflow software",
+          "WhatsApp form delivery",
+          "AI form builder",
+          "lead management CRM",
+          "free CRM",
+        ]}
         path="/"
         jsonLd={JSON_LD}
       />

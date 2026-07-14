@@ -182,6 +182,7 @@ export default function Signup() {
       <Seo
         title="Sign up"
         description={`Create your free ${APP_NAME} account — drag-and-drop form builder with approval workflows and WhatsApp delivery. No card required.`}
+        keywords={["sign up CRM", "free form builder", "create CRM account", "online form builder signup"]}
         path="/signup"
       />
       <div className={`w-full transition-all ${step === 2 ? "max-w-2xl" : "max-w-md"}`}>
