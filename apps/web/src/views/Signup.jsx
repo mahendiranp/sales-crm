@@ -48,6 +48,14 @@ export default function Signup() {
   const continueToStep2 = async (e) => {
     e.preventDefault();
     setError("");
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+      setError("Name, email, and password are all required.");
+      return;
+    }
+    if (form.password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
     setCheckingEmail(true);
     try {
       const { data } = await api.get("/auth/check-email", { params: { email: form.email } });
@@ -194,9 +202,9 @@ export default function Signup() {
                   : "Free forever on the Starter plan. No card required."}
               </p>
 
-              <form onSubmit={continueToStep2}>
+              <form onSubmit={continueToStep2} noValidate>
                 <Field label="Full Name">
-                  <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                  <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 </Field>
                 <Field label="Work Email">
                   <input
@@ -204,14 +212,13 @@ export default function Signup() {
                     type="email"
                     value={form.email}
                     onChange={(e) => { setForm({ ...form, email: e.target.value }); setError(""); }}
-                    required
                   />
                 </Field>
                 <Field label="Company">
                   <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
                 </Field>
                 <Field label="Password">
-                  <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
+                  <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
                 </Field>
                 {error && <p className="text-sm text-danger mb-3">{error}</p>}
                 <Button type="submit" className="w-full justify-center" disabled={checkingEmail}>
@@ -285,7 +292,7 @@ export default function Signup() {
                 </p>
               )}
 
-              <form onSubmit={verifyCode}>
+              <form onSubmit={verifyCode} noValidate>
                 <Field label="Verification Code">
                   <input
                     className={`${inputCls} text-center text-lg tracking-[0.3em]`}
@@ -294,7 +301,6 @@ export default function Signup() {
                     inputMode="numeric"
                     maxLength={6}
                     autoFocus
-                    required
                   />
                 </Field>
                 {otpError && <p className="text-sm text-danger mb-3">{otpError}</p>}
