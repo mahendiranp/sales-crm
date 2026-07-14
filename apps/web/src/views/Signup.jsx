@@ -12,6 +12,7 @@ import { CORE_MODULES, RECOMMENDED_MODULE_KEYS } from "../lib/coreModules";
 import { APP_NAME } from "../lib/brand";
 import { loadRazorpayScript } from "../lib/razorpay";
 import Seo from "../components/Seo";
+import GoogleSignInButton from "../components/GoogleSignInButton";
 
 const recommendedAppsMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
 const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.map((k) => [k, true]));
@@ -189,7 +190,7 @@ export default function Signup() {
               <h1 className="font-display font-bold text-xl mb-1">Create your account</h1>
               <p className="text-sm text-ink/50 mb-5">
                 {selectedPlan === "growth"
-                  ? "Signing up for Growth (₹999/month) — you'll pay after verifying your email."
+                  ? "Signing up for Growth (₹499/month) — you'll pay after verifying your email."
                   : "Free forever on the Starter plan. No card required."}
               </p>
 
@@ -217,6 +218,17 @@ export default function Signup() {
                   {checkingEmail ? "Checking…" : "Continue"}
                 </Button>
               </form>
+
+              {selectedPlan !== "growth" && (
+                <>
+                  <div className="flex items-center gap-3 my-4">
+                    <div className="h-px bg-border flex-1" />
+                    <span className="text-xs text-ink/40">or</span>
+                    <div className="h-px bg-border flex-1" />
+                  </div>
+                  <GoogleSignInButton onSuccess={() => router.push("/app")} onError={setError} />
+                </>
+              )}
             </>
           ) : step === 2 ? (
             <>
@@ -310,7 +322,7 @@ export default function Signup() {
               <div className="border border-primary/20 bg-primary/5 rounded-lg p-4 mb-4">
                 <div className="flex items-center justify-between">
                   <p className="font-medium">Growth plan</p>
-                  <p className="font-display font-semibold text-lg">₹999/month</p>
+                  <p className="font-display font-semibold text-lg">₹499/month</p>
                 </div>
               </div>
 

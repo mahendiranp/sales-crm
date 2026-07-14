@@ -13,7 +13,7 @@ import { loadRazorpayScript } from "../lib/razorpay";
 // free by default and Enterprise is sales-assisted ("Talk to sales" on the
 // landing page), matching utils/plans.js on the backend (only Growth has
 // a priceInPaise).
-const GROWTH_PRICE_LABEL = "₹999/month";
+const GROWTH_PRICE_LABEL = "₹499/month";
 
 // WhatsApp API / Email Settings / Payment Gateway / Notifications /
 // Integrations aren't wired to anything real yet — the actual WhatsApp/

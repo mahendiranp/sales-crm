@@ -41,6 +41,30 @@ async function checkFormLimit(req) {
   return null;
 }
 
+// Same shape as checkFormLimit, but for the monthly response quota — this
+// runs on the *public*, unauthenticated submission route, so there's no
+// req.user to check isMasterAdmin against or scope a collection query by;
+// it works off the form's own accountId instead, counting every response
+// across every one of that account's forms since the start of the current
+// calendar month.
+async function checkResponseLimit(form) {
+  const account = await accounts.find(form.accountId);
+  if (account?.isMasterAdmin) return null;
+  const limits = await getLimitsForAccount(form.accountId);
+  if (!limits.maxResponsesPerMonth || limits.maxResponsesPerMonth === Infinity) return null;
+
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+  const count = (
+    await rawResponses.query((r) => r.accountId === form.accountId && new Date(r.submittedAt) >= startOfMonth)
+  ).length;
+  if (count >= limits.maxResponsesPerMonth) {
+    return `This form's account has reached its monthly response limit (${limits.maxResponsesPerMonth}) on the ${limits.label} plan. Please try again next month, or ask the form owner to upgrade.`;
+  }
+  return null;
+}
+
 async function withResponseCount(form, allResponses) {
   const count = (allResponses || (await rawResponses.query((r) => r.formId === form.id))).filter((r) => r.formId === form.id).length;
   return { ...form, responseCount: count };
@@ -330,6 +354,9 @@ router.get("/:id/responses", async (req, res) => {
 router.post("/:id/responses", async (req, res) => {
   const form = await rawForms.find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
+
+  const responseLimitError = await checkResponseLimit(form);
+  if (responseLimitError) return res.status(403).json({ error: responseLimitError });
 
   // Re-check every file field server-side — the client's checks are just
   // UX, not a security boundary; a submission can be crafted directly

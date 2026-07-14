@@ -356,6 +356,93 @@ test("starter plan blocks a 4th form, a 2nd teammate, and Growth-only features",
   assert.equal(selfUpgrade.status, 403);
 });
 
+test("growth plan unlocks the exact features starter blocks: 4th form, 2nd teammate, workflows, WhatsApp bot", async () => {
+  const owner = await signup({ prefix: "growthUnlock" });
+  await upgradeToGrowth(owner.user.id);
+
+  // 4 forms — starter's cap was 3, this must now succeed.
+  let lastFormId;
+  for (let i = 0; i < 4; i++) {
+    const res = await request(app)
+      .post("/api/forms")
+      .set("Authorization", `Bearer ${owner.token}`)
+      .send({ name: `Growth Form ${i}`, fields: [] });
+    assert.equal(res.status, 201);
+    lastFormId = res.body.id;
+  }
+
+  const teammate = await request(app)
+    .post("/api/auth/team")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ name: "Teammate", email: uniqueEmail("growth-teammate"), password: "password123", permission: "view" });
+  assert.equal(teammate.status, 201);
+
+  const workflow = await request(app)
+    .put(`/api/forms/${lastFormId}`)
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ workflow: { enabled: true, steps: [{ id: "s1", name: "Approve", mode: "all", approvers: [{ type: "role", value: "admin" }] }] } });
+  assert.equal(workflow.status, 200);
+
+  const whatsappBot = await request(app)
+    .put("/api/settings")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ apps: { whatsappBot: true } });
+  assert.equal(whatsappBot.status, 200);
+});
+
+test("monthly response limit: starter's 101st response across all its forms is rejected", async () => {
+  await ready;
+  const owner = await signup({ prefix: "responseLimit" });
+  const formRes = await request(app)
+    .post("/api/forms")
+    .set("Authorization", `Bearer ${owner.token}`)
+    .send({ name: "Limit Test Form", fields: [] });
+  const formId = formRes.body.id;
+  await request(app).put(`/api/forms/${formId}/publish`).set("Authorization", `Bearer ${owner.token}`);
+
+  // Seed 100 responses directly (starter's cap) rather than making 100 real
+  // HTTP submissions — this test cares about the limit boundary, not
+  // re-proving that a normal submission works (already covered elsewhere).
+  const formResponses = collection("form_responses");
+  const now = new Date().toISOString();
+  for (let i = 0; i < 100; i++) {
+    // An owner's own id IS their tenant's accountId (only teammates get an
+    // explicit accountId field pointing back at the owner) — see
+    // middleware/auth.js's signToken.
+    await formResponses.insert({ id: `seed-${owner.user.id}-${i}`, formId, accountId: owner.user.id, answers: {}, submittedAt: now });
+  }
+
+  const overLimit = await request(app).post(`/api/forms/${formId}/responses`).send({ answers: {} });
+  assert.equal(overLimit.status, 403);
+  assert.match(overLimit.body.error, /monthly response limit/);
+});
+
+test("payments: signature verification rejects a forged signature and accepts a correctly-signed one", async () => {
+  // Pure-function check, independent of whether Razorpay is "configured" —
+  // this is the actual security boundary for /payments/verify (a client
+  // can't just claim a payment succeeded; the signature has to be one only
+  // someone holding RAZORPAY_KEY_SECRET could have produced). Deliberately
+  // not exercised through the live route/HTTP call, matching this app's
+  // rule of never sending real requests to a payment provider in tests.
+  const crypto = require("node:crypto");
+  const { verifySignature } = require("../src/integrations/razorpayClient");
+  const secret = process.env.RAZORPAY_KEY_SECRET || "test-secret-for-this-assertion-only";
+  const orderId = "order_test123";
+  const paymentId = "pay_test456";
+
+  const forged = verifySignature({ orderId, paymentId, signature: "not-the-real-signature" });
+  assert.equal(forged, false);
+
+  const real = crypto.createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex");
+  const previousSecret = process.env.RAZORPAY_KEY_SECRET;
+  process.env.RAZORPAY_KEY_SECRET = secret;
+  try {
+    assert.equal(verifySignature({ orderId, paymentId, signature: real }), true);
+  } finally {
+    process.env.RAZORPAY_KEY_SECRET = previousSecret;
+  }
+});
+
 test("payments: create-order is owner-only, and 503s until Razorpay is configured", async () => {
   const owner = await signup({ prefix: "payOwner" });
   await upgradeToGrowth(owner.user.id); // starter plan caps teammates at 1 — need Growth to add one for this test
