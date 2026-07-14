@@ -17,16 +17,23 @@ function getToken() {
 // `auth` as a function is re-evaluated on every (re)connect attempt, so a
 // token that didn't exist yet at module load (page loaded logged-out) or
 // one that changes after login/logout is picked up automatically.
+//
+// autoConnect is off — connecting is opt-in via reconnectSocket(), called
+// by AuthContext once it knows whether a session exists. Without this, the
+// socket dialed out (and got rejected with "Authentication required") on
+// every page load, including the public landing page where no one is
+// logged in at all.
 const socket = io(SOCKET_URL, {
-  autoConnect: true,
+  autoConnect: false,
   auth: (cb) => cb({ token: getToken() }),
 });
 
-// Call after login/signup/logout so the socket reconnects with the
-// current (or now-absent) token instead of the one it started with.
+// Call after login/signup/logout, and once on app load, so the socket's
+// connection state matches whether a session actually exists — connected
+// with the current token, or not connected at all when logged out.
 export function reconnectSocket() {
   socket.disconnect();
-  socket.connect();
+  if (getToken()) socket.connect();
 }
 
 export default socket;
