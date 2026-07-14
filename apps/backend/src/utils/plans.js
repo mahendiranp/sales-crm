@@ -9,6 +9,7 @@ const PLANS = {
     label: "Starter",
     maxForms: 3,
     maxUsers: 1, // the owner only — no teammates
+    maxResponsesPerMonth: 100,
     workflows: false,
     whatsappBot: false,
     aiAssistant: false,
@@ -19,19 +20,18 @@ const PLANS = {
     label: "Growth",
     maxForms: Infinity,
     maxUsers: 20,
+    maxResponsesPerMonth: 2000,
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,
-    // ₹999/month flat (matches the landing page's "/user/month" display
-    // copy, but the checkout charges one flat monthly amount rather than
-    // metering per-teammate — per-seat billing would need to recompute
-    // and re-charge as the team's headcount changes, which isn't built).
-    priceInPaise: 99900,
+    // ₹499/month flat (matches the landing page's "/month" display copy).
+    priceInPaise: 49900,
   },
   enterprise: {
     label: "Enterprise",
     maxForms: Infinity,
     maxUsers: Infinity,
+    maxResponsesPerMonth: Infinity,
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,

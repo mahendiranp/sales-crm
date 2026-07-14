@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { Field, inputCls, Button, PasswordInput } from "../components/ui";
 import { APP_NAME } from "../lib/brand";
 import Seo from "../components/Seo";
+import GoogleSignInButton from "../components/GoogleSignInButton";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -61,6 +62,13 @@ export default function Login() {
               {loading ? "Signing in…" : "Sign in"}
             </Button>
           </form>
+
+          <div className="flex items-center gap-3 my-4">
+            <div className="h-px bg-border flex-1" />
+            <span className="text-xs text-ink/40">or</span>
+            <div className="h-px bg-border flex-1" />
+          </div>
+          <GoogleSignInButton onSuccess={() => router.push("/app")} onError={setError} />
         </div>
 
         <p className="text-center text-sm text-ink/50 mt-5">

@@ -935,7 +935,12 @@ function FormBuilder({ form, onSave, planLimits }) {
   // clicking into the AI Assistant only to get a 403 is worse than never
   // seeing the option in the first place. Unknown (still loading) treated
   // as allowed so the UI doesn't flash the panel away after first paint.
-  const aiAllowed = !planLimits || planLimits.aiAssistant;
+  // Master admin bypasses plan limits on the backend (routes/forms.js's
+  // /ai/build route) regardless of their own tenant's plan — this has to
+  // match, or a master admin whose tenant happens to be on Starter would
+  // never see the button for a feature they can actually use.
+  const { isMasterAdmin } = useAuth();
+  const aiAllowed = isMasterAdmin || !planLimits || planLimits.aiAssistant;
   const [fields, setFields] = useState(form.fields || []);
   const [selectedId, setSelectedId] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
@@ -1597,7 +1602,7 @@ function FormAnalyticsPanel({ form, recentResponses }) {
 }
 
 export default function Forms() {
-  const { canManage } = useAuth();
+  const { canManage, isMasterAdmin } = useAuth();
   const router = useRouter();
   const [forms, setForms] = useState([]);
   const [stats, setStats] = useState(null);
@@ -1636,7 +1641,7 @@ export default function Forms() {
   useLiveCollection(["forms", "form_responses"], () => { load(); loadApprovalsCount(); });
   useLiveCollection(["settings"], loadPlanLimits);
 
-  const atFormLimit = planLimits && forms.length >= planLimits.maxForms;
+  const atFormLimit = !isMasterAdmin && planLimits && forms.length >= planLimits.maxForms;
 
   const handleFormCreated = (data) => {
     setModal(false);

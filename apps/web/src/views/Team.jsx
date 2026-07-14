@@ -15,7 +15,7 @@ const PERMISSIONS = [
 const emptyForm = { name: "", email: "", password: "", permission: "edit" };
 
 export default function Team() {
-  const { user, isOwner } = useAuth();
+  const { user, isOwner, isMasterAdmin } = useAuth();
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -32,7 +32,7 @@ export default function Team() {
   }, []);
 
   // +1 for the owner — `team` only holds the other members.
-  const atUserLimit = planLimits && team.length + 1 >= planLimits.maxUsers;
+  const atUserLimit = !isMasterAdmin && planLimits && team.length + 1 >= planLimits.maxUsers;
 
   const createTeammate = async () => {
     setError("");

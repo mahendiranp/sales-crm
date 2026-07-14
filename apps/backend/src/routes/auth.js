@@ -214,6 +214,57 @@ router.post("/demo-login", async (req, res) => {
   res.json({ user: publicAccount(account), token: signToken(account) });
 });
 
+// Google "Sign in / Sign up" — the frontend uses Google Identity Services,
+// which hands back a signed ID token (JWT) after the user picks an account.
+// We never trust that token's claims directly: Google's own tokeninfo
+// endpoint re-validates the signature and expiry server-side, and we also
+// check `aud` matches our client ID so a token issued for a *different*
+// Google app can't be replayed here. Existing email match = login; no match
+// = signup (mirrors createAccountFromPending, minus the OTP step since
+// Google has already verified the email for us).
+router.post("/google", async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) return res.status(400).json({ error: "Missing Google credential." });
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return res.status(501).json({ error: "Google sign-in isn't configured yet." });
+  }
+
+  let payload;
+  try {
+    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!verifyRes.ok) throw new Error("bad token");
+    payload = await verifyRes.json();
+  } catch {
+    return res.status(401).json({ error: "Couldn't verify that Google sign-in — please try again." });
+  }
+
+  if (payload.aud !== process.env.GOOGLE_CLIENT_ID || payload.email_verified !== "true" || !payload.email) {
+    return res.status(401).json({ error: "Couldn't verify that Google sign-in — please try again." });
+  }
+
+  const normalizedEmail = payload.email.toLowerCase();
+  const existing = (await accounts.all()).find((a) => a.email.toLowerCase() === normalizedEmail);
+  if (existing) {
+    return res.json({ user: publicAccount(existing), token: signToken(existing) });
+  }
+
+  const account = await createAccountFromPending({
+    payload: {
+      name: payload.name || normalizedEmail.split("@")[0],
+      email: payload.email,
+      // Google-created accounts don't have a usable password — this hash
+      // never matches any real input, so /login always rejects password
+      // attempts on this account (the user can still "Forgot password" to
+      // set a real one later, which is intentional, not a gap).
+      passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString("hex"), BCRYPT_ROUNDS),
+      company: "",
+      apps: {},
+      modules: {},
+    },
+  });
+  res.status(201).json({ user: publicAccount(account), token: signToken(account) });
+});
+
 // ---------------- PASSWORD RESET ----------------
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;

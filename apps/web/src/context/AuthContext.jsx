@@ -42,6 +42,16 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  // `credential` is the signed ID token Google's Identity Services widget
+  // hands back after the user picks an account — verified server-side
+  // (routes/auth.js) before any account is looked up or created, so the
+  // browser can't just claim to be any email.
+  const googleLogin = async (credential) => {
+    const { data } = await api.post("/auth/google", { credential });
+    persist(data.user, data.token);
+    return data.user;
+  };
+
   // Two-step now — see auth.js: requestSignupOtp emails a 6-digit code
   // without creating anything yet, verifySignupOtp checks it and actually
   // creates the account (persisting the session exactly like signup used to).
