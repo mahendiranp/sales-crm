@@ -35,8 +35,14 @@ const app = express();
 app.set("trust proxy", 1);
 
 // This is a pure JSON API (no HTML rendered here), so helmet's defaults are
-// safe as-is — no inline scripts/styles to worry about breaking.
-app.use(helmet());
+// mostly safe as-is — except crossOriginResourcePolicy: "same-origin",
+// which blocks the browser from reading any response when this API is
+// fetched from a different origin. The frontend (www.floworaone.com) and
+// the socket.io client both legitimately call this API (api.floworaone.com)
+// cross-origin — the socket in particular connects here directly, bypassing
+// Next.js's same-origin /api rewrite (see lib/socket.js) — so CORP has to
+// allow that, same as the already-permissive cors()/ACAO: * below.
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors());
 // Default 100kb limit is too small for form branding, which stores logo/
 // background images inline as base64 (a form can have two ~1.5MB images →
