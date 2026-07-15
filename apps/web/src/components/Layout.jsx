@@ -30,6 +30,7 @@ import {
   LifeBuoy,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
@@ -106,7 +107,7 @@ function NavItem({ to, label, icon: Icon, collapsed }) {
       title={collapsed ? label : undefined}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
         collapsed ? "md:justify-center md:px-0" : ""
-      } ${active ? "bg-primary text-white font-medium" : "text-ink/70 hover:bg-primary/8 hover:text-ink"}`}
+      } ${active ? "bg-primary text-white font-medium" : "text-ink/85 hover:bg-primary/8 hover:text-ink"}`}
     >
       <Icon size={17} strokeWidth={2} className="shrink-0" />
       <span className={collapsed ? "md:hidden" : ""}>{label}</span>
@@ -196,9 +197,17 @@ export default function Layout({ children }) {
 
   // Master admin sees every feature regardless of any tenant's flags — the
   // flags exist to restrict what everyone *else* under this account sees.
-  const enabledAppItems = APP_CATALOG
+  const enabledApps_ = APP_CATALOG
     .filter((a) => a.status !== "builtIn")
-    .filter((a) => isMasterAdmin || (RELEASED_APP_KEYS.includes(a.key) && enabledApps[a.key]))
+    .filter((a) => isMasterAdmin || (RELEASED_APP_KEYS.includes(a.key) && enabledApps[a.key]));
+
+  // Forms gets its own top-level sidebar section (Forms / Add New) instead
+  // of being lumped into the generic "Apps" bucket — it's the only released
+  // app today and warrants direct access to both the forms list and form
+  // creation without an extra click into the Forms page first.
+  const formsApp = enabledApps_.find((a) => a.key === "forms");
+  const enabledAppItems = enabledApps_
+    .filter((a) => a.key !== "forms")
     .map((a) => ({
       to: a.status === "available" ? a.route : `/app/module/${a.key}`,
       label: a.label,
@@ -221,9 +230,21 @@ export default function Layout({ children }) {
     ),
   })).filter((section) => section.items.length > 0);
 
-  const sections = enabledAppItems.length
-    ? [...visibleSections, { label: "Apps", items: enabledAppItems }]
-    : visibleSections;
+  const formsSection = formsApp
+    ? [{
+        label: "Forms",
+        items: [
+          { to: formsApp.route, label: "Forms", icon: formsApp.icon },
+          { to: `${formsApp.route}/new`, label: "Add New", icon: Plus },
+        ],
+      }]
+    : [];
+
+  const sections = [
+    ...visibleSections,
+    ...formsSection,
+    ...(enabledAppItems.length ? [{ label: "Apps", items: enabledAppItems }] : []),
+  ];
 
   return (
     <div className="flex h-screen bg-base font-body">
@@ -269,7 +290,7 @@ export default function Layout({ children }) {
                 {sidebarCollapsed && <div className="hidden md:block h-px bg-border mx-1 mb-2 mt-1 first:mt-0" />}
                 <button
                   onClick={() => toggleSection(section.label)}
-                  className={`w-full flex items-center justify-between px-3 py-1 mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-ink/35 hover:text-ink/60 ${
+                  className={`w-full flex items-center justify-between px-3 py-1 mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-ink/45 hover:text-ink/70 ${
                     sidebarCollapsed ? "md:hidden" : ""
                   }`}
                 >

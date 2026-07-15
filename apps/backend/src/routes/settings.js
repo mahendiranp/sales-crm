@@ -115,7 +115,8 @@ router.get("/", async (req, res) => {
     current = defaults(req.user.accountId);
     await settings.insert(current);
   }
-  res.json(current);
+  const aiUsage = await getAiUsage(req.user.accountId);
+  res.json({ ...current, aiUsage });
 });
 
 // Master-admin-only, platform-wide view: every tenant (one row per owner
@@ -193,7 +194,53 @@ async function getAiProviderForAccount(accountId) {
   return current?.aiConfiguration?.provider || "gemini";
 }
 
+// "2026-07" style key — AI generation usage resets every calendar month,
+// not on a rolling 30-day window, to keep the reset date predictable and
+// match how the rest of the plan limits (maxResponsesPerMonth) are framed.
+function currentMonthKey() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+// Rolls the counter over to 0 if the stored month doesn't match the
+// current one — called from both the read path (settings GET, so the UI
+// shows a fresh count on the 1st even before any generation happens) and
+// the increment path below.
+function freshAiUsage(stored) {
+  const monthKey = currentMonthKey();
+  if (!stored || stored.monthKey !== monthKey) return { monthKey, count: 0 };
+  return stored;
+}
+
+// Read-only usage snapshot for the "AI Left: X/Y" indicator — never
+// mutates count, only resets it in-memory if the month has rolled over
+// (the write happens lazily on the next actual increment, not here).
+async function getAiUsage(accountId) {
+  const current = await settings.find(`settings-${accountId}`);
+  const plan = (current || defaults(accountId)).subscription?.plan;
+  const limit = limitsFor(plan).aiMonthlyLimit;
+  const usage = freshAiUsage(current?.aiUsage);
+  return { used: usage.count, limit };
+}
+
+// Called once per successful AI generation (forms.js's /:id/ai/build route)
+// — increments the persisted counter, resetting first if the month rolled
+// over since the last call.
+async function incrementAiUsage(accountId) {
+  const id = `settings-${accountId}`;
+  const current = await settings.find(id);
+  const usage = freshAiUsage(current?.aiUsage);
+  const next = { monthKey: usage.monthKey, count: usage.count + 1 };
+  if (!current) {
+    await settings.insert({ ...defaults(accountId), aiUsage: next });
+  } else {
+    await settings.update(id, { aiUsage: next });
+  }
+  return next;
+}
+
 module.exports = router;
 module.exports.defaults = defaults;
 module.exports.getLimitsForAccount = getLimitsForAccount;
+module.exports.getAiUsage = getAiUsage;
+module.exports.incrementAiUsage = incrementAiUsage;
 module.exports.getAiProviderForAccount = getAiProviderForAccount;

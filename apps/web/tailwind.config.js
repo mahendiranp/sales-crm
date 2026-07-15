@@ -4,8 +4,19 @@ export default {
   theme: {
     extend: {
       colors: {
+        // `ink` stays as the single dark base color that most text/opacity
+        // utilities (text-ink/40, /60, etc.) derive from — kept for
+        // backwards compat with the hundreds of existing text-ink/NN call
+        // sites. The named tokens below are for new/updated call sites that
+        // want a guaranteed, non-opacity-diluted contrast level instead of
+        // guessing which opacity reads dark enough (the "washed out"
+        // feedback: low ink-opacity text blends with a white background
+        // more than a solid gray of the same nominal shade would).
+        heading: "#111827",
+        secondary: "#6B7280",
+        hover: "#F1F5F9",
         ink: "#14172B",
-        base: "#F7F8FA",
+        base: "#F8FAFC",
         primary: {
           DEFAULT: "#2F5D50",
           light: "#4A7A6D",
@@ -16,8 +27,8 @@ export default {
           light: "#F4C578",
           dark: "#C9832A",
         },
-        danger: "#C1443C",
-        border: "#E4E7EC",
+        danger: "#DC2626",
+        border: "#E2E8F0",
       },
       fontFamily: {
         display: ["Sora", "sans-serif"],
