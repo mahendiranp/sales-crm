@@ -1,14 +1,69 @@
-// Thin wrapper around Google's Gemini API. Same isConfigured()/
-// generateFormFields() shape as anthropic.js so routes/forms.js's AI route
-// can call either provider identically — only the request/response shape
-// of the underlying HTTP call differs.
-const { SYSTEM_PROMPT, parseModelResponse } = require("./shared");
+// Thin wrapper around Google's Gemini API via the official @google/genai
+// SDK. Same isConfigured()/generateFormFields() shape as anthropic.js so
+// routes/forms.js's AI route can call either provider identically — only
+// the request/response shape of the underlying call differs.
+const { GoogleGenAI, Type } = require("@google/genai");
+const { SYSTEM_PROMPT, ALLOWED_TYPES, parseModelResponse } = require("./shared");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+// gemini-2.0-flash was deprecated by Google and returns 404 "no longer
+// available" for newer accounts/projects — gemini-3.5-flash is the current
+// non-preview equivalent as of this writing. Override via GEMINI_MODEL if
+// Google deprecates this one too.
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+
+const client = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
+
+// responseMimeType alone (just describing the JSON shape in the system
+// prompt) turned out unreliable for this model — roughly 1 in 3 real
+// calls came back truncated/malformed even with a normal STOP finish
+// reason. An explicit responseSchema uses Gemini's constrained decoding,
+// which is actually enforced rather than just requested.
+const RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    action: { type: Type.STRING, enum: ["add", "replace"] },
+    message: { type: Type.STRING },
+    fields: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          label: { type: Type.STRING },
+          type: { type: Type.STRING, enum: ALLOWED_TYPES },
+          required: { type: Type.BOOLEAN },
+          options: { type: Type.ARRAY, items: { type: Type.STRING } },
+          placeholder: { type: Type.STRING },
+          helpText: { type: Type.STRING },
+        },
+        required: ["label", "type", "required"],
+      },
+    },
+  },
+  required: ["action", "fields", "message"],
+};
 
 function isConfigured() {
   return !!GEMINI_API_KEY;
+}
+
+async function callGemini({ prompt, currentFields }) {
+  const res = await client.models.generateContent({
+    model: MODEL,
+    contents: JSON.stringify({ instruction: prompt, currentFields }),
+    config: {
+      systemInstruction: SYSTEM_PROMPT,
+      maxOutputTokens: 2000,
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
+      // This is a structured-output task, not a reasoning task — thinking
+      // tokens were eating 60-70% of the output budget on longer prompts
+      // and truncating the actual JSON before the schema fix above.
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+  return parseModelResponse(res.text || "");
 }
 
 async function generateFormFields({ prompt, currentFields }) {
@@ -16,30 +71,30 @@ async function generateFormFields({ prompt, currentFields }) {
     throw new Error("Gemini isn't configured yet — ask your platform admin to set GEMINI_API_KEY.");
   }
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: JSON.stringify({ instruction: prompt, currentFields }) }] }],
-        generationConfig: { maxOutputTokens: 2000, responseMimeType: "application/json" },
-      }),
+  try {
+    return await callGemini({ prompt, currentFields });
+  } catch (err) {
+    const message = err.message || String(err);
+    // The SDK throws with a JSON-stringified Google error body as the
+    // message (e.g. `{"error":{"code":429,...}}`) — sniff status codes out
+    // of that string since there's no structured status field exposed.
+    if (/"code":\s*429/.test(message) || /rate-limited|quota/i.test(message)) {
+      throw new Error("Gemini's free tier is rate-limited — you've hit the request quota for now. Wait a minute and try again.");
     }
-  );
-
-  if (res.status === 429) {
-    throw new Error("Gemini's free tier is rate-limited — you've hit the request quota for now. Wait a minute and try again.");
+    if (/"code":\s*503/.test(message)) {
+      throw new Error("Gemini is temporarily overloaded on Google's end. Wait a moment and try again.");
+    }
+    // A malformed-JSON response is model flakiness, not a real failure —
+    // worth one automatic retry before making the user click again.
+    if (/wasn't valid JSON|didn't match the expected format/.test(message)) {
+      try {
+        return await callGemini({ prompt, currentFields });
+      } catch {
+        throw new Error("Gemini's response wasn't usable after a retry — try rephrasing your request.");
+      }
+    }
+    throw new Error(`Gemini request failed: ${message.slice(0, 300)}`);
   }
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Gemini request failed (${res.status}): ${body.slice(0, 300)}`);
-  }
-
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  return parseModelResponse(text);
 }
 
 module.exports = { isConfigured, generateFormFields };

@@ -146,7 +146,7 @@ function NewTicketModal({ open, onClose, onCreated }) {
 
 // Message thread + reply box, shared by both the master-admin and
 // tenant-owner views — only the status dropdown at the top differs by role.
-function TicketThread({ ticket, isMasterAdmin, onReplied, onStatusChanged }) {
+function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatusChanged }) {
   const [reply, setReply] = useState("");
   const [replyAttachment, setReplyAttachment] = useState(null);
   const [sending, setSending] = useState(false);
@@ -198,21 +198,31 @@ function TicketThread({ ticket, isMasterAdmin, onReplied, onStatusChanged }) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {ticket.messages.map((m) => (
-          <div key={m.id} className={`max-w-[80%] ${m.isMasterAdmin ? "ml-auto text-right" : ""}`}>
-            <div className={`inline-block text-left rounded-lg px-3 py-2 text-sm ${m.isMasterAdmin ? "bg-primary text-white" : "bg-base"}`}>
-              {m.body}
-              {m.attachment?.dataUrl && (
-                <a href={m.attachment.dataUrl} target="_blank" rel="noreferrer" className="block mt-1.5">
-                  <img src={m.attachment.dataUrl} alt={m.attachment.name} className="max-h-48 rounded-md border border-border/50" />
-                </a>
-              )}
+        {ticket.messages.map((m) => {
+          // "Mine" is relative to whoever's *looking* at the thread, not a
+          // static role on the message — a master admin's own reply must
+          // still show as "theirs" when the tenant views the same ticket,
+          // and vice versa. isMasterAdmin on the message was previously
+          // (incorrectly) used for both alignment and color, which made
+          // every viewer see the same role-based split instead of a
+          // sender-relative one.
+          const mine = m.authorId === currentUserId;
+          return (
+            <div key={m.id} className={`max-w-[80%] ${mine ? "ml-auto text-right" : ""}`}>
+              <div className={`inline-block text-left rounded-lg px-3 py-2 text-sm ${mine ? "bg-primary text-white" : "bg-base"}`}>
+                {m.body}
+                {m.attachment?.dataUrl && (
+                  <a href={m.attachment.dataUrl} target="_blank" rel="noreferrer" className="block mt-1.5">
+                    <img src={m.attachment.dataUrl} alt={m.attachment.name} className="max-h-48 rounded-md border border-border/50" />
+                  </a>
+                )}
+              </div>
+              <p className="text-[11px] text-ink/35 mt-0.5">
+                {mine ? "You" : m.isMasterAdmin ? "Support" : m.authorName} · {timeAgo(m.createdAt)}
+              </p>
             </div>
-            <p className="text-[11px] text-ink/35 mt-0.5">
-              {m.isMasterAdmin ? "Support" : m.authorName} · {timeAgo(m.createdAt)}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="p-3 border-t border-border">
@@ -238,7 +248,7 @@ function TicketThread({ ticket, isMasterAdmin, onReplied, onStatusChanged }) {
 }
 
 export default function Feedback() {
-  const { isMasterAdmin } = useAuth();
+  const { isMasterAdmin, user } = useAuth();
   const [tickets, setTickets] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -313,6 +323,7 @@ export default function Feedback() {
               <TicketThread
                 ticket={active}
                 isMasterAdmin={isMasterAdmin}
+                currentUserId={user?.id}
                 onReplied={(updated) => setTickets((ts) => ts.map((t) => (t.id === updated.id ? { ...updated, companyName: t.companyName } : t)))}
                 onStatusChanged={(updated) => setTickets((ts) => ts.map((t) => (t.id === updated.id ? { ...updated, companyName: t.companyName } : t)))}
               />

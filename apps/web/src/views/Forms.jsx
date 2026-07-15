@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import {
   Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, ClipboardCheck,
   LayoutGrid, Inbox, BarChart3, Plug, Settings as SettingsIcon, Sparkles, Send, X as XIcon,
   Type, AlignLeft, Mail, Phone, Hash, Calendar, Clock, ChevronDownSquare, CircleDot, CheckSquare,
   Paperclip, Star, ToggleLeft, CalendarClock, Search, UserPlus, Briefcase, ShoppingBag, Users,
   LifeBuoy, Bug, Plane, UserCheck, LogOut, HeartPulse, Receipt, Home, RotateCcw, GraduationCap,
-  TrendingUp, FileText,
+  TrendingUp, FileText, Palette, Columns3, Navigation as NavigationIcon, Image as FormImageIcon, Target,
+  ArrowRight, ChevronDown, ArrowLeft,
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -16,7 +18,11 @@ import useLiveCollection from "../lib/useLiveCollection";
 import FormResponses from "./FormResponses";
 import WhatsAppSurveyPanel from "./WhatsAppSurveyPanel";
 import FormFieldInput from "../components/FormFieldInput";
-import { FORM_THEMES } from "../lib/formThemes";
+import { FORM_THEMES, FORM_THEME_CATEGORIES } from "../lib/formThemes";
+import {
+  FORM_LAYOUTS, FORM_LAYOUT_CATEGORIES, getLayoutStyleClasses, findFormLayout,
+  LABEL_POSITIONS, CONTENT_ALIGNMENTS, PRESENTATION_TEMPLATES, getFieldRowClasses, findPresentationTemplate,
+} from "../lib/formLayouts";
 import { limitsFor } from "../lib/plans";
 import { WIDE_FIELD_TYPES, LAYOUT_GRID_COLS_CLASS } from "../lib/formLayout";
 
@@ -95,7 +101,28 @@ const TEMPLATE_ICONS = {
 // Hand-picked, not derived from usage stats (no such tracking exists yet)
 // — surfaces the templates most tenants reach for first, ahead of scrolling
 // every category. Revisit once real "times used" data exists.
-const POPULAR_TEMPLATE_KEYS = ["customer-feedback", "contact-lead", "leave-request", "job-application", "nps-survey"];
+const POPULAR_TEMPLATE_KEYS = ["appointment-booking", "customer-feedback", "contact-lead", "leave-request", "job-application", "nps-survey"];
+
+// One icon per template category (Sales, HR, Marketing, …) for the
+// category-first "Add Form" page — falls back to FileText for any category
+// added on the backend without a matching icon here.
+const CATEGORY_ICONS = {
+  General: FileText,
+  Feedback: Star,
+  Sales: Briefcase,
+  Marketing: Send,
+  HR: UserCheck,
+  Services: CalendarClock,
+  Support: LifeBuoy,
+  Healthcare: HeartPulse,
+  Finance: Receipt,
+  "Real Estate": Home,
+  Education: GraduationCap,
+};
+
+function categoryIcon(category) {
+  return CATEGORY_ICONS[category] || FileText;
+}
 
 function templateIcon(key) {
   return TEMPLATE_ICONS[key] || FileText;
@@ -383,16 +410,16 @@ function BookingConfigEditor({ config, onChange }) {
 // layout and the FieldPropertiesPanel (right-side dedicated panel) —
 // `bare` skips the outer card chrome since FieldPropertiesPanel supplies
 // its own.
-// Collapsed-by-default accordion section for grouping a long settings form
-// (e.g. FieldEditor below) into named chunks instead of one continuous
-// scroll. `defaultOpen` lets the first/most-used section start expanded.
-function CollapsibleSection({ title, defaultOpen = false, children }) {
-  const [open, setOpen] = useState(defaultOpen);
+// Accordion section for grouping a long settings form (e.g. FieldEditor
+// below) into named chunks instead of one continuous scroll. Open state is
+// owned by the parent (a single `openSection` there) so opening one section
+// closes the others, rather than each section toggling independently.
+function CollapsibleSection({ title, open, onToggle, children }) {
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
         className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-ink/70 bg-base/40 hover:bg-base/70 transition-colors"
       >
         {title}
@@ -410,9 +437,11 @@ function FieldEditor({ field, onChange, onDelete, bare }) {
   // meeting time) — hiding them instead of leaving irrelevant, empty-
   // looking inputs in the editor.
   const isBooking = field.type === "booking";
+  const [openSection, setOpenSection] = useState("General");
+  const section = (name) => ({ open: openSection === name, onToggle: () => setOpenSection(openSection === name ? null : name) });
   const body = (
     <div className="space-y-2">
-      <CollapsibleSection title="General" defaultOpen>
+      <CollapsibleSection title="General" {...section("General")}>
         <Field label="Label">
           <input className={inputCls} value={field.label} onChange={(e) => update({ label: e.target.value })} />
         </Field>
@@ -445,7 +474,7 @@ function FieldEditor({ field, onChange, onDelete, bare }) {
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Validation">
+      <CollapsibleSection title="Validation" {...section("Validation")}>
         {field.type === "number" && (
           <div className="grid grid-cols-2 gap-2.5">
             <Field label="Min value">
@@ -494,15 +523,15 @@ function FieldEditor({ field, onChange, onDelete, bare }) {
         </label>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Appearance">
+      <CollapsibleSection title="Appearance" {...section("Appearance")}>
         <p className="text-xs text-ink/40">Per-field styling options are coming soon.</p>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Logic">
+      <CollapsibleSection title="Logic" {...section("Logic")}>
         <p className="text-xs text-ink/40">Conditional show/hide rules are coming soon.</p>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Permissions">
+      <CollapsibleSection title="Permissions" {...section("Permissions")}>
         <p className="text-xs text-ink/40">Field-level visibility/edit permissions are coming soon.</p>
       </CollapsibleSection>
 
@@ -590,13 +619,30 @@ function ImageUploadField({ label, value, onChange }) {
 }
 
 function ThemePicker({ activeTheme, onPick }) {
+  const activeCategory = FORM_THEMES.find((t) => t.key === activeTheme)?.category || "classic";
+  const [cat, setCat] = useState(activeCategory);
+  const themes = FORM_THEMES.filter((t) => t.category === cat);
   return (
     <div>
       <p className="text-xs font-medium text-ink/60 mb-1.5">
         Design Theme {!activeTheme && <span className="text-ink/35">(none active — using a plain color/image below)</span>}
       </p>
+      <div className="flex gap-1.5 mb-2">
+        {FORM_THEME_CATEGORIES.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setCat(c.key)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-medium border ${
+              cat === c.key ? "bg-primary text-white border-primary" : "border-border text-ink/60"
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
       <div className="grid grid-cols-4 gap-2">
-        {FORM_THEMES.map((t) => (
+        {themes.map((t) => (
           <button
             key={t.key}
             type="button"
@@ -605,7 +651,7 @@ function ThemePicker({ activeTheme, onPick }) {
             className={`rounded-lg overflow-hidden border-2 ${activeTheme === t.key ? "border-primary" : "border-transparent"}`}
           >
             <div className="h-10" style={{ background: t.background }} />
-            <div className="text-[10px] py-1 text-center bg-white text-ink/60">{t.name}</div>
+            <div className="text-[10px] py-1 text-center bg-white text-ink/60 truncate px-1">{t.name}</div>
           </button>
         ))}
       </div>
@@ -613,7 +659,104 @@ function ThemePicker({ activeTheme, onPick }) {
   );
 }
 
-function BrandingEditor({ branding, onChange }) {
+// Structural layout (corners/shadow/spacing/label style) — separate from
+// ThemePicker's colors above. See lib/formLayouts.js for what each preset
+// actually changes; applied identically here (canvas) and on the public
+// form page so the builder preview matches what respondents see.
+// A real miniature form (fake Name/Email/Message lines) rather than a flat
+// color block — lets users see corners/shadow/density/label-style at a
+// glance instead of guessing what a name like "Tribunal" looks like.
+function MiniFormPreview({ layoutKey }) {
+  const s = getLayoutStyleClasses(layoutKey);
+  const l = findFormLayout(layoutKey);
+  const labelBar = l?.labelStyle === "bold-large" ? "h-2" : "h-1.5";
+  return (
+    <div className={`bg-white p-2.5 ${s.cardClass}`}>
+      <div className="space-y-2">
+        {["w-8", "w-10", "w-7"].map((w, i) => (
+          <div key={i}>
+            <div className={`${labelBar} ${w} rounded-full bg-ink/25 mb-1`} />
+            <div className="h-2.5 w-full rounded border border-ink/15" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LayoutStylePicker({ activeLayout, onPick }) {
+  const activeCategory = FORM_LAYOUTS.find((l) => l.key === activeLayout)?.category || "classic";
+  const [cat, setCat] = useState(activeCategory);
+  const layouts = FORM_LAYOUTS.filter((l) => l.category === cat);
+  return (
+    <div>
+      <p className="text-xs font-medium text-ink/60 mb-1.5">
+        Layout Style {!activeLayout && <span className="text-ink/35">(none active — using the default layout)</span>}
+      </p>
+      <div className="flex gap-1.5 mb-2 flex-wrap">
+        {FORM_LAYOUT_CATEGORIES.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setCat(c.key)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-medium border ${
+              cat === c.key ? "bg-primary text-white border-primary" : "border-border text-ink/60"
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        {layouts.map((l) => (
+          <button
+            key={l.key}
+            type="button"
+            onClick={() => onPick(l)}
+            title={l.name}
+            className={`text-left p-2 border-2 rounded-lg bg-base/60 transition-all hover:shadow-md hover:-translate-y-0.5 ${
+              activeLayout === l.key ? "border-primary" : "border-transparent"
+            }`}
+          >
+            <MiniFormPreview layoutKey={l.key} />
+            <div className="flex items-center justify-between mt-1.5">
+              <p className="text-[11px] font-medium text-ink/70 truncate">{l.name}</p>
+              {l.recommended && (
+                <span className="text-[9px] font-semibold text-accent shrink-0">★ Recommended</span>
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Divider-style accordion header shared by the three left-column sections
+// (Add Fields / Form Style / Branding) — open state is owned by the parent
+// (FormBuilder) so opening one section closes the others, and each header
+// shows a one-line summary of its current settings so users don't have to
+// open a section just to check what's set.
+function SidebarSection({ icon: Icon, title, summary, badge, open, onToggle, children }) {
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between py-3 text-left">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <Icon size={14} className="text-primary shrink-0" />
+            <h4 className="font-display font-semibold text-sm">{title}</h4>
+            {badge && <span className="text-[9px] font-semibold text-accent bg-accent/10 px-1.5 py-0.5 rounded-full">{badge}</span>}
+          </div>
+          {!open && summary && <p className="text-[11px] text-secondary truncate mt-0.5 ml-[21px]">{summary}</p>}
+        </div>
+        <ChevronDownSquare size={14} className={`text-ink/40 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="pb-4">{children}</div>}
+    </div>
+  );
+}
+
+function BrandingEditor({ branding, onChange, open, onToggle }) {
   const update = (patch) => onChange({ ...branding, ...patch });
   const bgMode = branding.backgroundImageDataUrl ? "image" : "color";
   // Back-compat: older forms only ever had logoDataUrl with no explicit logoType.
@@ -629,9 +772,13 @@ function BrandingEditor({ branding, onChange }) {
     });
   };
 
+  const themeName = FORM_THEMES.find((t) => t.key === branding.theme)?.name;
+  const logoLabel = logoType === "none" ? null : logoType === "image" ? "Logo ✓" : "Text Logo ✓";
+  const summary = [themeName, logoLabel].filter(Boolean).join(" • ") || "Not customized yet";
+
   return (
-    <div className="border border-border rounded-lg p-4 space-y-4 bg-base/40">
-      <h4 className="font-display font-semibold text-sm">Branding</h4>
+    <SidebarSection icon={Palette} title="Branding" summary={summary} open={open} onToggle={onToggle}>
+      <div className="space-y-4">
 
       <ThemePicker activeTheme={branding.theme} onPick={pickTheme} />
 
@@ -768,16 +915,197 @@ function BrandingEditor({ branding, onChange }) {
           </div>
         )}
       </div>
+      </div>
+    </SidebarSection>
+  );
+}
+
+// Column-count picker for the canvas grid, pulled out of the Canvas header
+// into its own collapsible section (matches Branding's expand/collapse
+// pattern) so the header stays focused on the AI Assistant entry point.
+function LayoutEditor({ layoutColumns, onChange, branding, onBrandingChange, open, onToggle }) {
+  const layoutName = findFormLayout(branding.layoutStyle)?.name || "Standard";
+  const navName = findPresentationTemplate(branding.presentationMode).name;
+  const summary = `${layoutName} • ${layoutColumns} Column${layoutColumns === 1 ? "" : "s"} • ${navName}`;
+
+  return (
+    <SidebarSection icon={FormImageIcon} title="Form Style" summary={summary} badge="NEW" open={open} onToggle={onToggle}>
+        <div className="space-y-5">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/40 mb-2 flex items-center gap-1"><Palette size={11} /> Appearance</p>
+            <LayoutStylePicker activeLayout={branding.layoutStyle} onPick={(l) => onBrandingChange({ ...branding, layoutStyle: l.key })} />
+          </div>
+
+          <div className="pt-4 border-t border-border space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/40 flex items-center gap-1"><Type size={11} /> Typography</p>
+            <SegmentedPicker
+              label="Label position"
+              options={LABEL_POSITIONS}
+              value={branding.labelPosition || "top"}
+              onChange={(key) => onBrandingChange({ ...branding, labelPosition: key })}
+            />
+
+            <SegmentedPicker
+              label="Content alignment"
+              options={CONTENT_ALIGNMENTS}
+              value={branding.contentAlign || "left"}
+              onChange={(key) => onBrandingChange({ ...branding, contentAlign: key })}
+            />
+          </div>
+
+          <div className="pt-4 border-t border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/40 mb-2 flex items-center gap-1"><Columns3 size={11} /> Layout</p>
+            <p className="text-xs font-medium text-ink/60 mb-1.5">Canvas columns (all-on-one-page only)</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => onChange(n)}
+                  title={`${n} column${n === 1 ? "" : "s"}`}
+                  className={`text-left p-2 border-2 rounded-lg ${layoutColumns === n ? "border-primary" : "border-transparent"}`}
+                >
+                  <div className="bg-base rounded-md h-10 p-1.5 grid gap-1" style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }}>
+                    {Array.from({ length: n }).map((_, i) => (
+                      <div key={i} className="rounded-sm bg-ink/15" />
+                    ))}
+                  </div>
+                  <p className="text-[11px] font-medium text-ink/70 text-center mt-1.5">{n} column{n === 1 ? "" : "s"}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/40 mb-2 flex items-center gap-1"><NavigationIcon size={11} /> Navigation</p>
+            <NavigationPicker
+              presentationMode={branding.presentationMode || "single-page"}
+              onChange={(key) => onBrandingChange({ ...branding, presentationMode: key })}
+            />
+          </div>
+        </div>
+    </SidebarSection>
+  );
+}
+
+// One Page vs. Multi Step first — the sub-style grid (progress bar, dots,
+// arrows, …) only appears once "Multi Step" is chosen, instead of always
+// showing all 10 stepped variants alongside the single-page option. Keeps
+// the common case (single-page) a one-click toggle instead of scanning
+// past 10 cards to find it.
+function NavigationPicker({ presentationMode, onChange }) {
+  const current = findPresentationTemplate(presentationMode);
+  const isMultiStep = current.stepped;
+  const steppedTemplates = PRESENTATION_TEMPLATES.filter((p) => p.stepped);
+
+  return (
+    <div>
+      <div className="flex gap-1 border border-border rounded-lg p-0.5 w-fit mb-3">
+        <button
+          type="button"
+          onClick={() => onChange("single-page")}
+          className={`px-3 py-1.5 rounded text-xs font-medium ${!isMultiStep ? "bg-primary text-white" : "text-ink/50 hover:bg-white"}`}
+        >
+          One Page
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(isMultiStep ? presentationMode : steppedTemplates[0].key)}
+          className={`px-3 py-1.5 rounded text-xs font-medium ${isMultiStep ? "bg-primary text-white" : "text-ink/50 hover:bg-white"}`}
+        >
+          Multi Step
+        </button>
+      </div>
+
+      {isMultiStep && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            {steppedTemplates.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => onChange(p.key)}
+                className={`text-left p-2 border-2 rounded-lg ${presentationMode === p.key ? "border-primary" : "border-transparent"}`}
+              >
+                <PresentationPreview template={p} />
+                <p className="text-[11px] font-medium text-ink/70 truncate mt-1.5">{p.name}</p>
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-ink/40 mt-1.5">
+            The canvas still shows every field for editing — respondents will see this stepped experience.
+          </p>
+        </>
+      )}
     </div>
   );
 }
 
-function FieldPalette({ onAdd, onAskAI, showAI }) {
+// Small mockup rendered above each Respondent-experience option's label —
+// same "show, don't just name" idea as LayoutStylePicker's swatch.
+function PresentationPreview({ template }) {
+  if (!template.stepped) {
+    return (
+      <div className="bg-base rounded-md h-10 p-1.5 flex flex-col gap-1">
+        <div className="h-1 w-3/4 rounded-full bg-ink/15" />
+        <div className="h-1 w-full rounded-full bg-ink/15" />
+        <div className="h-1 w-2/3 rounded-full bg-ink/15" />
+      </div>
+    );
+  }
+  return (
+    <div className="bg-base rounded-md h-10 p-1.5 flex flex-col items-center justify-between">
+      {template.indicator === "bar" && <div className="h-1 w-full rounded-full bg-ink/15 overflow-hidden"><div className="h-full w-1/3 bg-primary" /></div>}
+      {template.indicator === "dots" && (
+        <div className="flex gap-0.5">
+          {[0, 1, 2].map((i) => <span key={i} className={`w-1 h-1 rounded-full ${i === 0 ? "bg-primary" : "bg-ink/15"}`} />)}
+        </div>
+      )}
+      {template.indicator === "counter" && <span className="text-[8px] text-ink/40">1 / 3</span>}
+      {template.indicator === "percent" && <span className="text-[8px] text-ink/40">33%</span>}
+      {template.indicator === "none" && <span className="h-1" />}
+      <div className="h-1 w-2/3 rounded-full bg-ink/15" />
+      {template.nav === "arrows" ? (
+        <div className="flex gap-1">
+          <span className="w-2.5 h-2.5 rounded-full border border-ink/20" />
+          <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+        </div>
+      ) : (
+        <div className="flex gap-1 self-end">
+          <span className="w-3 h-1.5 rounded-sm bg-primary" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SegmentedPicker({ label, options, value, onChange }) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-ink/60 mb-1.5">{label}</p>
+      <div className="flex gap-1 border border-border rounded-lg p-0.5 w-fit">
+        {options.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={`px-2.5 py-1.5 rounded text-xs font-medium ${
+              value === o.key ? "bg-primary text-white" : "text-ink/50 hover:bg-white"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FieldPalette({ onAdd, onAskAI, showAI, open, onToggle }) {
   const [cat, setCat] = useState("basic");
   const active = FIELD_CATEGORIES.find((c) => c.key === cat);
+  const summary = `${FIELD_TYPES.length} field types available`;
   return (
-    <div className="border border-border rounded-card bg-white p-3 h-fit">
-      <h4 className="font-display font-semibold text-sm mb-3">Add Fields</h4>
+    <SidebarSection icon={Plus} title="Add Fields" summary={summary} open={open} onToggle={onToggle}>
       <div className="flex gap-1 mb-3 border-b border-border">
         {FIELD_CATEGORIES.map((c) => (
           <button
@@ -799,7 +1127,7 @@ function FieldPalette({ onAdd, onAskAI, showAI }) {
             className="w-full flex items-center gap-2 text-left text-sm px-2.5 py-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors"
           >
             <t.icon size={16} className="text-ink/50" />
-            <span className="text-ink/70">{t.label}</span>
+            <span className="text-heading">{t.label}</span>
           </button>
         ))}
       </div>
@@ -811,7 +1139,7 @@ function FieldPalette({ onAdd, onAskAI, showAI }) {
           <Sparkles size={13} /> Ask AI to add a field
         </button>
       )}
-    </div>
+    </SidebarSection>
   );
 }
 
@@ -861,7 +1189,7 @@ function EditableLabel({ field, onChange }) {
 
   return (
     <label
-      className="block text-sm font-medium mb-1.5 rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 cursor-text hover:bg-base"
+      className="block text-sm font-semibold text-heading mb-1.5 rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 cursor-text hover:bg-base"
       title="Click to rename this field"
       onClick={(e) => {
         e.stopPropagation();
@@ -878,11 +1206,12 @@ function EditableLabel({ field, onChange }) {
 // always visible on touch devices (no hover to reveal them there) and only
 // fade in on hover for pointer devices, so the canvas stays usable on
 // tablets — a plausible device for building a form on.
-function CanvasField({ field, accentColor, selected, onSelect, onChange, onDelete, dragHandleProps }) {
+function CanvasField({ field, accentColor, selected, onSelect, onChange, onDelete, dragHandleProps, labelPosition, contentAlign }) {
+  const row = getFieldRowClasses(labelPosition, contentAlign);
   return (
     <div
       onClick={onSelect}
-      className={`group relative rounded-lg py-3 px-3.5 -mx-3.5 transition-colors cursor-pointer ${
+      className={`group relative rounded-lg py-3 px-3.5 -mx-3.5 transition-colors cursor-pointer ${row.formAlignClass} ${
         selected ? "bg-primary/5 ring-1 ring-primary/30" : "hover:bg-base/60"
       }`}
       {...dragHandleProps}
@@ -896,9 +1225,15 @@ function CanvasField({ field, accentColor, selected, onSelect, onChange, onDelet
         <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1.5 rounded bg-base text-ink/50 hover:text-danger"><Trash2 size={13} /></button>
         <span className="p-1.5 rounded bg-base text-ink/30 cursor-grab"><GripVertical size={13} /></span>
       </div>
-      <EditableLabel field={field} onChange={onChange} />
-      <FormFieldInput field={field} value={field.type === "checkbox" ? [] : ""} onChange={() => {}} accentColor={accentColor} />
-      {field.helpText && <p className="text-xs text-ink/40 mt-1">{field.helpText}</p>}
+      <div className={row.rowClass}>
+        <div className={row.labelWrapClass}>
+          <EditableLabel field={field} onChange={onChange} />
+        </div>
+        <div className={row.inputWrapClass}>
+          <FormFieldInput field={field} value={field.type === "checkbox" ? [] : ""} onChange={() => {}} accentColor={accentColor} />
+          {field.helpText && <p className="text-xs text-ink/40 mt-1">{field.helpText}</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1014,7 +1349,7 @@ function AIAssistantPanel({ formId, formName, onApplyResult, onAddField, onClose
   );
 }
 
-function FormBuilder({ form, onSave, planLimits }) {
+export function FormBuilder({ form, onSave, planLimits }) {
   // Hidden outright rather than shown-then-erroring — a Starter account
   // clicking into the AI Assistant only to get a 403 is worse than never
   // seeing the option in the first place. Unknown (still loading) treated
@@ -1038,6 +1373,10 @@ function FormBuilder({ form, onSave, planLimits }) {
   );
   const [branding, setBranding] = useState(form.settings?.branding || {});
   const [layoutColumns, setLayoutColumns] = useState(form.settings?.layoutColumns || 1);
+  // Accordion: only one of Add Fields / Form Style / Branding open at a
+  // time, owned here (not per-section local state) so opening one closes
+  // the others instead of all three being independently toggleable.
+  const [openSidebarSection, setOpenSidebarSection] = useState("fields");
 
   useEffect(() => {
     setFields(form.fields || []);
@@ -1094,6 +1433,10 @@ function FormBuilder({ form, onSave, planLimits }) {
       backgroundImageFit: branding.backgroundImageFit || "cover",
       backgroundImagePosition: branding.backgroundImagePosition || "center",
       backgroundImageOverlay: branding.backgroundImageOverlay || 0,
+      layoutStyle: branding.layoutStyle || "",
+      labelPosition: branding.labelPosition || "top",
+      contentAlign: branding.contentAlign || "left",
+      presentationMode: branding.presentationMode || "single-page",
     };
     onSave({
       fields,
@@ -1151,6 +1494,7 @@ function FormBuilder({ form, onSave, planLimits }) {
   const canvasOverlayOpacity = hasBackgroundImage ? (branding.backgroundImageOverlay || 0) / 100 : 0;
   const canvasAccentColor = branding.accentColor || "";
   const canvasLogoType = branding.logoType || (branding.logoDataUrl ? "image" : "none");
+  const canvasLayoutStyle = getLayoutStyleClasses(branding.layoutStyle);
   // Fixed 3-column studio layout — Field Library (280px) | Canvas (flexible,
   // should dominate the page) | Properties (340px), always reserving the
   // properties column so the canvas doesn't reflow width when a field is
@@ -1164,49 +1508,43 @@ function FormBuilder({ form, onSave, planLimits }) {
 
   return (
     <div className={`grid grid-cols-1 ${gridColsClass} gap-4 items-start relative`}>
-      <div className="space-y-4">
-        <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} showAI={aiAllowed} />
-
-        <ApprovalRequirementEditor
-          enabled={approvalEnabled}
-          approverIds={approverIds}
-          onChange={({ enabled, approverIds: next }) => {
-            setApprovalEnabled(enabled);
-            setApproverIds(next);
-            markDirty();
-          }}
+      <div className="border border-border rounded-card bg-white px-3">
+        <FieldPalette
+          onAdd={addField}
+          onAskAI={() => setAiOpen(true)}
+          showAI={aiAllowed}
+          open={openSidebarSection === "fields"}
+          onToggle={() => setOpenSidebarSection(openSidebarSection === "fields" ? null : "fields")}
         />
 
-        <BrandingEditor branding={branding} onChange={(next) => { setBranding(next); markDirty(); }} />
+        <LayoutEditor
+          layoutColumns={layoutColumns}
+          onChange={(n) => { setLayoutColumns(n); markDirty(); }}
+          branding={branding}
+          onBrandingChange={(next) => { setBranding(next); markDirty(); }}
+          open={openSidebarSection === "style"}
+          onToggle={() => setOpenSidebarSection(openSidebarSection === "style" ? null : "style")}
+        />
+
+        <BrandingEditor
+          branding={branding}
+          onChange={(next) => { setBranding(next); markDirty(); }}
+          open={openSidebarSection === "branding"}
+          onToggle={() => setOpenSidebarSection(openSidebarSection === "branding" ? null : "branding")}
+        />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-3">
           <h4 className="font-display font-semibold text-sm">Canvas</h4>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 border border-border rounded-lg p-0.5">
-              {[1, 2, 3].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => { setLayoutColumns(n); markDirty(); }}
-                  title={`${n} column${n === 1 ? "" : "s"}`}
-                  className={`w-7 h-6 rounded text-xs font-medium ${
-                    layoutColumns === n ? "bg-primary text-white" : "text-ink/50 hover:bg-base"
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-            {aiAllowed && !aiOpen && (
-              <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
-                <Sparkles size={13} /> AI Assistant
-              </button>
-            )}
-          </div>
+          {aiAllowed && !aiOpen && (
+            <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/5 rounded-lg px-2.5 py-1.5">
+              <Sparkles size={13} /> AI Assistant
+            </button>
+          )}
         </div>
 
-        <div className="relative border border-border rounded-card bg-white p-8 sm:p-12 overflow-hidden" style={canvasBgStyle}>
+        <div className={`relative bg-white overflow-hidden ${canvasLayoutStyle.cardClass} ${canvasLayoutStyle.cardPaddingClass}`} style={canvasBgStyle}>
           {canvasOverlayOpacity > 0 && (
             <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0,0,0,${canvasOverlayOpacity})` }} />
           )}
@@ -1222,7 +1560,7 @@ function FormBuilder({ form, onSave, planLimits }) {
                 No fields yet — add one from the palette on the left{aiAllowed ? ", or ask the AI Assistant" : ""}.
               </div>
             ) : (
-              <div className={`grid grid-cols-1 ${LAYOUT_GRID_COLS_CLASS[layoutColumns]} gap-6`}>
+              <div className={`grid grid-cols-1 ${LAYOUT_GRID_COLS_CLASS[layoutColumns]} ${canvasLayoutStyle.gapClass}`}>
                 {fields.map((f, i) => (
                   <div
                     key={f.id}
@@ -1239,6 +1577,8 @@ function FormBuilder({ form, onSave, planLimits }) {
                       onSelect={() => setSelectedId(f.id)}
                       onChange={(updated) => updateField(f.id, updated)}
                       onDelete={() => removeField(f.id)}
+                      labelPosition={branding.labelPosition}
+                      contentAlign={branding.contentAlign}
                     />
                   </div>
                 ))}
@@ -1247,6 +1587,19 @@ function FormBuilder({ form, onSave, planLimits }) {
           </div>
         </div>
 
+        <ApprovalRequirementEditor
+          enabled={approvalEnabled}
+          approverIds={approverIds}
+          onChange={({ enabled, approverIds: next }) => {
+            setApprovalEnabled(enabled);
+            setApproverIds(next);
+            markDirty();
+          }}
+        />
+
+        <div className="sticky bottom-4 flex justify-end mt-4 z-20">
+          <Button onClick={save} disabled={!dirty} className="shadow-lg">Save Changes</Button>
+        </div>
       </div>
 
       {selectedField ? (
@@ -1257,14 +1610,14 @@ function FormBuilder({ form, onSave, planLimits }) {
           onClose={() => setSelectedId(null)}
         />
       ) : (
-        <div className="hidden lg:flex border border-dashed border-border rounded-card h-fit lg:sticky lg:top-4 p-6 text-center">
-          <p className="text-xs text-ink/40 m-auto">Select a field on the canvas to edit its properties.</p>
+        <div className="hidden lg:flex border border-dashed border-border rounded-card h-fit lg:sticky lg:top-4 p-8 text-center">
+          <div className="m-auto">
+            <Target size={22} className="text-ink/30 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-heading">Select a field</p>
+            <p className="text-xs text-secondary mt-1">Click any field in the form to edit its properties.</p>
+          </div>
         </div>
       )}
-
-      <div className="fixed bottom-6 right-6 z-20">
-        <Button onClick={save} disabled={!dirty} className="shadow-lg">Save Changes</Button>
-      </div>
 
       {showAiPanel && (
         <AIAssistantPanel
@@ -1549,7 +1902,7 @@ function ApprovalsModal({ open, onClose, onDecided }) {
   );
 }
 
-function ShareLink({ form }) {
+export function ShareLink({ form }) {
   const [copied, setCopied] = useState(false);
   if (typeof window === "undefined") return null;
   const url = `${window.location.origin}/forms/${form.id}`;
@@ -1571,221 +1924,663 @@ function ShareLink({ form }) {
   );
 }
 
+// Decorative mini-preview (icon + fake field lines) shown at the top of
+// TemplateCard — makes the grid read as a library of actual documents
+// instead of a flat icon+text list.
+function MiniTemplatePreview({ templateKey }) {
+  const Icon = templateIcon(templateKey);
+  return (
+    <div className="rounded-lg bg-primary/5 p-2.5 mb-2.5">
+      <Icon size={16} className="text-primary mb-2" />
+      <div className="space-y-1">
+        <div className="h-1 w-full rounded-full bg-primary/15" />
+        <div className="h-1 w-2/3 rounded-full bg-primary/15" />
+      </div>
+    </div>
+  );
+}
+
 function TemplateCard({ template, selected, onClick }) {
-  const Icon = templateIcon(template.key);
+  const isPopular = POPULAR_TEMPLATE_KEYS.includes(template.key);
   return (
     <button
       onClick={onClick}
-      className={`group relative text-left border rounded-lg p-3.5 transition-all duration-150 ${
-        selected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-md"
+      className={`group relative text-left border rounded-xl p-3.5 bg-white ${CARD_HOVER} ${
+        selected ? "border-primary ring-1 ring-primary/30" : "border-[#E7E9EC]"
       }`}
     >
-      <div className="flex items-start gap-2.5">
-        <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-          <Icon size={17} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium truncate">{template.name}</p>
-          <p className="text-xs text-ink/40 mt-0.5 line-clamp-2">{template.description}</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-2.5 mt-2.5 text-xs text-ink/40">
-        {template.fieldCount > 0 && <span className="flex items-center gap-1"><FormInput size={11} /> {template.fieldCount} fields</span>}
-        <span className="flex items-center gap-1"><Clock size={11} /> {templateMinutes(template.fieldCount)} min</span>
-        {POPULAR_TEMPLATE_KEYS.includes(template.key) && (
-          <span className="flex items-center gap-1 text-primary/70"><Star size={11} /> Popular</span>
-        )}
-      </div>
-      <span className="absolute bottom-3 right-3.5 text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+      <MiniTemplatePreview templateKey={template.key} />
+      <p className="text-sm font-medium truncate">{template.name}</p>
+      {isPopular && (
+        <p className="flex items-center gap-1 text-[11px] text-accent mt-0.5">
+          {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={9} fill="currentColor" />)} Popular
+        </p>
+      )}
+      <p className="text-xs text-ink/40 mt-0.5">{template.category}</p>
+      <span className="text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity block mt-1.5">
         Use Template →
       </span>
     </button>
   );
 }
 
-function TemplateGallery({ templates, onPick }) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
+// Compact card for the "Popular Templates" strip — icon + name + category,
+// no description/metadata (that's what TemplateCard is for, used further
+// down in the filtered/category template grid).
+function PopularTemplateCard({ template, onClick }) {
+  const Icon = templateIcon(template.key);
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left border border-[#E7E9EC] rounded-xl p-3.5 bg-white ${CARD_HOVER}`}
+    >
+      <div className={`${ICON_BOX} w-9 h-9 rounded-lg mb-2.5`}>
+        <Icon size={17} className="text-primary" />
+      </div>
+      <p className="text-sm font-medium truncate">{template.name}</p>
+      <p className="text-xs text-ink/40 mt-0.5">{template.category}</p>
+    </button>
+  );
+}
 
-  const categories = ["All", ...new Set(templates.filter((t) => t.key !== "blank").map((t) => t.category))];
-  const q = query.trim().toLowerCase();
-  const filtered = templates.filter((t) => {
-    if (t.key === "blank") return false;
-    if (category !== "All" && t.category !== category) return false;
-    if (q && !t.name.toLowerCase().includes(q) && !t.description.toLowerCase().includes(q)) return false;
-    return true;
-  });
-  const blank = templates.find((t) => t.key === "blank");
-  const popular = !q && category === "All" ? filtered.filter((t) => POPULAR_TEMPLATE_KEYS.includes(t.key)) : [];
-  const rest = filtered.filter((t) => !popular.includes(t));
+// Category overview card — icon, name, count, and up to 2 example template
+// names with a "+N more" badge. Clicking it is equivalent to picking that
+// category from the filter dropdown below (scrolls the filtered grid into
+// view for it).
+function CategoryCard({ category, templates, active, onClick }) {
+  const Icon = categoryIcon(category);
+  const examples = templates.slice(0, 2);
+  const more = templates.length - examples.length;
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left border rounded-xl p-4 bg-white ${CARD_HOVER} ${active ? "border-primary" : "border-[#E7E9EC]"}`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2">
+          <Icon size={17} />
+        </div>
+        {more > 0 && <span className="text-[10px] font-medium text-ink/35 bg-base rounded-full px-1.5 py-0.5">+{more} more</span>}
+      </div>
+      <p className="text-sm font-medium">{category}</p>
+      <p className="text-xs text-ink/40 mb-2">{templates.length} template{templates.length === 1 ? "" : "s"}</p>
+      <div className="space-y-0.5">
+        {examples.map((t) => <p key={t.key} className="text-[11px] text-ink/45 truncate">{t.name}</p>)}
+      </div>
+    </button>
+  );
+}
+
+// Icon rotation for the "Try these examples" chips — purely decorative,
+// matched loosely to what each example implies (leave -> plane, feedback ->
+// star, etc.) rather than tied to real template keys.
+const EXAMPLE_PROMPTS = [
+  { label: "Leave Request", icon: Sparkles },
+  { label: "Customer Feedback", icon: Star },
+  { label: "Event Registration", icon: Calendar },
+  { label: "Meeting Booking", icon: CalendarClock },
+  { label: "Job Application", icon: Briefcase },
+  { label: "Contact Form", icon: Mail },
+];
+
+const CARD_HOVER = "transition-all duration-150 hover:-translate-y-[3px] hover:shadow-[0_10px_30px_rgba(0,0,0,0.06)] hover:border-primary/40";
+const ICON_BOX = "w-12 h-12 rounded-[14px] bg-[#F5F7F9] flex items-center justify-center";
+
+const GEN_STEPS = [
+  "Understanding your request",
+  "Creating form fields",
+  "Adding validation rules",
+  "Configuring approval workflow",
+  "Setting up notifications",
+  "Finalizing your form",
+];
+
+function StepHeader({ n, label, reached }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0 ${reached ? "bg-primary" : "bg-ink/15"}`}>
+        {n}
+      </span>
+      <span className={`text-sm font-medium ${reached ? "text-heading" : "text-ink/35"}`}>{label}</span>
+    </div>
+  );
+}
+
+// Replaces the normal 3-card row while an AI generation is in flight or
+// just finished — "You describe" recaps the prompt, "AI is building" shows
+// a simulated step checklist + progress bar, "Form is ready" shows a
+// summary with Preview/Edit actions once genPhase reaches "ready".
+function AIGenerationStepper({
+  prompt, onPromptChange, genPhase, genStep, genResult, onReset, onPreview, onEdit, onRegenerate,
+  modifyPrompt, onModifyPromptChange, onModify, modifying,
+}) {
+  const percent = Math.round(((genStep + 1) / GEN_STEPS.length) * 100);
+  const ready = genPhase === "ready" && genResult;
 
   return (
-    <div className="space-y-5">
-      <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/30" />
-        <input
-          className={`${inputCls} pl-9`}
-          placeholder="Search templates…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+    <div className="mb-14">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 items-center">
+        <StepHeader n={1} label="You describe" reached />
+        <StepHeader n={2} label="AI is building your form" reached />
+        <StepHeader n={3} label="Form is ready" reached={ready} />
       </div>
 
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCategory(cat)}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-              category === cat ? "bg-primary text-white border-primary" : "border-border text-ink/60 hover:border-primary/40"
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
-
-      {blank && (
-        <button
-          onClick={() => onPick(blank)}
-          className="w-full flex items-center gap-2.5 text-left border border-dashed border-border rounded-lg p-3 hover:border-primary/50 hover:bg-base/40 transition-colors"
-        >
-          <div className="w-9 h-9 rounded-lg bg-base text-ink/50 flex items-center justify-center shrink-0">
-            <FileText size={17} />
-          </div>
-          <div>
-            <p className="text-sm font-medium">Start from Scratch</p>
-            <p className="text-xs text-ink/40">An empty form — add every field yourself.</p>
-          </div>
-        </button>
-      )}
-
-      {popular.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2 flex items-center gap-1">
-            <Sparkles size={12} /> Popular
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="border border-[#E7E9EC] rounded-2xl p-6 bg-white">
+          <p className="text-base font-display font-semibold flex items-center gap-1.5 mb-3">
+            <Sparkles size={16} className="text-primary" /> Generate with AI
           </p>
-          <div className="grid grid-cols-2 gap-2.5">
-            {popular.map((t) => <TemplateCard key={t.key} template={t} onClick={() => onPick(t)} />)}
+          <div className="relative">
+            <textarea
+              className={`${inputCls} resize-none text-sm`}
+              rows={3}
+              maxLength={500}
+              value={prompt}
+              onChange={(e) => onPromptChange(e.target.value)}
+              disabled={genPhase === "generating"}
+            />
+            <span className="absolute right-3 bottom-2 text-[10px] text-ink/30">{prompt.length}/500</span>
+          </div>
+          {ready && (
+            <div className="my-3">
+              <Button onClick={onRegenerate} disabled={!prompt.trim()} className="w-full justify-center h-12 rounded-xl text-base">
+                <Sparkles size={14} /> Regenerate <ArrowRight size={14} />
+              </Button>
+            </div>
+          )}
+          <p className="text-[11px] font-medium text-ink/40 mt-3 mb-2">Popular prompts</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {EXAMPLE_PROMPTS.map(({ label, icon: Icon }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => onPromptChange(label)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border border-border bg-white text-ink/60 hover:bg-primary hover:border-primary hover:text-white transition-colors truncate"
+              >
+                <Icon size={12} className="shrink-0" /> <span className="truncate">{label}</span>
+              </button>
+            ))}
           </div>
         </div>
-      )}
 
-      <div>
-        {popular.length > 0 && <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2">Browse Templates</p>}
-        {rest.length === 0 ? (
-          <p className="text-sm text-ink/40 text-center py-6">No templates match "{query}".</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-2.5">
-            {rest.map((t) => <TemplateCard key={t.key} template={t} onClick={() => onPick(t)} />)}
+        <div className="border border-[#E7E9EC] rounded-2xl p-6 bg-white">
+          <p className="text-base font-display font-semibold flex items-center gap-1.5">
+            <Sparkles size={16} className="text-primary" /> AI is creating your form…
+          </p>
+          <p className="text-xs text-ink/40 mt-1 mb-4">This usually takes less than 10 seconds.</p>
+          <div className="space-y-2.5">
+            {GEN_STEPS.map((step, i) => (
+              <div key={step} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {i < genStep || ready ? (
+                    <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center shrink-0"><Check size={12} /></span>
+                  ) : (
+                    <span className={`w-5 h-5 rounded-full border-2 shrink-0 ${i === genStep ? "border-primary" : "border-ink/15"}`} />
+                  )}
+                  <span className={`text-sm ${i <= genStep || ready ? "text-heading" : "text-ink/35"}`}>{step}</span>
+                </div>
+                {(i < genStep || ready) && <span className="text-xs font-medium text-primary">Done</span>}
+              </div>
+            ))}
           </div>
-        )}
+          <div className="h-1.5 rounded-full bg-base overflow-hidden mt-4">
+            <div className="h-full bg-primary transition-all" style={{ width: `${ready ? 100 : percent}%` }} />
+          </div>
+          <p className="text-right text-xs text-ink/40 mt-1">{ready ? 100 : percent}%</p>
+
+          {!ready ? (
+            <div className="border border-border rounded-lg p-3 mt-4 bg-base/40">
+              <p className="text-xs font-semibold flex items-center gap-1"><Sparkles size={11} className="text-primary" /> Did you know?</p>
+              <p className="text-xs text-ink/50 mt-1">You can always ask AI to add, remove or modify fields later.</p>
+            </div>
+          ) : (
+            <div className="border border-border rounded-lg p-3 mt-4">
+              <p className="text-xs font-semibold flex items-center gap-1"><ClipboardCheck size={12} className="text-primary" /> Modify your form with AI</p>
+              <p className="text-[11px] text-ink/40 mt-0.5 mb-2">Tell AI what to change or add.</p>
+              <div className="flex gap-1.5">
+                <input
+                  className={`${inputCls} text-xs py-1.5`}
+                  placeholder="e.g. Add a phone number field"
+                  value={modifyPrompt}
+                  onChange={(e) => onModifyPromptChange(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && onModify()}
+                />
+                <Button variant="secondary" onClick={onModify} disabled={modifying || !modifyPrompt.trim()} className="shrink-0 text-xs px-3">
+                  {modifying ? "Working…" : <><Sparkles size={12} /> Modify with AI</>}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="border border-[#E7E9EC] rounded-2xl p-6 bg-white flex flex-col items-center text-center">
+          {!ready ? (
+            <div className="m-auto text-ink/30">
+              <Sparkles size={28} className="mx-auto mb-2" />
+              <p className="text-sm">Waiting for your form…</p>
+            </div>
+          ) : (
+            <>
+              <div className="w-14 h-14 rounded-full bg-primary text-white flex items-center justify-center mb-3">
+                <Check size={24} />
+              </div>
+              <p className="font-display font-bold text-lg">Your form is ready! 🎉</p>
+              <p className="text-xs text-ink/40 mt-1 mb-4">We've created a form based on your description.</p>
+              <div className="w-full border border-border rounded-lg p-3.5 text-left mb-4">
+                <p className="text-xs font-semibold mb-2">AI Generated Summary</p>
+                <div className="space-y-1.5 text-xs text-ink/60">
+                  <div className="flex justify-between"><span>Fields Added</span><span className="font-medium text-heading">{genResult.summary.fieldsAdded}</span></div>
+                  <div className="flex justify-between"><span>Sections</span><span className="font-medium text-heading">{genResult.summary.sections}</span></div>
+                  <div className="flex justify-between"><span>Validation Rules</span><span className="font-medium text-heading">{genResult.summary.validationRules}</span></div>
+                  <div className="flex justify-between"><span>Approval Workflow</span><span className="font-medium text-heading">{genResult.summary.approvalWorkflow}</span></div>
+                  <div className="flex justify-between"><span>Estimated Completion Time</span><span className="font-medium text-heading">{genResult.summary.eta}</span></div>
+                </div>
+              </div>
+              <div className="flex gap-2 w-full">
+                <Button variant="secondary" onClick={onPreview} className="flex-1 justify-center">Preview Form</Button>
+                <Button onClick={onEdit} className="flex-1 justify-center">Edit in Builder <ArrowRight size={14} /></Button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      <button onClick={onReset} className="text-xs font-medium text-primary hover:underline mt-3">← Start over</button>
     </div>
   );
 }
 
-// The AI generate flow creates a blank form first (form.id is required by
-// the ai/build endpoint), asks the model to build the field list from the
-// prompt, then saves that field list onto the freshly created form — three
-// backend calls chained into one "Generate" click from the user's side.
-function AIGenerateCard({ onCreated, onError }) {
-  const [prompt, setPrompt] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const generate = async () => {
-    if (!prompt.trim() || busy) return;
-    setBusy(true);
-    onError("");
-    try {
-      const { data: form } = await api.post("/forms/from-template", { templateKey: "blank", name: prompt.slice(0, 60) });
-      const { data: result } = await api.post(`/forms/${form.id}/ai/build`, { prompt });
-      const { data: saved } = await api.put(`/forms/${form.id}`, { fields: result.fields || [] });
-      onCreated(saved);
-    } catch (err) {
-      onError(err.response?.data?.error || "Couldn't generate that form.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="border border-primary/30 bg-primary/5 rounded-lg p-3.5">
-      <p className="text-sm font-medium flex items-center gap-1.5"><Sparkles size={15} className="text-primary" /> Generate with AI</p>
-      <p className="text-xs text-ink/40 mt-0.5 mb-2.5">Describe the form you need and let AI build the fields for you.</p>
-      <div className="flex gap-2">
-        <input
-          className={inputCls}
-          placeholder="e.g. Employee leave request with dates and reason"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && generate()}
-        />
-        <Button onClick={generate} disabled={busy || !prompt.trim()}>{busy ? "Generating…" : "Generate →"}</Button>
-      </div>
-    </div>
-  );
-}
-
-function NewFormModal({ open, onClose, onCreated }) {
+export function AddFormPage() {
+  const router = useRouter();
   const [templates, setTemplates] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [name, setName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  // idle -> generating -> ready, driving the 3-step "You describe / AI is
+  // building / Form is ready" panel that replaces the normal 3-card row
+  // while an AI generation is in flight or just finished.
+  const [genPhase, setGenPhase] = useState("idle");
+  const [genStep, setGenStep] = useState(0);
+  const [genResult, setGenResult] = useState(null);
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("All Categories");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [aiUsage, setAiUsage] = useState(null);
+  const gridRef = useRef(null);
+  const { isMasterAdmin } = useAuth();
+
+  const loadAiUsage = () => api.get("/settings").then((r) => setAiUsage(r.data.aiUsage)).catch(() => {});
 
   useEffect(() => {
-    if (open) {
-      api.get("/forms/templates").then((r) => setTemplates(r.data));
-      setSelected(null);
-      setName("");
-      setError("");
-    }
-  }, [open]);
+    api.get("/forms/templates").then((r) => setTemplates(r.data));
+    loadAiUsage();
+  }, []);
 
-  const pick = (template) => {
-    setSelected(template);
-    setName(template.key === "blank" ? "" : template.name);
-  };
+  const goToBuild = (form) => router.push(`/app/forms/${form.id}/build`);
 
-  const create = async () => {
-    if (!name.trim() || !selected) return;
+  const createFromTemplate = async (template) => {
     setCreating(true);
     setError("");
     try {
-      const { data } = await api.post("/forms/from-template", { templateKey: selected.key, name });
-      onCreated(data);
+      const { data } = await api.post("/forms/from-template", { templateKey: template.key, name: "Untitled Form" });
+      goToBuild(data);
     } catch (err) {
       setError(err.response?.data?.error || "Couldn't create that form.");
-    } finally {
       setCreating(false);
     }
   };
 
+  const startFromScratch = () => createFromTemplate({ key: "blank" });
+
+  // Fake step-by-step progress — the backend does this in one request, not
+  // 6 discrete phases, but a flat spinner for several seconds reads as
+  // "is this stuck?" whereas a checklist that advances on a timer (and
+  // snaps to "done" the moment the real response lands) reads as active
+  // work happening, which is what actually keeps a user waiting patiently.
+  const stepTimerRef = useRef(null);
+  const [modifyPrompt, setModifyPrompt] = useState("");
+  const [modifying, setModifying] = useState(false);
+
+  const buildSummary = (fields, savedForm) => {
+    const validationRules = fields.filter(
+      (f) => f.validation?.min !== undefined || f.validation?.max !== undefined || f.validation?.minLength || f.validation?.maxLength
+    ).length;
+    return {
+      fieldsAdded: fields.length,
+      sections: Math.max(1, Math.ceil(fields.length / 4)),
+      validationRules,
+      approvalWorkflow: savedForm.workflow?.enabled ? 1 : 0,
+      eta: "2 mins",
+    };
+  };
+
+  // `formId` is set when regenerating an already-created form (from the
+  // "Regenerate" button) instead of the first-time flow, which creates a
+  // fresh blank form first — regenerating reuses the same form rather than
+  // abandoning the old one and creating another.
+  const runGeneration = async (formId) => {
+    setError("");
+    setGenPhase("generating");
+    setGenStep(0);
+    stepTimerRef.current = setInterval(() => {
+      setGenStep((s) => (s < GEN_STEPS.length - 2 ? s + 1 : s));
+    }, 900);
+    try {
+      const { data: result } = await api.post(`/forms/${formId}/ai/build`, { prompt });
+      const fields = result.fields || [];
+      const { data: saved } = await api.put(`/forms/${formId}`, { fields });
+      clearInterval(stepTimerRef.current);
+      setGenStep(GEN_STEPS.length - 1);
+      setGenResult({ form: saved, summary: buildSummary(fields, saved) });
+      loadAiUsage();
+      setTimeout(() => setGenPhase("ready"), 400);
+    } catch (err) {
+      clearInterval(stepTimerRef.current);
+      setError(err.response?.data?.error || "Couldn't generate that form.");
+      setGenPhase("idle");
+    }
+  };
+
+  const generate = async () => {
+    if (!prompt.trim() || genPhase === "generating") return;
+    const { data: form } = await api.post("/forms/from-template", { templateKey: "blank", name: prompt.slice(0, 60) });
+    runGeneration(form.id);
+  };
+
+  const regenerate = () => {
+    if (!prompt.trim() || genPhase === "generating" || !genResult) return;
+    runGeneration(genResult.form.id);
+  };
+
+  // Follow-up tweak without leaving the "ready" panel — sends the existing
+  // fields as context so the model edits/extends them instead of starting
+  // over, same pattern as the in-builder AI Assistant.
+  const modifyWithAI = async () => {
+    if (!modifyPrompt.trim() || modifying || !genResult) return;
+    setModifying(true);
+    setError("");
+    try {
+      const { data: result } = await api.post(`/forms/${genResult.form.id}/ai/build`, {
+        prompt: modifyPrompt,
+        currentFields: genResult.form.fields || [],
+      });
+      const fields = result.fields || [];
+      const { data: saved } = await api.put(`/forms/${genResult.form.id}`, { fields });
+      setGenResult({ form: saved, summary: buildSummary(fields, saved) });
+      setModifyPrompt("");
+      loadAiUsage();
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't modify that form.");
+    } finally {
+      setModifying(false);
+    }
+  };
+
+  const resetGenerate = () => {
+    setGenPhase("idle");
+    setGenResult(null);
+    setPrompt("");
+    setModifyPrompt("");
+  };
+
+  const realTemplates = templates.filter((t) => t.key !== "blank");
+  const categories = [...new Set(realTemplates.map((t) => t.category))];
+  const popular = POPULAR_TEMPLATE_KEYS.map((k) => realTemplates.find((t) => t.key === k)).filter(Boolean);
+
+  const q = query.trim().toLowerCase();
+  const filterActive = q || category !== "All Categories";
+  const filtered = realTemplates.filter((t) => {
+    if (category !== "All Categories" && t.category !== category) return false;
+    if (q && !t.name.toLowerCase().includes(q) && !t.description.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const jumpToGrid = () => gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const pickCategory = (cat) => {
+    setCategory(category === cat ? "All Categories" : cat);
+    jumpToGrid();
+  };
+
   return (
-    <Modal open={open} onClose={onClose} title={selected ? "Name Your Form" : "Choose a Template"} xl={!selected}>
-      {!selected ? (
-        <div className="space-y-4">
-          <AIGenerateCard onCreated={onCreated} onError={setError} />
-          {error && <p className="text-xs text-danger">{error}</p>}
-          <TemplateGallery templates={templates} onPick={pick} />
-        </div>
-      ) : (
+    <div>
+      <div className="flex items-start justify-between mb-10">
         <div>
-          <button onClick={() => setSelected(null)} className="text-xs text-primary font-medium mb-3 hover:underline">
-            ← Choose a different template
+          <h1 className="font-display font-bold text-4xl leading-tight text-heading">Add Form</h1>
+          <p className="text-base text-secondary mt-1.5">Create a form in the way that works best for you.</p>
+        </div>
+        <Button variant="secondary" onClick={() => router.push("/app/forms")}>
+          <ArrowLeft size={14} /> Back to Forms
+        </Button>
+      </div>
+
+      {genPhase === "idle" ? (
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr] gap-5 mb-14">
+        <div
+          className="rounded-[20px] p-7"
+          style={{
+            background: "#FFFFFF",
+            border: "2px solid #2F5D50",
+            boxShadow: "0 1px 2px rgba(0,0,0,.05), 0 12px 40px rgba(47,93,80,.08)",
+          }}
+        >
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <p className="text-[22px] font-display font-semibold flex items-center gap-2">
+              <Sparkles size={19} className="text-primary" /> Generate with AI
+              <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Recommended</span>
+            </p>
+            {aiUsage && (
+              <div className="border border-border rounded-lg px-3 py-2 min-w-[150px]" title="Resets on the 1st of each month">
+                {isMasterAdmin || !Number.isFinite(aiUsage.limit) ? (
+                  <p className="text-xs font-medium text-ink/60">AI Left: Unlimited{isMasterAdmin ? " (Admin)" : ""}</p>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-ink/60 flex items-center gap-1">
+                      AI Left: {Math.max(0, aiUsage.limit - aiUsage.used)} / {aiUsage.limit}
+                    </p>
+                    <div className="h-1.5 rounded-full bg-base overflow-hidden mt-1.5">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${Math.min(100, (aiUsage.used / aiUsage.limit) * 100)}%` }}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <p className="text-[15px] text-secondary mt-1.5 mb-4">Describe your form and let AI build it for you in seconds.</p>
+
+          <p className="text-xs font-medium text-ink/50 mb-1.5">✨ Describe your form...</p>
+          <div className="relative">
+            <textarea
+              className={`${inputCls} resize-none pr-9`}
+              rows={3}
+              maxLength={500}
+              placeholder="Create an employee leave request form with manager approval and emergency contact"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate(); }}
+            />
+            <Sparkles size={15} className="absolute right-3 top-3 text-primary/40" />
+            <span className="absolute right-3 bottom-2 text-[10px] text-ink/30">{prompt.length}/500</span>
+          </div>
+          <p className="text-[11px] text-ink/35 mt-1">⌘ Enter to generate</p>
+
+          {(() => {
+            const quotaExhausted = !isMasterAdmin && aiUsage && Number.isFinite(aiUsage.limit) && aiUsage.used >= aiUsage.limit;
+            return (
+              <div className="my-4">
+                <Button onClick={generate} disabled={!prompt.trim() || quotaExhausted} className="h-12 px-6 rounded-xl text-base">
+                  Generate Form <ArrowRight size={15} />
+                </Button>
+                {quotaExhausted && (
+                  <p className="text-xs text-danger mt-2">You've used all {aiUsage.limit} AI generations this month. It resets on the 1st.</p>
+                )}
+              </div>
+            );
+          })()}
+
+          <p className="text-[11px] font-medium text-ink/40 mb-2">Try these examples:</p>
+          <div className="grid grid-cols-3 gap-2">
+            {EXAMPLE_PROMPTS.map(({ label, icon: Icon }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setPrompt(label)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border border-border bg-white text-ink/60 hover:bg-primary hover:border-primary hover:text-white transition-colors truncate"
+              >
+                <Icon size={12} className="shrink-0" /> <span className="truncate">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={`border border-[#E7E9EC] rounded-2xl p-6 flex flex-col bg-white ${CARD_HOVER}`}>
+          <div className={`${ICON_BOX} mb-4`}>
+            <LayoutGrid size={22} className="text-ink/60" />
+          </div>
+          <p className="text-[22px] font-display font-semibold">Browse Templates</p>
+          <p className="text-[15px] text-secondary mt-1.5 mb-4">Choose from {realTemplates.length}+ professionally designed templates across categories.</p>
+          <div className="flex-1 relative h-24 mb-4 overflow-hidden">
+            {[
+              { icon: Calendar, bg: "bg-primary/10", text: "text-primary" },
+              { icon: FileText, bg: "bg-accent/10", text: "text-accent" },
+              { icon: Receipt, bg: "bg-danger/10", text: "text-danger" },
+            ].map((c, i) => (
+              <div
+                key={i}
+                className={`absolute top-0 w-24 h-24 rounded-lg border border-border ${c.bg} p-2.5`}
+                style={{ left: `${i * 34}px`, zIndex: 3 - i }}
+              >
+                <c.icon size={16} className={c.text} />
+                <div className="space-y-1 mt-2">
+                  <div className={`h-1 w-full rounded-full ${c.bg}`} />
+                  <div className={`h-1 w-3/4 rounded-full ${c.bg}`} />
+                  <div className={`h-1 w-full rounded-full ${c.bg}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button variant="secondary" onClick={jumpToGrid} className="h-12 px-6 rounded-xl text-base">Browse Templates <ArrowRight size={15} /></Button>
+        </div>
+
+        <div className={`border border-[#E7E9EC] rounded-2xl p-6 flex flex-col bg-white ${CARD_HOVER}`}>
+          <div className={`${ICON_BOX} mb-4`}>
+            <Pencil size={22} className="text-ink/60" />
+          </div>
+          <p className="text-[22px] font-display font-semibold">Start from Scratch</p>
+          <p className="text-[15px] text-secondary mt-1.5 mb-4">Create a blank form and add fields yourself.</p>
+          <button
+            onClick={startFromScratch}
+            disabled={creating}
+            className="flex-1 h-24 mb-4 border border-dashed border-border rounded-lg p-3 hover:border-primary/50 hover:bg-base/40 transition-colors disabled:opacity-50 text-left"
+          >
+            <p className="text-[10px] font-medium text-ink/50 mb-1">Name</p>
+            <div className="h-1.5 w-full rounded-full bg-ink/10 mb-2" />
+            <p className="text-[10px] font-medium text-ink/50 mb-1">Email</p>
+            <div className="h-1.5 w-2/3 rounded-full bg-ink/10" />
           </button>
-          <Field label="Form Name">
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Contact Us" autoFocus />
-          </Field>
-          {error && <p className="text-xs text-danger mb-2">{error}</p>}
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button onClick={create} disabled={creating || !name.trim()}>{creating ? "Creating…" : "Use Template"}</Button>
+          <Button variant="secondary" onClick={startFromScratch} disabled={creating} className="h-12 px-6 rounded-xl text-base">Start Blank Form <ArrowRight size={15} /></Button>
+        </div>
+      </div>
+      ) : (
+        <AIGenerationStepper
+          prompt={prompt}
+          onPromptChange={setPrompt}
+          genPhase={genPhase}
+          genStep={genStep}
+          genResult={genResult}
+          onReset={resetGenerate}
+          onPreview={() => window.open(`/forms/${genResult.form.id}?preview=1`, "_blank")}
+          onEdit={() => goToBuild(genResult.form)}
+          onRegenerate={regenerate}
+          modifyPrompt={modifyPrompt}
+          onModifyPromptChange={setModifyPrompt}
+          onModify={modifyWithAI}
+          modifying={modifying}
+        />
+      )}
+
+      {popular.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-display font-semibold text-lg flex items-center gap-1.5"><Star size={16} className="text-primary" /> Popular Templates</h2>
+            <button onClick={() => { setCategory("All Categories"); setQuery(""); jumpToGrid(); }} className="text-xs font-medium text-primary hover:underline flex items-center gap-1">
+              View all templates <ArrowRight size={12} />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {popular.map((t) => <PopularTemplateCard key={t.key} template={t} onClick={() => createFromTemplate(t)} />)}
           </div>
         </div>
       )}
-    </Modal>
+
+      <div className="flex items-center gap-2 mb-6">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/30" />
+          <input
+            className={`${inputCls} pl-9`}
+            placeholder="Search templates by name or category…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="relative">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className={`${inputCls} pr-8 appearance-none cursor-pointer`}
+          >
+            <option>All Categories</option>
+            {categories.map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none" />
+        </div>
+      </div>
+
+      <div ref={gridRef}>
+        {filterActive ? (
+          <div>
+            <div className="flex items-center gap-3 mb-3">
+              <button
+                onClick={() => { setCategory("All Categories"); setQuery(""); }}
+                className="text-xs font-medium text-primary hover:underline flex items-center gap-1 shrink-0"
+              >
+                <ArrowLeft size={12} /> All Categories
+              </button>
+              <h2 className="font-display font-semibold text-base">
+                {filtered.length} template{filtered.length === 1 ? "" : "s"}
+              </h2>
+            </div>
+            {creating ? (
+              <p className="text-sm text-ink/40 text-center py-10">Creating your form…</p>
+            ) : filtered.length === 0 ? (
+              <p className="text-sm text-ink/40 text-center py-10">No templates match your search.</p>
+            ) : (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {filtered.map((t) => <TemplateCard key={t.key} template={t} onClick={() => createFromTemplate(t)} />)}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <h2 className="font-display font-semibold text-base mb-3">Categories</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {categories.map((cat) => (
+                <CategoryCard
+                  key={cat}
+                  category={cat}
+                  templates={realTemplates.filter((t) => t.category === cat)}
+                  active={false}
+                  onClick={() => pickCategory(cat)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-danger mt-4">{error}</p>}
+    </div>
   );
 }
 
@@ -1829,9 +2624,12 @@ export default function Forms() {
   const router = useRouter();
   const [forms, setForms] = useState([]);
   const [stats, setStats] = useState(null);
+  // Which form's inline panel (Workflow/Settings/Responses/Analytics) is
+  // expanded — Build now lives on its own page (/app/forms/[id]/build), so
+  // there's no "active form" driving a single shared canvas anymore, just
+  // an accordion of per-row panels.
   const [active, setActive] = useState(null);
-  const [tab, setTab] = useState("builder");
-  const [modal, setModal] = useState(false);
+  const [tab, setTab] = useState(null);
   const [loading, setLoading] = useState(true);
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [approvalsCount, setApprovalsCount] = useState(0);
@@ -1861,6 +2659,7 @@ export default function Forms() {
     loadApprovalsCount();
     loadPlanLimits();
   }, []);
+
   // TODO: suspected culprit behind a Cypress "element covered by another
   // element" flake on the New Form modal — a socket db:change event firing
   // load() while the modal is open may be causing a stray re-render/second
@@ -1870,12 +2669,6 @@ export default function Forms() {
   useLiveCollection(["settings"], loadPlanLimits);
 
   const atFormLimit = !isMasterAdmin && planLimits && forms.length >= planLimits.maxForms;
-
-  const handleFormCreated = (data) => {
-    setModal(false);
-    load();
-    setActive(data);
-  };
 
   const duplicateForm = async (form) => {
     setActionBusy(true);
@@ -1917,13 +2710,25 @@ export default function Forms() {
     }
   };
 
-  const saveBuilder = async (patch) => {
+  const saveFor = async (formId, patch) => {
     setSaveError("");
     try {
-      await api.put(`/forms/${active.id}`, patch);
+      await api.put(`/forms/${formId}`, patch);
       load();
     } catch (err) {
       setSaveError(err.response?.data?.error || "Couldn't save that change.");
+    }
+  };
+
+  // Accordion: clicking an already-open panel on the same form closes it;
+  // clicking a different panel/form switches to that one.
+  const togglePanel = (form, tabKey) => {
+    if (active?.id === form.id && tab === tabKey) {
+      setActive(null);
+      setTab(null);
+    } else {
+      setActive(form);
+      setTab(tabKey);
     }
   };
 
@@ -1943,7 +2748,7 @@ export default function Forms() {
                   if (atFormLimit) {
                     setSaveError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.`);
                   } else {
-                    setModal(true);
+                    router.push("/app/forms/new");
                   }
                 }}
               >
@@ -1983,101 +2788,68 @@ export default function Forms() {
       ) : forms.length === 0 ? (
         <Card><EmptyState icon={FormInput} title="No forms yet" subtitle="Create your first form to start collecting responses." /></Card>
       ) : (
-        <div>
-          {active && (
-            <div className="space-y-4">
-              <Card className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={active.id}
-                      onChange={(e) => {
-                        setActive(forms.find((f) => f.id === e.target.value) || active);
-                        setTab("builder");
-                      }}
-                      className="font-display font-semibold text-lg bg-transparent border-none outline-none cursor-pointer -ml-1 max-w-[420px] truncate"
-                    >
-                      {forms.map((f) => (
-                        <option key={f.id} value={f.id}>{f.name} — {f.responseCount} response{f.responseCount === 1 ? "" : "s"}</option>
-                      ))}
-                    </select>
-                    <Badge>{active.status}</Badge>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="secondary"
-                      onClick={() => window.open(`/forms/${active.id}?preview=1`, "_blank")}
-                    >
-                      <Eye size={14} /> Preview
-                    </Button>
-                    {canManage && (
-                      <>
-                        <Button variant="secondary" onClick={() => togglePublish(active)} disabled={actionBusy}>
-                          {active.status === "Published" ? "Unpublish" : "Publish"}
-                        </Button>
-                        <Button variant="secondary" onClick={() => duplicateForm(active)} disabled={actionBusy}><Copy size={14} /></Button>
-                        <Button variant="danger" onClick={() => setDeleteTarget(active)} disabled={actionBusy}><Trash2 size={14} /></Button>
-                      </>
-                    )}
-                  </div>
+        <Card className="divide-y divide-border">
+          {forms.map((f) => (
+            <div key={f.id} className="px-5">
+              <div className="py-4 flex items-center justify-between gap-4">
+                {/* Left column: name + description */}
+                <div className="min-w-0 flex-1">
+                  <Link href={`/app/forms/${f.id}/build`} className="font-display font-semibold text-heading hover:text-primary truncate block">
+                    {f.name}
+                  </Link>
+                  <p className="text-xs text-secondary truncate mt-0.5">
+                    {f.description || "No description"} · {f.responseCount} response{f.responseCount === 1 ? "" : "s"}
+                  </p>
                 </div>
 
-                {active.status === "Published" && <ShareLink form={active} />}
-
-                {/* Horizontal tab row (Build | Workflow | Settings | Responses |
-                    Analytics) instead of a vertical rail — scrolls
-                    horizontally on narrow widths instead of squeezing into
-                    an unusable column next to the canvas. */}
-                <div className="flex flex-col gap-4">
-                  <div className="flex gap-1 overflow-x-auto border-b border-border">
-                    {STUDIO_NAV.map((item) => (
-                      <button
-                        key={item.key}
-                        onClick={() => setTab(item.key)}
-                        className={`flex items-center gap-1.5 shrink-0 px-3.5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                          tab === item.key
-                            ? "border-primary text-primary"
-                            : "border-transparent text-ink/50 hover:text-ink"
-                        }`}
-                      >
-                        <item.icon size={15} />
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div>
-                    {tab === "responses" && (
-                      <div className="flex justify-end mb-2">
-                        <button
-                          onClick={() => router.push(`/app/forms/${active.id}/responses`)}
-                          className="text-xs font-medium text-primary flex items-center gap-1 hover:underline"
-                        >
-                          View Details <ExternalLink size={12} />
-                        </button>
-                      </div>
-                    )}
-
-                    {tab === "builder" ? (
-                      <FormBuilder form={active} onSave={saveBuilder} planLimits={planLimits} />
-                    ) : tab === "responses" ? (
-                      <FormResponses formId={active.id} headerless />
-                    ) : tab === "whatsapp" ? (
-                      <WhatsAppSurveyPanel form={active} />
-                    ) : tab === "settings" ? (
-                      <FormSettingsPanel form={active} onSave={saveBuilder} />
-                    ) : (
-                      <FormAnalyticsPanel form={active} recentResponses={stats?.recentResponses || []} />
-                    )}
-                  </div>
+                {/* Right column: status, quick links, actions */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Badge>{f.status}</Badge>
+                  {STUDIO_NAV.filter((item) => item.key !== "builder").map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => (item.key === "responses" ? router.push(`/app/forms/${f.id}/responses`) : togglePanel(f, item.key))}
+                      title={item.label}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        active?.id === f.id && tab === item.key
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-border text-secondary hover:text-heading hover:border-primary/30"
+                      }`}
+                    >
+                      <item.icon size={13} /> {item.label}
+                    </button>
+                  ))}
+                  <Button variant="secondary" onClick={() => window.open(`/forms/${f.id}?preview=1`, "_blank")} title="Preview">
+                    <Eye size={14} />
+                  </Button>
+                  {canManage && (
+                    <>
+                      <Button variant="secondary" onClick={() => togglePublish(f)} disabled={actionBusy} title={f.status === "Published" ? "Unpublish" : "Publish"}>
+                        {f.status === "Published" ? "Unpublish" : "Publish"}
+                      </Button>
+                      <Button variant="secondary" onClick={() => duplicateForm(f)} disabled={actionBusy} title="Duplicate"><Copy size={14} /></Button>
+                      <Button variant="danger" onClick={() => setDeleteTarget(f)} disabled={actionBusy} title="Delete"><Trash2 size={14} /></Button>
+                    </>
+                  )}
                 </div>
-              </Card>
+              </div>
+
+              {active?.id === f.id && tab && (
+                <div className="pb-5">
+                  {f.status === "Published" && <ShareLink form={f} />}
+                  {tab === "whatsapp" ? (
+                    <WhatsAppSurveyPanel form={f} />
+                  ) : tab === "settings" ? (
+                    <FormSettingsPanel form={f} onSave={(patch) => saveFor(f.id, patch)} />
+                  ) : (
+                    <FormAnalyticsPanel form={f} recentResponses={stats?.recentResponses || []} />
+                  )}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          ))}
+        </Card>
       )}
-
-      <NewFormModal open={modal} onClose={() => setModal(false)} onCreated={handleFormCreated} />
 
       <ConfirmDialog
         open={!!deleteTarget}

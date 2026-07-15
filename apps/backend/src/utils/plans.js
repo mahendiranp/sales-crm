@@ -12,7 +12,12 @@ const PLANS = {
     maxResponsesPerMonth: 100,
     workflows: false,
     whatsappBot: false,
-    aiAssistant: false,
+    // A small taste of AI Generate (3/month) so free-plan users can try it
+    // before upgrading, rather than the feature being entirely invisible —
+    // matches the landing page's "AI Form Builder" being listed as a
+    // headline capability, not a Growth-only add-on.
+    aiAssistant: true,
+    aiMonthlyLimit: 3,
     // Free — never purchasable through checkout, it's just the default.
     priceInPaise: null,
   },
@@ -24,6 +29,7 @@ const PLANS = {
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,
+    aiMonthlyLimit: 30,
     // ₹499/month flat (matches the landing page's "/month" display copy).
     priceInPaise: 49900,
   },
@@ -35,6 +41,7 @@ const PLANS = {
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,
+    aiMonthlyLimit: Infinity,
     // "Custom" pricing — sales-assisted, not self-serve checkout.
     priceInPaise: null,
   },
