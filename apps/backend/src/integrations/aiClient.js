@@ -6,7 +6,7 @@ const anthropic = require("./aiProviders/anthropic");
 const gemini = require("./aiProviders/gemini");
 
 const PROVIDERS = { anthropic, gemini };
-const DEFAULT_PROVIDER = "anthropic";
+const DEFAULT_PROVIDER = "gemini";
 
 function resolveProvider(provider) {
   return PROVIDERS[provider] ? provider : DEFAULT_PROVIDER;

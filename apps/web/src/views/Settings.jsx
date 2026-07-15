@@ -288,7 +288,7 @@ export default function Settings() {
                     type="button"
                     onClick={() => update("aiConfiguration", { provider: p.key })}
                     className={`text-left px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
-                      (settings.aiConfiguration.provider || "anthropic") === p.key
+                      (settings.aiConfiguration.provider || "gemini") === p.key
                         ? "border-primary bg-primary/5 text-primary"
                         : "border-border text-ink/60 hover:border-primary/30"
                     }`}

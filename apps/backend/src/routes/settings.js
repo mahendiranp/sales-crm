@@ -24,7 +24,7 @@ function defaults(accountId) {
     // calls for this account (see integrations/aiClient.js). Both providers
     // are configured platform-wide via env vars (ANTHROPIC_API_KEY /
     // GEMINI_API_KEY), not per-account keys — this only picks which one.
-    aiConfiguration: { provider: "anthropic" },
+    aiConfiguration: { provider: "gemini" },
     notifications: { email: true, sms: false, push: true },
     integrations: [],
     // Core CRM sections — unlike `apps` (the Odoo-style optional-modules
@@ -134,7 +134,7 @@ router.get("/accounts", requireMasterAdmin, async (req, res) => {
       email: a.email,
       company: a.company || s?.companyProfile?.name || "",
       plan: s?.subscription?.plan || "starter",
-      aiProvider: s?.aiConfiguration?.provider || "anthropic",
+      aiProvider: s?.aiConfiguration?.provider || "gemini",
       isMasterAdmin: !!a.isMasterAdmin,
     };
   });
@@ -190,7 +190,7 @@ async function getLimitsForAccount(accountId) {
 // route (forms.js) to route the request to the right client.
 async function getAiProviderForAccount(accountId) {
   const current = await settings.find(`settings-${accountId}`);
-  return current?.aiConfiguration?.provider || "anthropic";
+  return current?.aiConfiguration?.provider || "gemini";
 }
 
 module.exports = router;
