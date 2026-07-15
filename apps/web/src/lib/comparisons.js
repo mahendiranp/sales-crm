@@ -9,7 +9,7 @@
 //   tagline       — one-line summary shown under the H1
 //   summary       — 2-3 sentence honest framing (not a sales pitch)
 //   features      — [{ label, us: bool|string, them: bool|string }]
-//   pricingUs     — short string, e.g. "Free forever (Starter) — ₹499/mo (Growth)"
+//   pricingUs     — short string, e.g. "Free forever (Starter) — ₹999/mo (Growth)"
 //   pricingThem   — short string
 //   chooseThemIf  — string, honest "pick the competitor when..." framing
 //   chooseUsIf    — string
@@ -34,7 +34,7 @@ export const COMPARISONS = {
       { label: "Response export (CSV/Excel)", us: true, them: true },
       { label: "Google Workspace integration", us: false, them: true },
     ],
-    pricingUs: "Free forever (Starter) — ₹499/mo for Growth (workflows, WhatsApp, AI)",
+    pricingUs: "Free forever (Starter) — ₹999/mo for Growth (workflows, WhatsApp, AI)",
     pricingThem: "Free, included with any Google account",
     chooseThemIf: "You just need a quick, free survey and already live in Google Workspace.",
     chooseUsIf: "You need submissions to route through an approval chain, get delivered over WhatsApp, or feed a CRM instead of just a spreadsheet.",

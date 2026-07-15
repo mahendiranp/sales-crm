@@ -4,7 +4,7 @@
 // enforcement; if this ever drifts out of sync, the backend wins and just
 // shows an error instead of catching it in advance.
 export const PLANS = {
-  starter: { label: "Starter", maxForms: 3, maxUsers: 1, workflows: false, whatsappBot: false, aiAssistant: true, aiMonthlyLimit: 3 },
+  starter: { label: "Starter", maxForms: 3, maxUsers: 1, workflows: false, whatsappBot: false, aiAssistant: false, aiMonthlyLimit: 0 },
   growth: { label: "Growth", maxForms: Infinity, maxUsers: 20, workflows: true, whatsappBot: true, aiAssistant: true, aiMonthlyLimit: 30 },
   enterprise: { label: "Enterprise", maxForms: Infinity, maxUsers: Infinity, workflows: true, whatsappBot: true, aiAssistant: true, aiMonthlyLimit: Infinity },
 };

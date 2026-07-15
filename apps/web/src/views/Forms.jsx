@@ -2334,6 +2334,11 @@ export function AddFormPage() {
     return true;
   });
 
+  // Generate-with-AI is a premium (Team/Enterprise) capability — Free plan
+  // shows no trace of it, not just a disabled button, hence hiding the
+  // whole card rather than dimming it.
+  const aiAllowed = isMasterAdmin || !aiUsage || aiUsage.limit > 0;
+
   const jumpToGrid = () => gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const pickCategory = (cat) => {
     setCategory(category === cat ? "All Categories" : cat);
@@ -2353,7 +2358,8 @@ export function AddFormPage() {
       </div>
 
       {genPhase === "idle" ? (
-      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr] gap-5 mb-14">
+      <div className={`grid grid-cols-1 gap-5 mb-14 ${aiAllowed ? "lg:grid-cols-[2fr_1fr_1fr]" : "lg:grid-cols-2"}`}>
+        {aiAllowed && (
         <div
           className="rounded-[20px] p-7"
           style={{
@@ -2433,6 +2439,7 @@ export function AddFormPage() {
             ))}
           </div>
         </div>
+        )}
 
         <div className={`border border-[#E7E9EC] rounded-2xl p-6 flex flex-col bg-white ${CARD_HOVER}`}>
           <div className={`${ICON_BOX} mb-4`}>
