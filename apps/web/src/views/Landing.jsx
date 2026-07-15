@@ -85,7 +85,7 @@ const PLANS = [
     key: "team",
     name: "Team",
     tagline: "For growing businesses",
-    price: "₹499",
+    price: "₹999",
     period: "/month",
     features: ["Unlimited forms", "2,000 responses / month", "Approval workflows", "AI form builder", "Team collaboration", "Up to 20 users"],
     cta: "Start free trial",
