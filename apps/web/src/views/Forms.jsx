@@ -3,6 +3,10 @@ import { useRouter } from "next/router";
 import {
   Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, ClipboardCheck,
   LayoutGrid, Inbox, BarChart3, Plug, Settings as SettingsIcon, Sparkles, Send, X as XIcon,
+  Type, AlignLeft, Mail, Phone, Hash, Calendar, Clock, ChevronDownSquare, CircleDot, CheckSquare,
+  Paperclip, Star, ToggleLeft, CalendarClock, Search, UserPlus, Briefcase, ShoppingBag, Users,
+  LifeBuoy, Bug, Plane, UserCheck, LogOut, HeartPulse, Receipt, Home, RotateCcw, GraduationCap,
+  TrendingUp, FileText,
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -17,20 +21,20 @@ import { limitsFor } from "../lib/plans";
 import { WIDE_FIELD_TYPES, LAYOUT_GRID_COLS_CLASS } from "../lib/formLayout";
 
 const FIELD_TYPES = [
-  { type: "text", label: "Short Text" },
-  { type: "longtext", label: "Long Text" },
-  { type: "email", label: "Email" },
-  { type: "phone", label: "Phone" },
-  { type: "number", label: "Number" },
-  { type: "date", label: "Date" },
-  { type: "time", label: "Time" },
-  { type: "dropdown", label: "Dropdown" },
-  { type: "radio", label: "Radio Button" },
-  { type: "checkbox", label: "Checkbox" },
-  { type: "file", label: "File Upload" },
-  { type: "rating", label: "Rating" },
-  { type: "yesno", label: "Yes/No" },
-  { type: "booking", label: "Meeting Booking" },
+  { type: "text", label: "Short Text", icon: Type },
+  { type: "longtext", label: "Long Text", icon: AlignLeft },
+  { type: "email", label: "Email", icon: Mail },
+  { type: "phone", label: "Phone", icon: Phone },
+  { type: "number", label: "Number", icon: Hash },
+  { type: "date", label: "Date", icon: Calendar },
+  { type: "time", label: "Time", icon: Clock },
+  { type: "dropdown", label: "Dropdown", icon: ChevronDownSquare },
+  { type: "radio", label: "Radio Button", icon: CircleDot },
+  { type: "checkbox", label: "Checkbox", icon: CheckSquare },
+  { type: "file", label: "File Upload", icon: Paperclip },
+  { type: "rating", label: "Rating", icon: Star },
+  { type: "yesno", label: "Yes/No", icon: ToggleLeft },
+  { type: "booking", label: "Meeting Booking", icon: CalendarClock },
 ];
 
 // Specific calendar dates, not a recurring weekly pattern — the owner
@@ -51,13 +55,55 @@ const FIELD_CATEGORIES = [
 
 const STUDIO_NAV = [
   { key: "builder", label: "Build", icon: LayoutGrid },
+  { key: "whatsapp", label: "Workflow", icon: Plug },
   { key: "settings", label: "Settings", icon: SettingsIcon },
-  { key: "responses", label: "Submissions", icon: Inbox },
+  { key: "responses", label: "Responses", icon: Inbox },
   { key: "analytics", label: "Analytics", icon: BarChart3 },
-  { key: "whatsapp", label: "Integrations", icon: Plug },
 ];
 
 const OPTION_TYPES = ["dropdown", "radio", "checkbox"];
+
+// Per-template icon so the "Choose a Template" gallery scans visually
+// instead of reading as a wall of near-identical text cards. Falls back to
+// a generic FileText icon for anything not explicitly mapped (new templates
+// added on the backend without a matching icon here).
+const TEMPLATE_ICONS = {
+  blank: FileText,
+  "customer-feedback": Star,
+  "nps-survey": TrendingUp,
+  "contact-lead": UserPlus,
+  "event-registration": Calendar,
+  "job-application": Briefcase,
+  "order-form": ShoppingBag,
+  "appointment-booking": CalendarClock,
+  "meeting-request": Users,
+  "it-support-ticket": LifeBuoy,
+  "bug-report": Bug,
+  "leave-request": Plane,
+  "employee-onboarding": UserCheck,
+  "exit-interview": LogOut,
+  "patient-intake": HeartPulse,
+  "expense-reimbursement": Receipt,
+  "property-inquiry": Home,
+  rsvp: Mail,
+  "return-refund-request": RotateCcw,
+  "newsletter-signup": Send,
+  "course-feedback": GraduationCap,
+  "employee-engagement-survey": BarChart3,
+};
+
+// Hand-picked, not derived from usage stats (no such tracking exists yet)
+// — surfaces the templates most tenants reach for first, ahead of scrolling
+// every category. Revisit once real "times used" data exists.
+const POPULAR_TEMPLATE_KEYS = ["customer-feedback", "contact-lead", "leave-request", "job-application", "nps-survey"];
+
+function templateIcon(key) {
+  return TEMPLATE_ICONS[key] || FileText;
+}
+
+function templateMinutes(fieldCount) {
+  return Math.max(1, Math.ceil((fieldCount || 0) / 6));
+}
 
 function fieldTypeLabel(type) {
   return FIELD_TYPES.find((f) => f.type === type)?.label || type;
@@ -337,6 +383,26 @@ function BookingConfigEditor({ config, onChange }) {
 // layout and the FieldPropertiesPanel (right-side dedicated panel) —
 // `bare` skips the outer card chrome since FieldPropertiesPanel supplies
 // its own.
+// Collapsed-by-default accordion section for grouping a long settings form
+// (e.g. FieldEditor below) into named chunks instead of one continuous
+// scroll. `defaultOpen` lets the first/most-used section start expanded.
+function CollapsibleSection({ title, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-ink/70 bg-base/40 hover:bg-base/70 transition-colors"
+      >
+        {title}
+        <ChevronDownSquare size={14} className={`text-ink/40 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="p-3 space-y-2.5">{children}</div>}
+    </div>
+  );
+}
+
 function FieldEditor({ field, onChange, onDelete, bare }) {
   const update = (patch) => onChange({ ...field, ...patch });
   // Placeholder/Default Value don't mean anything for a booking field
@@ -345,92 +411,109 @@ function FieldEditor({ field, onChange, onDelete, bare }) {
   // looking inputs in the editor.
   const isBooking = field.type === "booking";
   const body = (
-    <>
-      <Field label="Label">
-        <input className={inputCls} value={field.label} onChange={(e) => update({ label: e.target.value })} />
-      </Field>
-      {!isBooking && (
-        <Field label="Placeholder">
-          <input className={inputCls} value={field.placeholder || ""} onChange={(e) => update({ placeholder: e.target.value })} />
+    <div className="space-y-2">
+      <CollapsibleSection title="General" defaultOpen>
+        <Field label="Label">
+          <input className={inputCls} value={field.label} onChange={(e) => update({ label: e.target.value })} />
         </Field>
-      )}
-      {!isBooking && (
-        <Field label="Default Value">
-          <input className={inputCls} value={field.defaultValue || ""} onChange={(e) => update({ defaultValue: e.target.value })} />
+        {!isBooking && (
+          <Field label="Placeholder">
+            <input className={inputCls} value={field.placeholder || ""} onChange={(e) => update({ placeholder: e.target.value })} />
+          </Field>
+        )}
+        {!isBooking && (
+          <Field label="Default Value">
+            <input className={inputCls} value={field.defaultValue || ""} onChange={(e) => update({ defaultValue: e.target.value })} />
+          </Field>
+        )}
+        <Field label="Help Text">
+          <input className={inputCls} value={field.helpText || ""} onChange={(e) => update({ helpText: e.target.value })} />
         </Field>
-      )}
-      <Field label="Help Text">
-        <input className={inputCls} value={field.helpText || ""} onChange={(e) => update({ helpText: e.target.value })} />
-      </Field>
 
-      {OPTION_TYPES.includes(field.type) && (
-        <Field label="Options (comma-separated)">
-          <input
-            className={inputCls}
-            value={(field.options || []).join(", ")}
-            onChange={(e) => update({ options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-          />
-        </Field>
-      )}
-
-      {field.type === "booking" && (
-        <BookingConfigEditor config={field.bookingConfig} onChange={(bookingConfig) => update({ bookingConfig })} />
-      )}
-
-      {field.type === "number" && (
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Min value">
+        {OPTION_TYPES.includes(field.type) && (
+          <Field label="Options (comma-separated)">
             <input
-              type="number"
               className={inputCls}
-              value={field.validation?.min ?? ""}
-              onChange={(e) => update({ validation: { ...field.validation, min: e.target.value } })}
+              value={(field.options || []).join(", ")}
+              onChange={(e) => update({ options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
             />
           </Field>
-          <Field label="Max value">
-            <input
-              type="number"
-              className={inputCls}
-              value={field.validation?.max ?? ""}
-              onChange={(e) => update({ validation: { ...field.validation, max: e.target.value } })}
-            />
-          </Field>
-        </div>
-      )}
+        )}
 
-      {(field.type === "text" || field.type === "longtext") && (
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Min length">
-            <input
-              type="number"
-              className={inputCls}
-              value={field.validation?.minLength ?? ""}
-              onChange={(e) => update({ validation: { ...field.validation, minLength: e.target.value } })}
-            />
-          </Field>
-          <Field label="Max length">
-            <input
-              type="number"
-              className={inputCls}
-              value={field.validation?.maxLength ?? ""}
-              onChange={(e) => update({ validation: { ...field.validation, maxLength: e.target.value } })}
-            />
-          </Field>
-        </div>
-      )}
+        {field.type === "booking" && (
+          <BookingConfigEditor config={field.bookingConfig} onChange={(bookingConfig) => update({ bookingConfig })} />
+        )}
+      </CollapsibleSection>
 
-      <label className="flex items-center gap-2 text-sm text-ink/70 pt-1">
-        <input type="checkbox" checked={!!field.required} onChange={(e) => update({ required: e.target.checked })} />
-        Required field
-      </label>
+      <CollapsibleSection title="Validation">
+        {field.type === "number" && (
+          <div className="grid grid-cols-2 gap-2.5">
+            <Field label="Min value">
+              <input
+                type="number"
+                className={inputCls}
+                value={field.validation?.min ?? ""}
+                onChange={(e) => update({ validation: { ...field.validation, min: e.target.value } })}
+              />
+            </Field>
+            <Field label="Max value">
+              <input
+                type="number"
+                className={inputCls}
+                value={field.validation?.max ?? ""}
+                onChange={(e) => update({ validation: { ...field.validation, max: e.target.value } })}
+              />
+            </Field>
+          </div>
+        )}
+
+        {(field.type === "text" || field.type === "longtext") && (
+          <div className="grid grid-cols-2 gap-2.5">
+            <Field label="Min length">
+              <input
+                type="number"
+                className={inputCls}
+                value={field.validation?.minLength ?? ""}
+                onChange={(e) => update({ validation: { ...field.validation, minLength: e.target.value } })}
+              />
+            </Field>
+            <Field label="Max length">
+              <input
+                type="number"
+                className={inputCls}
+                value={field.validation?.maxLength ?? ""}
+                onChange={(e) => update({ validation: { ...field.validation, maxLength: e.target.value } })}
+              />
+            </Field>
+          </div>
+        )}
+
+        <label className="flex items-center gap-2 text-sm text-ink/70 pt-1">
+          <input type="checkbox" checked={!!field.required} onChange={(e) => update({ required: e.target.checked })} />
+          Required field
+        </label>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Appearance">
+        <p className="text-xs text-ink/40">Per-field styling options are coming soon.</p>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Logic">
+        <p className="text-xs text-ink/40">Conditional show/hide rules are coming soon.</p>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Permissions">
+        <p className="text-xs text-ink/40">Field-level visibility/edit permissions are coming soon.</p>
+      </CollapsibleSection>
+
       <button onClick={onDelete} className="text-danger text-xs font-medium flex items-center gap-1 hover:underline pt-1">
         <Trash2 size={13} /> Remove field
       </button>
-    </>
+    </div>
   );
 
-  if (bare) return <div className="space-y-2.5">{body}</div>;
-  return <div className="border border-border rounded-lg p-3 space-y-2.5 bg-base/40">{body}</div>;
+  if (bare) return body;
+  return <div className="border border-border rounded-lg p-3 bg-base/40">{body}</div>;
 }
 
 // Right-side panel for editing the currently-selected canvas field — the
@@ -715,6 +798,7 @@ function FieldPalette({ onAdd, onAskAI, showAI }) {
             onClick={() => onAdd(t.type)}
             className="w-full flex items-center gap-2 text-left text-sm px-2.5 py-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors"
           >
+            <t.icon size={16} className="text-ink/50" />
             <span className="text-ink/70">{t.label}</span>
           </button>
         ))}
@@ -798,8 +882,8 @@ function CanvasField({ field, accentColor, selected, onSelect, onChange, onDelet
   return (
     <div
       onClick={onSelect}
-      className={`group relative border rounded-lg p-3.5 bg-white transition-colors cursor-pointer ${
-        selected ? "border-primary ring-1 ring-primary/30" : "border-border hover:border-primary/40"
+      className={`group relative rounded-lg py-3 px-3.5 -mx-3.5 transition-colors cursor-pointer ${
+        selected ? "bg-primary/5 ring-1 ring-primary/30" : "hover:bg-base/60"
       }`}
       {...dragHandleProps}
     >
@@ -1067,19 +1151,19 @@ function FormBuilder({ form, onSave, planLimits }) {
   const canvasOverlayOpacity = hasBackgroundImage ? (branding.backgroundImageOverlay || 0) / 100 : 0;
   const canvasAccentColor = branding.accentColor || "";
   const canvasLogoType = branding.logoType || (branding.logoDataUrl ? "image" : "none");
+  // Fixed 3-column studio layout — Field Library (280px) | Canvas (flexible,
+  // should dominate the page) | Properties (340px), always reserving the
+  // properties column so the canvas doesn't reflow width when a field is
+  // selected. The AI Assistant, when open, adds a 4th column.
   // Tailwind's JIT only picks up class names that appear literally in the
   // source, so this has to be an explicit lookup of full strings rather
   // than building the arbitrary-value string at runtime.
-  const gridColsClass = selectedField
-    ? showAiPanel
-      ? "lg:grid-cols-[300px_1fr_300px_320px]"
-      : "lg:grid-cols-[300px_1fr_300px]"
-    : showAiPanel
-    ? "lg:grid-cols-[300px_1fr_320px]"
-    : "lg:grid-cols-[300px_1fr]";
+  const gridColsClass = showAiPanel
+    ? "lg:grid-cols-[280px_1fr_340px_320px]"
+    : "lg:grid-cols-[280px_1fr_340px]";
 
   return (
-    <div className={`grid grid-cols-1 ${gridColsClass} gap-4 items-start`}>
+    <div className={`grid grid-cols-1 ${gridColsClass} gap-4 items-start relative`}>
       <div className="space-y-4">
         <FieldPalette onAdd={addField} onAskAI={() => setAiOpen(true)} showAI={aiAllowed} />
 
@@ -1122,7 +1206,7 @@ function FormBuilder({ form, onSave, planLimits }) {
           </div>
         </div>
 
-        <div className="relative border border-border rounded-card bg-base/30 p-4 overflow-hidden" style={canvasBgStyle}>
+        <div className="relative border border-border rounded-card bg-white p-8 sm:p-12 overflow-hidden" style={canvasBgStyle}>
           {canvasOverlayOpacity > 0 && (
             <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: `rgba(0,0,0,${canvasOverlayOpacity})` }} />
           )}
@@ -1138,7 +1222,7 @@ function FormBuilder({ form, onSave, planLimits }) {
                 No fields yet — add one from the palette on the left{aiAllowed ? ", or ask the AI Assistant" : ""}.
               </div>
             ) : (
-              <div className={`grid grid-cols-1 ${LAYOUT_GRID_COLS_CLASS[layoutColumns]} gap-2.5`}>
+              <div className={`grid grid-cols-1 ${LAYOUT_GRID_COLS_CLASS[layoutColumns]} gap-6`}>
                 {fields.map((f, i) => (
                   <div
                     key={f.id}
@@ -1163,19 +1247,24 @@ function FormBuilder({ form, onSave, planLimits }) {
           </div>
         </div>
 
-        <div className="flex justify-end mt-4">
-          <Button onClick={save} disabled={!dirty}>Save Changes</Button>
-        </div>
       </div>
 
-      {selectedField && (
+      {selectedField ? (
         <FieldPropertiesPanel
           field={selectedField}
           onChange={(updated) => updateField(selectedField.id, updated)}
           onDelete={() => removeField(selectedField.id)}
           onClose={() => setSelectedId(null)}
         />
+      ) : (
+        <div className="hidden lg:flex border border-dashed border-border rounded-card h-fit lg:sticky lg:top-4 p-6 text-center">
+          <p className="text-xs text-ink/40 m-auto">Select a field on the canvas to edit its properties.</p>
+        </div>
       )}
+
+      <div className="fixed bottom-6 right-6 z-20">
+        <Button onClick={save} disabled={!dirty} className="shadow-lg">Save Changes</Button>
+      </div>
 
       {showAiPanel && (
         <AIAssistantPanel
@@ -1482,28 +1571,158 @@ function ShareLink({ form }) {
   );
 }
 
-function TemplateGallery({ templates, onPick }) {
-  const categories = [...new Set(templates.map((t) => t.category))];
+function TemplateCard({ template, selected, onClick }) {
+  const Icon = templateIcon(template.key);
   return (
-    <div className="space-y-4">
-      {categories.map((cat) => (
-        <div key={cat}>
-          <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-1.5">{cat}</p>
-          <div className="grid grid-cols-2 gap-2">
-            {templates.filter((t) => t.category === cat).map((t) => (
-              <button
-                key={t.key}
-                onClick={() => onPick(t)}
-                className="text-left border border-border rounded-lg p-3 hover:border-primary hover:bg-primary/5 transition-colors"
-              >
-                <p className="text-sm font-medium">{t.name}</p>
-                <p className="text-xs text-ink/40 mt-0.5">{t.description}</p>
-                {t.fieldCount > 0 && <p className="text-xs text-primary/70 mt-1.5">{t.fieldCount} fields</p>}
-              </button>
-            ))}
+    <button
+      onClick={onClick}
+      className={`group relative text-left border rounded-lg p-3.5 transition-all duration-150 ${
+        selected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-md"
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <Icon size={17} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate">{template.name}</p>
+          <p className="text-xs text-ink/40 mt-0.5 line-clamp-2">{template.description}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2.5 mt-2.5 text-xs text-ink/40">
+        {template.fieldCount > 0 && <span className="flex items-center gap-1"><FormInput size={11} /> {template.fieldCount} fields</span>}
+        <span className="flex items-center gap-1"><Clock size={11} /> {templateMinutes(template.fieldCount)} min</span>
+        {POPULAR_TEMPLATE_KEYS.includes(template.key) && (
+          <span className="flex items-center gap-1 text-primary/70"><Star size={11} /> Popular</span>
+        )}
+      </div>
+      <span className="absolute bottom-3 right-3.5 text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+        Use Template →
+      </span>
+    </button>
+  );
+}
+
+function TemplateGallery({ templates, onPick }) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("All");
+
+  const categories = ["All", ...new Set(templates.filter((t) => t.key !== "blank").map((t) => t.category))];
+  const q = query.trim().toLowerCase();
+  const filtered = templates.filter((t) => {
+    if (t.key === "blank") return false;
+    if (category !== "All" && t.category !== category) return false;
+    if (q && !t.name.toLowerCase().includes(q) && !t.description.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const blank = templates.find((t) => t.key === "blank");
+  const popular = !q && category === "All" ? filtered.filter((t) => POPULAR_TEMPLATE_KEYS.includes(t.key)) : [];
+  const rest = filtered.filter((t) => !popular.includes(t));
+
+  return (
+    <div className="space-y-5">
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/30" />
+        <input
+          className={`${inputCls} pl-9`}
+          placeholder="Search templates…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        {categories.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategory(cat)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              category === cat ? "bg-primary text-white border-primary" : "border-border text-ink/60 hover:border-primary/40"
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {blank && (
+        <button
+          onClick={() => onPick(blank)}
+          className="w-full flex items-center gap-2.5 text-left border border-dashed border-border rounded-lg p-3 hover:border-primary/50 hover:bg-base/40 transition-colors"
+        >
+          <div className="w-9 h-9 rounded-lg bg-base text-ink/50 flex items-center justify-center shrink-0">
+            <FileText size={17} />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Start from Scratch</p>
+            <p className="text-xs text-ink/40">An empty form — add every field yourself.</p>
+          </div>
+        </button>
+      )}
+
+      {popular.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2 flex items-center gap-1">
+            <Sparkles size={12} /> Popular
+          </p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {popular.map((t) => <TemplateCard key={t.key} template={t} onClick={() => onPick(t)} />)}
           </div>
         </div>
-      ))}
+      )}
+
+      <div>
+        {popular.length > 0 && <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2">Browse Templates</p>}
+        {rest.length === 0 ? (
+          <p className="text-sm text-ink/40 text-center py-6">No templates match "{query}".</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2.5">
+            {rest.map((t) => <TemplateCard key={t.key} template={t} onClick={() => onPick(t)} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The AI generate flow creates a blank form first (form.id is required by
+// the ai/build endpoint), asks the model to build the field list from the
+// prompt, then saves that field list onto the freshly created form — three
+// backend calls chained into one "Generate" click from the user's side.
+function AIGenerateCard({ onCreated, onError }) {
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const generate = async () => {
+    if (!prompt.trim() || busy) return;
+    setBusy(true);
+    onError("");
+    try {
+      const { data: form } = await api.post("/forms/from-template", { templateKey: "blank", name: prompt.slice(0, 60) });
+      const { data: result } = await api.post(`/forms/${form.id}/ai/build`, { prompt });
+      const { data: saved } = await api.put(`/forms/${form.id}`, { fields: result.fields || [] });
+      onCreated(saved);
+    } catch (err) {
+      onError(err.response?.data?.error || "Couldn't generate that form.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border border-primary/30 bg-primary/5 rounded-lg p-3.5">
+      <p className="text-sm font-medium flex items-center gap-1.5"><Sparkles size={15} className="text-primary" /> Generate with AI</p>
+      <p className="text-xs text-ink/40 mt-0.5 mb-2.5">Describe the form you need and let AI build the fields for you.</p>
+      <div className="flex gap-2">
+        <input
+          className={inputCls}
+          placeholder="e.g. Employee leave request with dates and reason"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && generate()}
+        />
+        <Button onClick={generate} disabled={busy || !prompt.trim()}>{busy ? "Generating…" : "Generate →"}</Button>
+      </div>
     </div>
   );
 }
@@ -1544,9 +1763,13 @@ function NewFormModal({ open, onClose, onCreated }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={selected ? "Name Your Form" : "Choose a Template"} wide={!selected}>
+    <Modal open={open} onClose={onClose} title={selected ? "Name Your Form" : "Choose a Template"} xl={!selected}>
       {!selected ? (
-        <TemplateGallery templates={templates} onPick={pick} />
+        <div className="space-y-4">
+          <AIGenerateCard onCreated={onCreated} onError={setError} />
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <TemplateGallery templates={templates} onPick={pick} />
+        </div>
       ) : (
         <div>
           <button onClick={() => setSelected(null)} className="text-xs text-primary font-medium mb-3 hover:underline">
@@ -1558,7 +1781,7 @@ function NewFormModal({ open, onClose, onCreated }) {
           {error && <p className="text-xs text-danger mb-2">{error}</p>}
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button onClick={create} disabled={creating || !name.trim()}>{creating ? "Creating…" : "Create Form"}</Button>
+            <Button onClick={create} disabled={creating || !name.trim()}>{creating ? "Creating…" : "Use Template"}</Button>
           </div>
         </div>
       )}
@@ -1638,6 +1861,11 @@ export default function Forms() {
     loadApprovalsCount();
     loadPlanLimits();
   }, []);
+  // TODO: suspected culprit behind a Cypress "element covered by another
+  // element" flake on the New Form modal — a socket db:change event firing
+  // load() while the modal is open may be causing a stray re-render/second
+  // fixed-position paint. Not confirmed yet; revisit if the flake persists
+  // after ruling out stale dev-server HMR state. Will fix later.
   useLiveCollection(["forms", "form_responses"], () => { load(); loadApprovalsCount(); });
   useLiveCollection(["settings"], loadPlanLimits);
 
@@ -1796,21 +2024,23 @@ export default function Forms() {
 
                 {active.status === "Published" && <ShareLink form={active} />}
 
-                {/* Below lg: a horizontal scrollable tab row above the
-                    content instead of a narrow 76px vertical rail, which
-                    would otherwise squeeze into an unusable column next
-                    to the canvas on tablet/mobile widths. */}
-                <div className="flex flex-col lg:grid lg:grid-cols-[76px_1fr] gap-4">
-                  <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible border-b lg:border-b-0 lg:border-r border-border pb-2 lg:pb-0 lg:pr-2">
+                {/* Horizontal tab row (Build | Workflow | Settings | Responses |
+                    Analytics) instead of a vertical rail — scrolls
+                    horizontally on narrow widths instead of squeezing into
+                    an unusable column next to the canvas. */}
+                <div className="flex flex-col gap-4">
+                  <div className="flex gap-1 overflow-x-auto border-b border-border">
                     {STUDIO_NAV.map((item) => (
                       <button
                         key={item.key}
                         onClick={() => setTab(item.key)}
-                        className={`flex flex-row lg:flex-col items-center gap-1.5 lg:gap-1 shrink-0 px-3 lg:px-0 py-2 lg:py-2.5 rounded-lg text-xs lg:text-[11px] font-medium ${
-                          tab === item.key ? "bg-primary/8 text-primary" : "text-ink/50 hover:bg-base hover:text-ink"
+                        className={`flex items-center gap-1.5 shrink-0 px-3.5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                          tab === item.key
+                            ? "border-primary text-primary"
+                            : "border-transparent text-ink/50 hover:text-ink"
                         }`}
                       >
-                        <item.icon size={17} />
+                        <item.icon size={15} />
                         {item.label}
                       </button>
                     ))}

@@ -29,6 +29,9 @@ async function generateFormFields({ prompt, currentFields }) {
     }
   );
 
+  if (res.status === 429) {
+    throw new Error("Gemini's free tier is rate-limited — you've hit the request quota for now. Wait a minute and try again.");
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`Gemini request failed (${res.status}): ${body.slice(0, 300)}`);

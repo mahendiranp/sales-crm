@@ -12,3 +12,8 @@ apps/web/.next
 apps/*/.env
 apps/*/.env.local
 coverage/
+
+# Cypress local run artifacts
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/

@@ -237,7 +237,8 @@ router.post("/:id/ai/build", requireManager, async (req, res) => {
     const result = await generateFormFields({ provider, prompt, currentFields: form.fields || [] });
     res.json(result);
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;
+    res.status(status).json({ error: err.message });
   }
 });
 
