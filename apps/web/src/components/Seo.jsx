@@ -7,7 +7,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://floworaone.com";
 // instead of every page hand-rolling its own <Head>, so the title format
 // and OG defaults stay consistent as pages get added.
 export default function Seo({ title, description, keywords, noindex = false, path = "", jsonLd = null }) {
-  const fullTitle = title ? `${title} | ${APP_NAME}` : `${APP_NAME} — Forms that route themselves`;
+  const fullTitle = title ? `${title} | ${APP_NAME}` : `${APP_NAME} — AI Form Builder with Approval Workflows`;
   const url = `${SITE_URL}${path}`;
 
   return (

@@ -121,7 +121,7 @@ export default function Terms() {
         </Section>
 
         <Section title="10. Contact">
-          <p>Questions about these Terms? Reach us at hello@pipeline.app.</p>
+          <p>Questions about these Terms? Reach us at floworaone@gmail.com.</p>
         </Section>
       </main>
     </div>

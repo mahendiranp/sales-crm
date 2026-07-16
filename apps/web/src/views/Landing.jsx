@@ -133,7 +133,7 @@ const FOOTER_COLUMNS = [
     title: "Company",
     links: [
       { label: "About", href: null },
-      { label: "Contact", href: "mailto:hello@pipeline.app" },
+      { label: "Contact", href: "mailto:floworaone@gmail.com" },
       { label: "Privacy", href: "/privacy" },
       { label: "Terms", href: "/terms" },
     ],
@@ -194,7 +194,7 @@ const JSON_LD = {
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   description:
-    "The AI-powered form platform for modern teams — build forms with AI, automate approvals, and track everything from one dashboard.",
+    "Flowora is an AI form builder with multi-step approval workflows — build forms with AI, automate approvals, and track everything from one dashboard.",
   offers: PLANS.map((p) => ({
     "@type": "Offer",
     name: p.name,
@@ -211,6 +211,18 @@ const FAQ_JSON_LD = {
     name: f.q,
     acceptedAnswer: { "@type": "Answer", text: f.a },
   })),
+};
+
+// Kept separate from the file's local Review/testimonial copy — that's UI
+// display text, not a claim about verified, collectible third-party
+// reviews, so it isn't reflected here as schema.org Review markup.
+const ORG_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: APP_NAME,
+  url: "https://floworaone.com",
+  logo: "https://floworaone.com/favicon.svg",
+  email: "info@floworaone.com",
 };
 
 export default function Landing() {
@@ -230,14 +242,14 @@ export default function Landing() {
           "free CRM",
         ]}
         path="/"
-        jsonLd={[JSON_LD, FAQ_JSON_LD]}
+        jsonLd={[JSON_LD, FAQ_JSON_LD, ORG_JSON_LD]}
       />
       <NavBar />
 
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-10 text-center">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/8 text-primary text-xs font-medium mb-6">
-          <Sparkles size={12} /> The AI-powered form platform for modern teams
+          <Sparkles size={12} /> AI Form Builder with Approval Workflows
         </div>
         <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.05] max-w-3xl mx-auto">
           Forms that don't just collect responses—they move work forward.
@@ -503,7 +515,7 @@ export default function Landing() {
         <div className="border-t border-border">
           <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
             <p className="text-xs text-ink/40">© 2026 {APP_NAME}. All rights reserved.</p>
-            <span className="flex items-center gap-1 text-xs text-ink/50"><Mail size={12} /> hello@pipeline.app</span>
+            <span className="flex items-center gap-1 text-xs text-ink/50"><Mail size={12} /> floworaone@gmail.com</span>
           </div>
         </div>
       </footer>

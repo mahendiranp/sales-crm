@@ -61,7 +61,11 @@ export default function Settings() {
     // Plain field edits shouldn't touch apps/modules — those are only sent
     // from the Sidebar Setup tab's own save, so a non-owner teammate saving
     // Notifications/Company Profile never trips the owner-only flag check.
-    const { apps, modules, ...editable } = settings;
+    // `subscription` is excluded too — plan changes only ever happen via
+    // the Upgrade to Growth flow below, never this generic save button, so
+    // sending the unchanged value back here should never look like an
+    // attempted plan change (backend/routes/settings.js also guards this).
+    const { apps, modules, subscription, ...editable } = settings;
     await api.put("/settings", editable);
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);

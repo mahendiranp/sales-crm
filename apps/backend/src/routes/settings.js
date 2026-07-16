@@ -150,15 +150,23 @@ router.put("/", requireManager, async (req, res) => {
   if ((req.body.apps || req.body.modules) && !isOwner) {
     return res.status(403).json({ error: "Only the account owner can manage feature flags." });
   }
+  const id = `settings-${req.user.accountId}`;
+  let current = await settings.find(id);
+
   // Without this, any owner could PUT their own subscription.plan and
   // grant themselves Growth/Enterprise limits for free — there's no
   // payment processor wired up yet to be the actual gate. Only the
   // platform's master admin can change it until real billing exists.
+  // Compares against the *current* plan rather than just checking whether
+  // `subscription` is present — a plain settings save (company profile,
+  // notifications, etc.) sends the whole object back including its own
+  // unchanged subscription field, which isn't an attempted plan change.
   if (req.body.subscription && !req.user.isMasterAdmin) {
-    return res.status(403).json({ error: "Only the platform admin can change your subscription plan." });
+    const currentPlan = (current || defaults(req.user.accountId)).subscription?.plan;
+    if (req.body.subscription.plan !== currentPlan) {
+      return res.status(403).json({ error: "Only the platform admin can change your subscription plan." });
+    }
   }
-  const id = `settings-${req.user.accountId}`;
-  let current = await settings.find(id);
 
   // Can't enable a plan-gated app toggle below the plan that unlocks it —
   // otherwise this endpoint would be a backdoor around the pricing table.
