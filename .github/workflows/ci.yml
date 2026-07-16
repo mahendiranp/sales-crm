@@ -1,8 +1,8 @@
 name: CI
 
 # Runs on every PR targeting main (and on pushes to main as a safety net).
-# Branch protection on main requires the "backend-tests" and
-# "frontend-build" jobs below to succeed before a PR can be merged.
+# Branch protection on main requires the "backend-tests", "frontend-build",
+# and "e2e-tests" jobs below to succeed before a PR can be merged.
 on:
   pull_request:
     branches: [main]
@@ -52,3 +52,71 @@ jobs:
       - name: Build backend (no-op, keeps parity with turbo pipeline)
         working-directory: apps/backend
         run: npm run build
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # No MONGODB_URI set and NODE_ENV isn't "production", so the backend
+      # spins up its own throwaway in-memory MongoDB (see
+      # apps/backend/src/index.js) — no separate database service needed.
+      - name: Start backend (background)
+        working-directory: apps/backend
+        run: nohup npm start > /tmp/backend.log 2>&1 &
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-jwt-secret-not-for-real-use
+          FORM_ENCRYPTION_KEY: ci-test-form-encryption-key-not-for-real-use
+          ALLOW_DEMO_LOGIN: "true"
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf "http://localhost:4000/api/auth/check-email?email=healthcheck@example.com" > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Backend did not become ready in time" >&2
+          cat /tmp/backend.log
+          exit 1
+
+      - name: Build web app
+        working-directory: apps/web
+        run: npm run build
+        env:
+          BACKEND_URL: http://localhost:4000
+
+      - name: Start web app (background)
+        working-directory: apps/web
+        run: nohup npm start > /tmp/web.log 2>&1 &
+        env:
+          BACKEND_URL: http://localhost:4000
+
+      - name: Wait for web app
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf "http://localhost:3000/login" > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Web app did not become ready in time" >&2
+          cat /tmp/web.log
+          exit 1
+
+      - name: Run Cypress
+        run: npx cypress run --spec cypress/e2e/verify.cy.js
+
+      - name: Upload Cypress screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: cypress/screenshots
+          retention-days: 7

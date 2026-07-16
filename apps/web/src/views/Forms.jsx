@@ -1277,10 +1277,7 @@ function EditableLabel({ field, onChange }) {
     <label
       className="block text-sm font-semibold text-heading mb-1.5 rounded px-1.5 py-0.5 -mx-1.5 -my-0.5 cursor-text hover:bg-base"
       title="Click to rename this field"
-      onClick={(e) => {
-        e.stopPropagation();
-        setEditing(true);
-      }}
+      onClick={() => setEditing(true)}
     >
       {field.label} {field.required && <span className="text-danger">*</span>}
     </label>

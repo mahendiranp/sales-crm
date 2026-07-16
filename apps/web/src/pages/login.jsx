@@ -19,7 +19,13 @@ const WHY_FLOWORA = [
 // Bumps input height/border/focus-ring for this page only — `inputCls` is
 // shared by every form across the app, so overriding it here would've
 // changed every input everywhere, not just login.
-const loginInputCls = `${inputCls} h-[52px] text-base border-[#D9E3E6] focus:ring-2 focus:ring-primary/15`;
+// `bg-white text-ink` are pinned explicitly here — without them, a
+// browser in OS dark mode renders native <input> chrome with a dark
+// background and white text (the shared `inputCls` never sets either),
+// which on this page's white card made typed text unreadable.
+const loginInputCls = `${inputCls} h-[52px] text-[16px] bg-white text-[#14172b99] border-[#D9E3E6] focus:ring-2 focus:ring-primary/15`;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // The backend's raw error strings are accurate but terse — this maps the
 // common ones to friendlier copy without hiding what actually went wrong.
@@ -47,6 +53,7 @@ export default function Login() {
     e.preventDefault();
     const nextErrors = { email: "", password: "", form: "" };
     if (!email.trim()) nextErrors.email = "Email is required.";
+    else if (!EMAIL_RE.test(email.trim())) nextErrors.email = "Enter a valid email address.";
     if (!password.trim()) nextErrors.password = "Password is required.";
     if (nextErrors.email || nextErrors.password) {
       setErrors(nextErrors);
@@ -55,7 +62,7 @@ export default function Login() {
     setErrors(nextErrors);
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       router.push("/app");
     } catch (err) {
       // Invalid-credentials failures aren't specific to either field
@@ -136,7 +143,7 @@ export default function Login() {
               <div className="mt-5">
                 <Button
                   type="submit"
-                  className="w-full justify-center h-12 text-base font-semibold rounded-[10px] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                  className="w-full justify-center h-12 text-[16px] font-semibold rounded-[10px] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
                   disabled={loading}
                 >
                   {loading ? "Signing you in…" : "Sign in securely →"}
@@ -208,7 +215,7 @@ export default function Login() {
                       </span>
                     )}
                   </div>
-                  <p className="text-base text-ink/50 mt-0.5">{desc}</p>
+                  <p className="text-[16px] text-ink/50 mt-0.5">{desc}</p>
                 </div>
               </li>
             ))}

@@ -17,6 +17,8 @@ import GoogleSignInButton from "../components/GoogleSignInButton";
 const recommendedAppsMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
 const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.map((k) => [k, true]));
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Mirrors the login page's right-side feature panel — same list, same
 // styling — so the two auth screens read as one cohesive system.
 const WHY_FLOWORA = [
@@ -30,7 +32,11 @@ const WHY_FLOWORA = [
 // Bumps input height/border/focus-ring for step 1 only — `inputCls` is
 // shared by every form across the app (including steps 2-3 below), so
 // overriding it globally would've changed every input everywhere.
-const loginInputCls = `${inputCls} h-[52px] text-base border-[#D9E3E6] focus:ring-2 focus:ring-primary/15`;
+// `bg-white text-ink` are pinned explicitly here — without them, a
+// browser in OS dark mode renders native <input> chrome with a dark
+// background and white text (the shared `inputCls` never sets either),
+// which on this page's white card made typed text unreadable.
+const loginInputCls = `${inputCls} h-[52px] text-[16px] bg-white text-[#14172b99] border-[#D9E3E6] focus:ring-2 focus:ring-primary/15`;
 
 function WhyFloworaPanel() {
   return (
@@ -57,7 +63,7 @@ function WhyFloworaPanel() {
                   </span>
                 )}
               </div>
-              <p className="text-base text-ink/50 mt-0.5">{desc}</p>
+              <p className="text-[16px] text-ink/50 mt-0.5">{desc}</p>
             </div>
           </li>
         ))}
@@ -105,6 +111,7 @@ export default function Signup() {
     const next = { name: "", email: "", password: "", form: "" };
     if (!form.name.trim()) next.name = "Full name is required.";
     if (!form.email.trim()) next.email = "Email is required.";
+    else if (!EMAIL_RE.test(form.email.trim())) next.email = "Enter a valid email address.";
     if (!form.password.trim()) next.password = "Password is required.";
     else if (form.password.length < 8) next.password = "Password must be at least 8 characters.";
     if (next.name || next.email || next.password) {
@@ -272,7 +279,7 @@ export default function Signup() {
                   FREE FOREVER
                 </span>
               </div>
-              <p className="text-base mb-6" style={{ color: "#6B7280" }}>
+              <p className="text-[16px] mb-6" style={{ color: "#6B7280" }}>
                 {selectedPlan === "growth"
                   ? "Signing up for Growth (₹999/month) — you'll pay after verifying your email."
                   : "Start building AI-powered forms for free. No credit card required."}
@@ -317,7 +324,7 @@ export default function Signup() {
                 <div className="mt-5">
                   <Button
                     type="submit"
-                    className="w-full justify-center h-[53px] text-base font-semibold rounded-[10px] transition-all duration-200 hover:-translate-y-px hover:shadow-md"
+                    className="w-full justify-center h-[53px] text-[16px] font-semibold rounded-[10px] transition-all duration-200 hover:-translate-y-px hover:shadow-md"
                     disabled={checkingEmail}
                   >
                     {checkingEmail ? "Checking…" : "Create account →"}
@@ -418,7 +425,7 @@ export default function Signup() {
               <form onSubmit={verifyCode} noValidate>
                 <Field label="Verification Code">
                   <input
-                    className={`${inputCls} text-center text-lg tracking-[0.3em]`}
+                    className={`${inputCls} bg-white text-[#14172b99] text-center text-lg tracking-[0.3em]`}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     inputMode="numeric"

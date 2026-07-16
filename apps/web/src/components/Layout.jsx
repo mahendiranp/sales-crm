@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import {
@@ -184,6 +184,21 @@ export default function Layout({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // `main` below is its own scrollable container (overflow-y-auto), not the
+  // window — Next's default scroll restoration only resets window scroll,
+  // so without this, navigating away from a page you'd scrolled down (e.g.
+  // a long Forms list) leaves the *next* page rendered already scrolled
+  // down too, hiding its own heading/content until the user scrolls up.
+  const mainRef = useRef(null);
+  useEffect(() => {
+    const resetScroll = () => {
+      if (mainRef.current) mainRef.current.scrollTop = 0;
+    };
+    router.events.on("routeChangeComplete", resetScroll);
+    return () => router.events.off("routeChangeComplete", resetScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleLogout = () => {
     logout();
     router.push("/login");
@@ -360,7 +375,7 @@ export default function Layout({ children }) {
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
   );

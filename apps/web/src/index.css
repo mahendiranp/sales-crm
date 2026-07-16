@@ -29,3 +29,20 @@ body {
   outline: 2px solid #2F5D50;
   outline-offset: 2px;
 }
+
+/* Chrome/Safari/Edge apply their own text/background color to autofilled
+   inputs (e.g. saved login credentials) that ignores the page's normal
+   `color`/`background-color` CSS entirely — only `-webkit-text-fill-color`
+   plus this inset `box-shadow` trick can override it. Without this,
+   autofilled email/password fields on the login and signup forms render
+   with the browser's own (often very light, effectively invisible) text
+   color regardless of what Tailwind classes are applied to the input. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: #14172b99;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
