@@ -122,6 +122,7 @@ export default function Layout({ children }) {
   const roleLabel = { admin: "Admin", manager: "Manager", viewer: "Viewer" }[user?.authRole] || user?.authRole;
   const [enabledApps, setEnabledApps] = useState({});
   const [enabledModules, setEnabledModules] = useState(null);
+  const [companyName, setCompanyName] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   // Which nav section labels are collapsed — persisted so a collapsed
   // "Insights" (say) stays collapsed across page navigations and reloads,
@@ -166,6 +167,7 @@ export default function Layout({ children }) {
       .then((r) => {
         setEnabledApps(r.data.apps || {});
         setEnabledModules(r.data.modules || {});
+        setCompanyName(r.data.companyProfile?.name || "");
       })
       .catch(() => {});
   useEffect(() => {
@@ -353,9 +355,8 @@ export default function Layout({ children }) {
               <Bell size={19} />
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-danger" />
             </button>
-            <div className="hidden sm:flex items-center gap-1.5 text-sm text-ink/70 cursor-pointer">
-              Bangalore Sales
-              <ChevronDown size={15} />
+            <div className="hidden sm:flex items-center gap-1.5 text-sm text-ink/70">
+              {companyName || APP_NAME}
             </div>
           </div>
         </header>

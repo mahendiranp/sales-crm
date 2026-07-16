@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 // npm dependency, just their script tag, consistent with how this app wires
 // up other third-party widgets (Razorpay Checkout). The ID token it returns
 // is verified server-side in routes/auth.js; the frontend never inspects it.
-export default function GoogleSignInButton({ onSuccess, onError }) {
+export default function GoogleSignInButton({ onSuccess, onError, text = "continue_with" }) {
   const { googleLogin } = useAuth();
   const buttonRef = useRef(null);
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -28,13 +28,14 @@ export default function GoogleSignInButton({ onSuccess, onError }) {
       theme: "outline",
       size: "large",
       width: 336,
-      text: "continue_with",
+      text,
     });
   };
 
   useEffect(() => {
     if (window.google) renderButton();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
 
   if (!clientId) return null;
 
