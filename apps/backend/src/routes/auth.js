@@ -193,7 +193,7 @@ router.post("/signup/verify-otp", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  const account = (await accounts.all()).find((a) => a.email.toLowerCase() === (email || "").toLowerCase());
+  const account = (await accounts.all()).find((a) => a.email.toLowerCase() === (email || "").trim().toLowerCase());
   const valid = account && (await bcrypt.compare(password || "", account.password));
   if (!valid) {
     return res.status(401).json({ error: "Invalid email or password." });
@@ -268,7 +268,7 @@ router.post("/google", async (req, res) => {
 // ---------------- PASSWORD RESET ----------------
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
-  const account = (await accounts.all()).find((a) => a.email.toLowerCase() === (email || "").toLowerCase());
+  const account = (await accounts.all()).find((a) => a.email.toLowerCase() === (email || "").trim().toLowerCase());
 
   // Always respond the same way whether or not the account exists — telling
   // an attacker "no account with that email" lets them enumerate real users.
