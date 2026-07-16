@@ -113,7 +113,7 @@ export default function Privacy() {
         </Section>
 
         <Section title="9. Contact">
-          <p>Questions about this policy or your data? Reach us at hello@pipeline.app.</p>
+          <p>Questions about this policy or your data? Reach us at floworaone@gmail.com.</p>
         </Section>
       </main>
     </div>

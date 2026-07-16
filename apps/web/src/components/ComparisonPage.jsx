@@ -37,7 +37,7 @@ function FeatureCell({ value }) {
 export default function ComparisonPage({ slug, data }) {
   const { name, tagline, summary, features, pricingUs, pricingThem, chooseThemIf, chooseUsIf, faqs } = data;
 
-  const jsonLd = {
+  const faqJsonLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
     mainEntity: faqs.map((f) => ({
@@ -47,6 +47,15 @@ export default function ComparisonPage({ slug, data }) {
     })),
   };
 
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://floworaone.com/" },
+      { "@type": "ListItem", position: 2, name: `${APP_NAME} vs ${name}`, item: `https://floworaone.com/compare/${slug}` },
+    ],
+  };
+
   return (
     <div className="font-body text-ink">
       <Seo
@@ -54,7 +63,7 @@ export default function ComparisonPage({ slug, data }) {
         description={summary}
         keywords={[`${APP_NAME} vs ${name}`, `${name} alternative`, `${name} vs ${APP_NAME}`, "form builder comparison"]}
         path={`/compare/${slug}`}
-        jsonLd={jsonLd}
+        jsonLd={[faqJsonLd, breadcrumbJsonLd]}
       />
       <NavBar />
 
@@ -140,7 +149,7 @@ export default function ComparisonPage({ slug, data }) {
           </div>
           <p className="text-xs text-ink/40">© 2026 {APP_NAME}. Forms that route themselves.</p>
           <div className="flex items-center gap-4 text-xs text-ink/50">
-            <span className="flex items-center gap-1"><Mail size={12} /> hello@pipeline.app</span>
+            <span className="flex items-center gap-1"><Mail size={12} /> floworaone@gmail.com</span>
             <Link href="/terms" className="hover:text-ink">Terms</Link>
             <Link href="/privacy" className="hover:text-ink">Privacy</Link>
           </div>
