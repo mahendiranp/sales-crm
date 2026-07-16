@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { Target, ArrowLeft } from "lucide-react";
+import { Target, ArrowLeft, ShieldCheck, LockKeyhole, CheckCircle2, Sparkles, Zap, BarChart3, Palette, Download } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
 import { Field, inputCls, Button, PasswordInput } from "../components/ui";
@@ -17,6 +17,56 @@ import GoogleSignInButton from "../components/GoogleSignInButton";
 const recommendedAppsMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
 const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.map((k) => [k, true]));
 
+// Mirrors the login page's right-side feature panel — same list, same
+// styling — so the two auth screens read as one cohesive system.
+const WHY_FLOWORA = [
+  { icon: Sparkles, label: "AI Form Builder", desc: "Create forms in seconds using plain English.", badge: "New" },
+  { icon: Zap, label: "Approval Workflows", desc: "Automatically route requests for approval." },
+  { icon: BarChart3, label: "Analytics Dashboard", desc: "Monitor submissions in real time." },
+  { icon: Palette, label: "Brand Customization", desc: "Match forms to your company." },
+  { icon: Download, label: "CSV & Excel Export", desc: "Export your data whenever you need it." },
+];
+
+// Bumps input height/border/focus-ring for step 1 only — `inputCls` is
+// shared by every form across the app (including steps 2-3 below), so
+// overriding it globally would've changed every input everywhere.
+const loginInputCls = `${inputCls} h-[52px] text-base border-[#D9E3E6] focus:ring-2 focus:ring-primary/15`;
+
+function WhyFloworaPanel() {
+  return (
+    <div
+      className="hidden lg:flex flex-col gap-5 w-full max-w-[430px] bg-white rounded-card p-8 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+      style={{ border: "1px solid #E7ECEF", boxShadow: "0 15px 45px rgba(0,0,0,.06)" }}
+    >
+      <h2 className="flex items-center gap-2 font-display font-bold text-ink leading-snug text-[28px]">
+        <Sparkles size={22} className="text-primary shrink-0" />
+        Why teams choose {APP_NAME}
+      </h2>
+      <ul className="space-y-5">
+        {WHY_FLOWORA.map(({ icon: Icon, label, desc, badge }) => (
+          <li key={label} className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-lg bg-primary/8 flex items-center justify-center shrink-0">
+              <Icon size={19} className="text-primary" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 text-[18px] font-semibold text-ink">
+                {label}
+                {badge && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-dark bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded-full">
+                    {badge}
+                  </span>
+                )}
+              </div>
+              <p className="text-base text-ink/50 mt-0.5">{desc}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="text-sm font-medium text-primary mt-1">✓ Start free. Upgrade when you're ready.</p>
+    </div>
+  );
+}
+
 export default function Signup() {
   const router = useRouter();
   // ?plan=growth on the URL (from the landing page's Growth "Start free
@@ -29,9 +79,14 @@ export default function Signup() {
   }, [router.query.plan]);
 
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: "", email: "", company: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [selectedModules, setSelectedModules] = useState(recommendedModulesMap);
   const [selectedApps, setSelectedApps] = useState(recommendedAppsMap);
+  // Step 1 renders each message under the specific field it's about; `form`
+  // catches anything not tied to one input (Google's own OAuth failures).
+  // `error` (below) stays a single string for step 2, which has no
+  // name/email/password fields to attach a per-field message to.
+  const [fieldErrors, setFieldErrors] = useState({ name: "", email: "", password: "", form: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
@@ -47,25 +102,26 @@ export default function Signup() {
 
   const continueToStep2 = async (e) => {
     e.preventDefault();
-    setError("");
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
-      setError("Name, email, and password are all required.");
+    const next = { name: "", email: "", password: "", form: "" };
+    if (!form.name.trim()) next.name = "Full name is required.";
+    if (!form.email.trim()) next.email = "Email is required.";
+    if (!form.password.trim()) next.password = "Password is required.";
+    else if (form.password.length < 8) next.password = "Password must be at least 8 characters.";
+    if (next.name || next.email || next.password) {
+      setFieldErrors(next);
       return;
     }
-    if (form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
+    setFieldErrors(next);
     setCheckingEmail(true);
     try {
       const { data } = await api.get("/auth/check-email", { params: { email: form.email } });
       if (!data.available) {
-        setError("An account with this email already exists. Try logging in instead.");
+        setFieldErrors({ ...next, email: "An account with this email already exists. Try logging in instead." });
         return;
       }
       setStep(2);
     } catch {
-      setError("Couldn't verify that email right now — please try again.");
+      setFieldErrors({ ...next, email: "Couldn't verify that email right now — please try again." });
     } finally {
       setCheckingEmail(false);
     }
@@ -177,66 +233,132 @@ export default function Signup() {
     }
   };
 
+  const passwordValid = form.password.length >= 8;
+
   return (
-    <div className="min-h-screen bg-base flex items-center justify-center p-6">
+    <div
+      className="min-h-screen flex items-center justify-center p-6"
+      style={{ background: "linear-gradient(180deg, #F8FBFA 0%, #FFFFFF 35%, #FFFFFF 100%)" }}
+    >
       <Seo
         title="Sign up"
         description={`Create your free ${APP_NAME} account — drag-and-drop form builder with approval workflows and WhatsApp delivery. No card required.`}
         keywords={["sign up CRM", "free form builder", "create CRM account", "online form builder signup"]}
         path="/signup"
       />
-      <div className={`w-full transition-all ${step === 2 ? "max-w-2xl" : "max-w-md"}`}>
-        <Link href="/" className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Target size={17} className="text-white" />
+      <div
+        className={`w-full transition-all ${
+          step === 1 ? "max-w-5xl grid lg:grid-cols-[560px_430px] justify-center gap-14 items-center" : step === 2 ? "max-w-2xl" : "max-w-md"
+        }`}
+      >
+        <div className={`w-full ${step === 1 ? "max-w-[560px] mx-auto lg:mx-0 lg:ml-auto" : ""}`}>
+        <Link href="/" className="flex items-center justify-center gap-2 mb-2">
+          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
+            <Target size={18} className="text-white" />
           </div>
-          <span className="font-display font-bold text-lg">{APP_NAME}</span>
+          <span className="font-display font-bold text-[22px]">{APP_NAME}</span>
         </Link>
+        {step === 1 && <p className="text-center text-xs text-ink/40 mb-4">AI-powered forms for modern teams</p>}
 
-        <div className="bg-white border border-border rounded-card shadow-card p-6">
+        <div
+          className={`bg-white rounded-card p-6 ${step === 1 ? "lg:p-10 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg" : "shadow-card border border-border"}`}
+          style={step === 1 ? { border: "1px solid #E7ECEF", boxShadow: "0 15px 45px rgba(0,0,0,.06)" } : undefined}
+        >
           {step === 1 ? (
             <>
-              <h1 className="font-display font-bold text-xl mb-1">Create your account</h1>
-              <p className="text-sm text-ink/50 mb-5">
+              <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+                <h1 className="font-display font-bold text-ink text-[32px] leading-tight">Create your Flowora account</h1>
+                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full shrink-0">
+                  FREE FOREVER
+                </span>
+              </div>
+              <p className="text-base mb-6" style={{ color: "#6B7280" }}>
                 {selectedPlan === "growth"
                   ? "Signing up for Growth (₹999/month) — you'll pay after verifying your email."
-                  : "Free forever on the Starter plan. No card required."}
+                  : "Start building AI-powered forms for free. No credit card required."}
               </p>
 
               <form onSubmit={continueToStep2} noValidate>
                 <Field label="Full Name">
-                  <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                </Field>
-                <Field label="Work Email">
                   <input
-                    className={inputCls}
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => { setForm({ ...form, email: e.target.value }); setError(""); }}
+                    className={loginInputCls}
+                    value={form.name}
+                    onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((er) => ({ ...er, name: "" })); }}
+                    style={fieldErrors.name ? { borderColor: "#DC2626" } : undefined}
                   />
                 </Field>
-                <Field label="Company">
-                  <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-                </Field>
-                <Field label="Password">
-                  <PasswordInput value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-                </Field>
-                {error && <p className="text-sm text-danger mb-3">{error}</p>}
-                <Button type="submit" className="w-full justify-center" disabled={checkingEmail}>
-                  {checkingEmail ? "Checking…" : "Continue"}
-                </Button>
+                {fieldErrors.name && <p className="text-sm text-danger mt-1">{fieldErrors.name}</p>}
+                <div className="mt-2.5">
+                  <Field label="Email">
+                    <input
+                      className={loginInputCls}
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => { setForm({ ...form, email: e.target.value }); setFieldErrors((er) => ({ ...er, email: "" })); }}
+                      style={fieldErrors.email ? { borderColor: "#DC2626" } : undefined}
+                    />
+                  </Field>
+                  {fieldErrors.email && <p className="text-sm text-danger mt-1">{fieldErrors.email}</p>}
+                </div>
+                <div className="mt-2.5">
+                  <Field label="Password">
+                    <PasswordInput
+                      className={loginInputCls}
+                      value={form.password}
+                      onChange={(e) => { setForm({ ...form, password: e.target.value }); setFieldErrors((er) => ({ ...er, password: "" })); }}
+                      style={fieldErrors.password ? { borderColor: "#DC2626" } : undefined}
+                    />
+                  </Field>
+                  {fieldErrors.password && <p className="text-sm text-danger mt-1">{fieldErrors.password}</p>}
+                  <p className={`text-xs mt-1 ${passwordValid ? "text-emerald-600" : "text-ink/40"}`}>
+                    {passwordValid ? "✓ Strong password" : "• Use at least 8 characters."}
+                  </p>
+                </div>
+                <div className="mt-5">
+                  <Button
+                    type="submit"
+                    className="w-full justify-center h-[53px] text-base font-semibold rounded-[10px] transition-all duration-200 hover:-translate-y-px hover:shadow-md"
+                    disabled={checkingEmail}
+                  >
+                    {checkingEmail ? "Checking…" : "Create account →"}
+                  </Button>
+                </div>
               </form>
 
               {selectedPlan !== "growth" && (
                 <>
-                  <div className="flex items-center gap-3 my-4">
+                  <div className="flex items-center gap-3 mt-8 mb-3">
                     <div className="h-px bg-border flex-1" />
-                    <span className="text-xs text-ink/40">or</span>
+                    <span className="text-[10px] font-semibold tracking-wider text-ink/40 uppercase">Or continue with</span>
                     <div className="h-px bg-border flex-1" />
                   </div>
-                  <GoogleSignInButton onSuccess={() => router.push("/app")} onError={setError} />
+                  <div className="transition-colors rounded-lg [&_button]:hover:bg-[#FAFAFA]">
+                    <GoogleSignInButton
+                      text="signup_with"
+                      onSuccess={() => router.push("/app")}
+                      onError={(msg) => setFieldErrors((er) => ({ ...er, form: msg }))}
+                    />
+                  </div>
+                  {fieldErrors.form && <p className="text-center text-sm text-danger mt-2">{fieldErrors.form}</p>}
+                  <p className="text-center text-xs text-ink/40 mt-2">Securely sign up with your Google account.</p>
                 </>
               )}
+
+              <div className="mt-7 text-center">
+                <div className="flex items-center justify-center flex-wrap gap-x-2 gap-y-1 text-ink/35" style={{ fontSize: "13px" }}>
+                  <span className="flex items-center gap-1"><LockKeyhole size={12} className="text-primary" /> Secure signup</span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1"><ShieldCheck size={12} className="text-primary" /> Google OAuth</span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1"><CheckCircle2 size={12} className="text-primary" /> No credit card</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-ink/40 text-center mt-5">
+                By creating an account, you agree to our{" "}
+                <Link href="/terms" className="text-primary hover:underline">Terms of Service</Link> and{" "}
+                <Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>.
+              </p>
             </>
           ) : step === 2 ? (
             <>
@@ -348,9 +470,12 @@ export default function Signup() {
           )}
         </div>
 
-        <p className="text-center text-sm text-ink/50 mt-5">
+        <p className="text-center text-sm text-ink/50 mt-3">
           Already have an account? <Link href="/login" className="text-primary font-medium">Log in</Link>
         </p>
+        </div>
+
+        {step === 1 && <WhyFloworaPanel />}
       </div>
     </div>
   );

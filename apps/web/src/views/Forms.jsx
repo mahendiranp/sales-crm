@@ -24,7 +24,7 @@ import {
   LABEL_POSITIONS, CONTENT_ALIGNMENTS, PRESENTATION_TEMPLATES, getFieldRowClasses, findPresentationTemplate,
 } from "../lib/formLayouts";
 import { limitsFor } from "../lib/plans";
-import { WIDE_FIELD_TYPES, LAYOUT_GRID_COLS_CLASS } from "../lib/formLayout";
+import { LAYOUT_GRID_COLS_CLASS, fieldColSpanClass } from "../lib/formLayout";
 
 const FIELD_TYPES = [
   { type: "text", label: "Short Text", icon: Type },
@@ -148,6 +148,8 @@ function newField(type) {
     options: OPTION_TYPES.includes(type) ? ["Option 1", "Option 2"] : undefined,
     bookingConfig: type === "booking" ? { ...DEFAULT_BOOKING_CONFIG } : undefined,
     validation: {},
+    appearance: { width: "auto" },
+    logic: { enabled: false, fieldId: "", operator: "equals", value: "" },
   };
 }
 
@@ -430,7 +432,7 @@ function CollapsibleSection({ title, open, onToggle, children }) {
   );
 }
 
-function FieldEditor({ field, onChange, onDelete, bare }) {
+function FieldEditor({ field, fields, onChange, onDelete, bare }) {
   const update = (patch) => onChange({ ...field, ...patch });
   // Placeholder/Default Value don't mean anything for a booking field
   // (there's no text box to place text in, and no sensible "default"
@@ -524,11 +526,95 @@ function FieldEditor({ field, onChange, onDelete, bare }) {
       </CollapsibleSection>
 
       <CollapsibleSection title="Appearance" {...section("Appearance")}>
-        <p className="text-xs text-ink/40">Per-field styling options are coming soon.</p>
+        <Field label="Width">
+          <select
+            className={inputCls}
+            value={field.appearance?.width || "auto"}
+            onChange={(e) => update({ appearance: { ...field.appearance, width: e.target.value } })}
+          >
+            <option value="auto">Auto (default for field type)</option>
+            <option value="full">Full width</option>
+          </select>
+        </Field>
       </CollapsibleSection>
 
       <CollapsibleSection title="Logic" {...section("Logic")}>
-        <p className="text-xs text-ink/40">Conditional show/hide rules are coming soon.</p>
+        <label className="flex items-center gap-2 text-sm text-ink/70">
+          <input
+            type="checkbox"
+            checked={!!field.logic?.enabled}
+            onChange={(e) => update({ logic: { ...field.logic, enabled: e.target.checked } })}
+          />
+          Only show this field conditionally
+        </label>
+        {field.logic?.enabled && (
+          <>
+            {(fields || []).filter((f) => f.id !== field.id).length === 0 ? (
+              <p className="text-xs text-ink/40">Add another field first to reference it here.</p>
+            ) : (
+              <>
+                <Field label="Show this field if">
+                  <select
+                    className={inputCls}
+                    value={field.logic?.fieldId || ""}
+                    onChange={(e) => update({ logic: { ...field.logic, fieldId: e.target.value } })}
+                  >
+                    <option value="">Select a field…</option>
+                    {(fields || []).filter((f) => f.id !== field.id).map((f) => (
+                      <option key={f.id} value={f.id}>{f.label}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Condition">
+                  <select
+                    className={inputCls}
+                    value={field.logic?.operator || "equals"}
+                    onChange={(e) => update({ logic: { ...field.logic, operator: e.target.value } })}
+                  >
+                    <option value="equals">Equals</option>
+                    <option value="not_equals">Does not equal</option>
+                    <option value="contains">Contains</option>
+                    <option value="not_contains">Does not contain</option>
+                    <option value="greater_than">Greater than</option>
+                    <option value="less_than">Less than</option>
+                    <option value="is_empty">Is empty</option>
+                    <option value="is_not_empty">Is not empty</option>
+                  </select>
+                </Field>
+                {!["is_empty", "is_not_empty"].includes(field.logic?.operator) && (
+                  <Field label="Value">
+                    {(() => {
+                      const targetField = (fields || []).find((f) => f.id === field.logic?.fieldId);
+                      const operator = field.logic?.operator || "equals";
+                      if (targetField && OPTION_TYPES.includes(targetField.type) && ["equals", "not_equals"].includes(operator)) {
+                        return (
+                          <select
+                            className={inputCls}
+                            value={field.logic?.value || ""}
+                            onChange={(e) => update({ logic: { ...field.logic, value: e.target.value } })}
+                          >
+                            <option value="">Select a value…</option>
+                            {(targetField.options || []).map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        );
+                      }
+                      return (
+                        <input
+                          type={["greater_than", "less_than"].includes(operator) ? "number" : "text"}
+                          className={inputCls}
+                          value={field.logic?.value || ""}
+                          onChange={(e) => update({ logic: { ...field.logic, value: e.target.value } })}
+                        />
+                      );
+                    })()}
+                  </Field>
+                )}
+              </>
+            )}
+          </>
+        )}
       </CollapsibleSection>
 
       <CollapsibleSection title="Permissions" {...section("Permissions")}>
@@ -548,7 +634,7 @@ function FieldEditor({ field, onChange, onDelete, bare }) {
 // Right-side panel for editing the currently-selected canvas field — the
 // field-properties-panel pattern (vs. expanding the editor inline inside
 // the canvas card, which pushed every field below it down the page).
-function FieldPropertiesPanel({ field, onChange, onDelete, onClose }) {
+function FieldPropertiesPanel({ field, fields, onChange, onDelete, onClose }) {
   return (
     <div className="border border-border rounded-card bg-white h-fit lg:sticky lg:top-4">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -561,7 +647,7 @@ function FieldPropertiesPanel({ field, onChange, onDelete, onClose }) {
         </button>
       </div>
       <div className="p-4">
-        <FieldEditor field={field} onChange={onChange} onDelete={onDelete} bare />
+        <FieldEditor field={field} fields={fields} onChange={onChange} onDelete={onDelete} bare />
       </div>
     </div>
   );
@@ -1564,7 +1650,7 @@ export function FormBuilder({ form, onSave, planLimits }) {
                 {fields.map((f, i) => (
                   <div
                     key={f.id}
-                    className={WIDE_FIELD_TYPES.includes(f.type) ? "sm:col-span-full" : ""}
+                    className={fieldColSpanClass(f)}
                     draggable
                     onDragStart={() => setDragIndex(i)}
                     onDragOver={(e) => e.preventDefault()}
@@ -1605,6 +1691,7 @@ export function FormBuilder({ form, onSave, planLimits }) {
       {selectedField ? (
         <FieldPropertiesPanel
           field={selectedField}
+          fields={fields}
           onChange={(updated) => updateField(selectedField.id, updated)}
           onDelete={() => removeField(selectedField.id)}
           onClose={() => setSelectedId(null)}

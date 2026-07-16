@@ -5,7 +5,7 @@ import { CheckCircle2, FormInput, Eye, X, ArrowLeft, ArrowRight } from "lucide-r
 import api from "../../api/client";
 import FormFieldInput from "../../components/FormFieldInput";
 import Seo from "../../components/Seo";
-import { WIDE_FIELD_TYPES, LAYOUT_GRID_COLS_CLASS } from "../../lib/formLayout";
+import { LAYOUT_GRID_COLS_CLASS, fieldColSpanClass, isFieldVisible } from "../../lib/formLayout";
 import { getLayoutStyleClasses, getFieldRowClasses, findPresentationTemplate } from "../../lib/formLayouts";
 
 function validateField(field, value) {
@@ -42,7 +42,7 @@ function validateField(field, value) {
 
 function FieldBlock({ f, answers, setAnswer, errors, accentColor, id, row, layoutStyle }) {
   return (
-    <div className={`${WIDE_FIELD_TYPES.includes(f.type) ? "sm:col-span-full" : ""} ${row.rowClass}`}>
+    <div className={`${fieldColSpanClass(f)} ${row.rowClass}`}>
       <div className={row.labelWrapClass}>
         <label className={`block ${layoutStyle.labelClass}`}>
           {f.label} {f.required && <span className="text-danger">*</span>}
@@ -72,6 +72,10 @@ export default function PublicFormPage() {
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const [step, setStep] = useState(0);
+  // Fields hidden by a "Logic" rule (see FieldEditor's Logic section in the
+  // builder) are skipped entirely here — not just visually hidden — so they
+  // never block wizard progression or required-field validation.
+  const visibleFields = (form?.fields || []).filter((f) => isFieldVisible(f, answers));
 
   useEffect(() => {
     if (!id || !router.isReady) return;
@@ -111,7 +115,7 @@ export default function PublicFormPage() {
   const submit = async (e) => {
     e.preventDefault();
     const nextErrors = {};
-    form.fields.forEach((f) => {
+    visibleFields.forEach((f) => {
       const msg = validateField(f, answers[f.id]);
       if (msg) nextErrors[f.id] = msg;
     });
@@ -127,13 +131,13 @@ export default function PublicFormPage() {
   // three questions back shouldn't block progress on the current one.
   const goNext = async (e) => {
     e.preventDefault();
-    const f = form.fields[step];
+    const f = visibleFields[step];
     const msg = validateField(f, answers[f.id]);
     if (msg) {
       setErrors((er) => ({ ...er, [f.id]: msg }));
       return;
     }
-    if (step === form.fields.length - 1) {
+    if (step === visibleFields.length - 1) {
       await doSubmit();
     } else {
       setStep((s) => s + 1);
@@ -241,15 +245,15 @@ export default function PublicFormPage() {
             <div className="h-1.5 rounded-full bg-base overflow-hidden">
               <div
                 className="h-full bg-primary transition-all"
-                style={{ width: `${((step + 1) / form.fields.length) * 100}%`, backgroundColor: accentColor || undefined }}
+                style={{ width: `${((step + 1) / visibleFields.length) * 100}%`, backgroundColor: accentColor || undefined }}
               />
             </div>
-            <p className="text-xs text-ink/40 mt-1.5">Question {step + 1} of {form.fields.length}</p>
+            <p className="text-xs text-ink/40 mt-1.5">Question {step + 1} of {visibleFields.length}</p>
           </div>
         )}
         {oneAtATime && presentationTemplate.indicator === "dots" && (
           <div className={`flex items-center gap-1.5 mb-6 ${branding.contentAlign === "center" ? "justify-center" : ""}`}>
-            {form.fields.map((f, i) => (
+            {visibleFields.map((f, i) => (
               <span
                 key={f.id}
                 className={`w-2 h-2 rounded-full transition-colors ${i <= step ? "bg-primary" : "bg-base"}`}
@@ -260,12 +264,12 @@ export default function PublicFormPage() {
         )}
         {oneAtATime && presentationTemplate.indicator === "counter" && (
           <p className={`text-xs text-ink/40 mb-6 ${branding.contentAlign === "center" ? "text-center" : ""}`}>
-            Question {step + 1} of {form.fields.length}
+            Question {step + 1} of {visibleFields.length}
           </p>
         )}
         {oneAtATime && presentationTemplate.indicator === "percent" && (
           <p className={`text-xs font-medium text-ink/50 mb-6 ${branding.contentAlign === "center" ? "text-center" : ""}`}>
-            {Math.round(((step + 1) / form.fields.length) * 100)}% complete
+            {Math.round(((step + 1) / visibleFields.length) * 100)}% complete
           </p>
         )}
 
@@ -274,7 +278,7 @@ export default function PublicFormPage() {
 
         {oneAtATime ? (
           <form onSubmit={goNext} noValidate>
-            <FieldBlock f={form.fields[step]} answers={answers} setAnswer={setAnswer} errors={errors} accentColor={accentColor} id={id} row={row} layoutStyle={layoutStyle} />
+            <FieldBlock f={visibleFields[step]} answers={answers} setAnswer={setAnswer} errors={errors} accentColor={accentColor} id={id} row={row} layoutStyle={layoutStyle} />
 
             {submitError && <p className="text-sm text-danger mt-4">{submitError}</p>}
 
@@ -292,11 +296,11 @@ export default function PublicFormPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  aria-label={step === form.fields.length - 1 ? "Submit" : "Next question"}
+                  aria-label={step === visibleFields.length - 1 ? "Submit" : "Next question"}
                   style={accentColor ? { backgroundColor: accentColor } : undefined}
                   className="w-11 h-11 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark disabled:opacity-50 transition-colors"
                 >
-                  {step === form.fields.length - 1 ? <CheckCircle2 size={18} /> : <ArrowRight size={18} />}
+                  {step === visibleFields.length - 1 ? <CheckCircle2 size={18} /> : <ArrowRight size={18} />}
                 </button>
               </div>
             ) : (
@@ -315,15 +319,15 @@ export default function PublicFormPage() {
                   style={accentColor ? { backgroundColor: accentColor } : undefined}
                   className="flex items-center gap-1.5 bg-primary text-white rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
                 >
-                  {submitting ? "Submitting…" : step === form.fields.length - 1 ? (form.settings?.submitButtonText || "Submit") : "Next"}
-                  {step !== form.fields.length - 1 && <ArrowRight size={14} />}
+                  {submitting ? "Submitting…" : step === visibleFields.length - 1 ? (form.settings?.submitButtonText || "Submit") : "Next"}
+                  {step !== visibleFields.length - 1 && <ArrowRight size={14} />}
                 </button>
               </div>
             )}
           </form>
         ) : (
           <form onSubmit={submit} noValidate className={`grid grid-cols-1 ${LAYOUT_GRID_COLS_CLASS[layoutColumns]} ${layoutStyle.gapClass}`}>
-            {form.fields.map((f) => (
+            {visibleFields.map((f) => (
               <FieldBlock key={f.id} f={f} answers={answers} setAnswer={setAnswer} errors={errors} accentColor={accentColor} id={id} row={row} layoutStyle={layoutStyle} />
             ))}
 
