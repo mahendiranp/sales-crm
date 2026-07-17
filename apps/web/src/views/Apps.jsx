@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Sparkles, Rocket } from "lucide-react";
+import { CheckCircle2, Sparkles, Rocket, UserPlus } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, Switch, Badge } from "../components/ui";
 import { APP_CATALOG, APP_CATEGORIES } from "../lib/appCatalog";
 import { CORE_MODULES } from "../lib/coreModules";
+import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import usePlatformFeatures from "../lib/usePlatformFeatures";
 
@@ -75,12 +76,47 @@ function TenantOverview() {
     ...r.optedApps.map((k) => APP_LABEL[k] || k),
   ];
 
+  // Real customer signups only — the platform's own master admin account
+  // isn't a signup to count. Everything below is derived straight from
+  // each account's own createdAt, not a separate tracked metric.
+  const customers = (rows || []).filter((r) => !r.isMasterAdmin);
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const now = new Date();
+  const signupStats = rows === null ? null : {
+    total: customers.length,
+    today: customers.filter((r) => r.createdAt && startOfDay(new Date(r.createdAt)).getTime() === startOfDay(now).getTime()).length,
+    last7Days: customers.filter((r) => r.createdAt && now - new Date(r.createdAt) <= 7 * 24 * 60 * 60 * 1000).length,
+    last30Days: customers.filter((r) => r.createdAt && now - new Date(r.createdAt) <= 30 * 24 * 60 * 60 * 1000).length,
+  };
+
   return (
     <div className="mb-8">
       <h3 className="font-display font-semibold text-sm text-ink/70 mb-2.5 flex items-center gap-1.5">
         <Sparkles size={14} className="text-primary" /> Tenant Overview
       </h3>
       <p className="text-xs text-ink/40 mb-2.5 -mt-1.5">AI provider routing and which released features each tenant has opted into.</p>
+
+      {signupStats && (
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          <Card className="p-3.5">
+            <div className="flex items-center gap-1.5 text-xs text-ink/40"><UserPlus size={12} /> Total Signups</div>
+            <div className="text-xl font-display font-bold mt-0.5">{signupStats.total}</div>
+          </Card>
+          <Card className="p-3.5">
+            <div className="text-xs text-ink/40">New Today</div>
+            <div className="text-xl font-display font-bold mt-0.5">{signupStats.today}</div>
+          </Card>
+          <Card className="p-3.5">
+            <div className="text-xs text-ink/40">Last 7 Days</div>
+            <div className="text-xl font-display font-bold mt-0.5">{signupStats.last7Days}</div>
+          </Card>
+          <Card className="p-3.5">
+            <div className="text-xs text-ink/40">Last 30 Days</div>
+            <div className="text-xl font-display font-bold mt-0.5">{signupStats.last30Days}</div>
+          </Card>
+        </div>
+      )}
+
       {rows === null ? (
         <p className="text-xs text-ink/40">Loading…</p>
       ) : rows.length === 0 ? (
@@ -92,6 +128,7 @@ function TenantOverview() {
               <tr className="border-b border-border bg-base text-left">
                 <th className="p-2.5 font-medium text-ink/50 text-xs">Company</th>
                 <th className="p-2.5 font-medium text-ink/50 text-xs">Owner</th>
+                <th className="p-2.5 font-medium text-ink/50 text-xs">Joined</th>
                 <th className="p-2.5 font-medium text-ink/50 text-xs">Plan</th>
                 <th className="p-2.5 font-medium text-ink/50 text-xs">AI Provider</th>
                 <th className="p-2.5 font-medium text-ink/50 text-xs">Features opted in</th>
@@ -105,6 +142,7 @@ function TenantOverview() {
                     {r.name} {r.isMasterAdmin && <Badge>Master Admin</Badge>}
                     <div className="text-xs text-ink/40">{r.email}</div>
                   </td>
+                  <td className="p-2.5 text-xs text-ink/60">{r.createdAt ? formatDate(r.createdAt) : "—"}</td>
                   <td className="p-2.5 capitalize text-ink/60">{r.plan}</td>
                   <td className="p-2.5">{AI_PROVIDER_LABEL[r.aiProvider] || r.aiProvider}</td>
                   <td className="p-2.5 text-xs text-ink/60 max-w-[220px]">

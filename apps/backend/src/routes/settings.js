@@ -134,6 +134,7 @@ router.get("/accounts", requireMasterAdmin, async (req, res) => {
       name: a.name,
       email: a.email,
       company: a.company || s?.companyProfile?.name || "",
+      createdAt: a.createdAt,
       plan: s?.subscription?.plan || "starter",
       aiProvider: s?.aiConfiguration?.provider || "gemini",
       isMasterAdmin: !!a.isMasterAdmin,
