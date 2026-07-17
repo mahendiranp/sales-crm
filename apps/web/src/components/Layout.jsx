@@ -34,9 +34,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
-import { APP_CATALOG, RELEASED_APP_KEYS } from "../lib/appCatalog";
-import { RELEASED_MODULE_KEYS } from "../lib/coreModules";
+import { APP_CATALOG } from "../lib/appCatalog";
 import useLiveCollection from "../lib/useLiveCollection";
+import usePlatformFeatures from "../lib/usePlatformFeatures";
 import { APP_NAME } from "../lib/brand";
 
 // Each item's `module` key maps to settings.modules (see routes/settings.js)
@@ -117,6 +117,7 @@ function NavItem({ to, label, icon: Icon, collapsed }) {
 
 export default function Layout({ children }) {
   const { user, logout, canManage, isMasterAdmin, isOwner } = useAuth();
+  const { releasedModules, releasedApps } = usePlatformFeatures();
   const router = useRouter();
   const initials = (user?.name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2);
   const roleLabel = { admin: "Admin", manager: "Manager", viewer: "Viewer" }[user?.authRole] || user?.authRole;
@@ -204,19 +205,13 @@ export default function Layout({ children }) {
     router.push("/login");
   };
 
-  // UI-only release lock: this build only ships Dashboard + Forms (see
-  // lib/coreModules.js / lib/appCatalog.js for the shared allowlists —
-  // also used by CoreModulePicker/FeaturePicker so the Upgrade Plan and
-  // signup UI can't offer to turn on something that isn't released).
-  // Deliberately front-end only — doesn't touch settings.modules/apps in
-  // the database at all. Master admin bypasses this (and everything
-  // else) same as always.
-
-  // Master admin sees every feature regardless of any tenant's flags — the
-  // flags exist to restrict what everyone *else* under this account sees.
+  // Release gate: master admin controls what's released platform-wide from
+  // the Admin Portal (routes/platform.js) — a tenant's own enabledApps flag
+  // only matters for apps that have actually been released to everyone.
+  // Master admin sees every feature regardless of either flag.
   const enabledApps_ = APP_CATALOG
     .filter((a) => a.status !== "builtIn")
-    .filter((a) => isMasterAdmin || (RELEASED_APP_KEYS.includes(a.key) && enabledApps[a.key]));
+    .filter((a) => isMasterAdmin || (releasedApps[a.key] && enabledApps[a.key]));
 
   // Forms gets its own top-level sidebar section (Forms / Add New) instead
   // of being lumped into the generic "Apps" bucket — it's the only released
@@ -236,7 +231,7 @@ export default function Layout({ children }) {
   const isModuleOn = (key) => {
     if (!key) return true;
     if (isMasterAdmin) return true;
-    if (!RELEASED_MODULE_KEYS.includes(key)) return false;
+    if (!releasedModules[key]) return false;
     return enabledModules === null || enabledModules[key] !== false;
   };
 

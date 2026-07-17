@@ -137,6 +137,11 @@ router.get("/accounts", requireMasterAdmin, async (req, res) => {
       plan: s?.subscription?.plan || "starter",
       aiProvider: s?.aiConfiguration?.provider || "gemini",
       isMasterAdmin: !!a.isMasterAdmin,
+      // Which modules/apps this tenant has actually opted into (not just
+      // released platform-wide) — lets master admin see at a glance what
+      // each account is actually using without opening their Settings.
+      optedModules: Object.entries(s?.modules || {}).filter(([, v]) => v !== false).map(([k]) => k),
+      optedApps: Object.entries(s?.apps || {}).filter(([, v]) => v).map(([k]) => k),
     };
   });
   res.json(rows);

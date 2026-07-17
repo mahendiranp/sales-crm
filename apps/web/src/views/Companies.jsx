@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Globe, Building2 } from "lucide-react";
+import { Plus, Globe, Building2, MapPin } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
+import { formatINR } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
-const emptyForm = { name: "", industry: "", employees: "1-10", gst: "", website: "", accountManager: "" };
+const emptyForm = { name: "", industry: "", employees: "1-10", gst: "", website: "", accountManager: "", address: "", annualRevenue: "" };
 
 export default function Companies() {
   const { canManage } = useAuth();
@@ -30,7 +31,7 @@ export default function Companies() {
   const userName = (id) => users.find((u) => u.id === id)?.name || "Unassigned";
 
   const save = async () => {
-    await api.post("/companies", form);
+    await api.post("/companies", { ...form, annualRevenue: Number(form.annualRevenue) || 0 });
     setModal(false);
     setForm(emptyForm);
     load();
@@ -63,6 +64,10 @@ export default function Companies() {
                 <div>GST: {c.gst}</div>
                 <div className="flex items-center gap-1"><Globe size={11} /> {c.website}</div>
                 <div>Account Manager: {userName(c.accountManager)}</div>
+                {c.annualRevenue > 0 && <div>Annual Revenue: {formatINR(c.annualRevenue)}</div>}
+                {c.address && (
+                  <div className="flex items-start gap-1"><MapPin size={11} className="mt-0.5 shrink-0" /> {c.address}</div>
+                )}
               </div>
             </Card>
           ))}
@@ -79,6 +84,8 @@ export default function Companies() {
         </Field>
         <Field label="GST Number"><input className={inputCls} value={form.gst} onChange={(e) => setForm({ ...form, gst: e.target.value })} /></Field>
         <Field label="Website"><input className={inputCls} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} /></Field>
+        <Field label="Address"><input className={inputCls} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
+        <Field label="Annual Revenue (₹)"><input type="number" className={inputCls} value={form.annualRevenue} onChange={(e) => setForm({ ...form, annualRevenue: e.target.value })} /></Field>
         <Field label="Account Manager">
           <select className={inputCls} value={form.accountManager} onChange={(e) => setForm({ ...form, accountManager: e.target.value })}>
             <option value="">Select…</option>

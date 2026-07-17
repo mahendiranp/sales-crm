@@ -23,6 +23,7 @@ const formsRouter = require("./routes/forms");
 const whatsappSurveysRouter = require("./routes/whatsappSurveys");
 const paymentsRouter = require("./routes/payments");
 const feedbackRouter = require("./routes/feedback");
+const platformRouter = require("./routes/platform");
 const { requireAuth } = require("./middleware/auth");
 const { ensureConnected } = require("./db/store");
 
@@ -116,6 +117,8 @@ const PUBLIC_ROUTES = [
   { method: "POST", pattern: /^\/api\/forms\/[^/]+\/responses$/ },
   { method: "GET", pattern: /^\/api\/whatsapp-surveys\/webhook$/ },
   { method: "POST", pattern: /^\/api\/whatsapp-surveys\/webhook$/ },
+  // Signup's feature/module pickers need this before any session exists.
+  { method: "GET", pattern: /^\/api\/platform$/ },
 ];
 
 app.use((req, res, next) => {
@@ -138,5 +141,6 @@ app.use("/api/forms", formsRouter);
 app.use("/api/whatsapp-surveys", whatsappSurveysRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/feedback", feedbackRouter);
+app.use("/api/platform", platformRouter);
 
 module.exports = app;

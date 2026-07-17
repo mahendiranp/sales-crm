@@ -11,6 +11,7 @@ const { isConfigured: aiConfigured, generateFormFields } = require("../integrati
 const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
 const { availableDates, allSlotsForDate, slotsForDate, extractBookedTimes } = require("../utils/bookingSlots");
 const { validateFileAnswer } = require("../utils/fileUploads");
+const { validateSubmission } = require("../utils/formValidation");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
 
@@ -21,6 +22,7 @@ const router = express.Router();
 // below scopes fresh per request via req.user.accountId instead.
 const rawForms = collection("forms");
 const rawResponses = collection("form_responses");
+const rawLeads = collection("leads");
 const accounts = collection("accounts");
 const formsFor = (req) => scopedCollection("forms", req.user.accountId);
 const responsesFor = (req) => scopedCollection("form_responses", req.user.accountId);
@@ -364,10 +366,16 @@ router.post("/:id/responses", async (req, res) => {
   const responseLimitError = await checkResponseLimit(form);
   if (responseLimitError) return res.status(403).json({ error: responseLimitError });
 
-  // Re-check every file field server-side — the client's checks are just
-  // UX, not a security boundary; a submission can be crafted directly
-  // against this endpoint. See utils/fileUploads.js for what's enforced
-  // (allowlisted types, size cap, magic-byte sniff).
+  // Re-check required/email/phone/number/length rules server-side — the
+  // frontend's validateField() is just UX, not a security boundary; a
+  // submission can be crafted directly against this endpoint, bypassing
+  // any browser-side format checks entirely.
+  const validationError = validateSubmission(form.fields, req.body.answers);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  // Re-check every file field server-side — same reasoning, see
+  // utils/fileUploads.js for what's enforced (allowlisted types, size cap,
+  // magic-byte sniff).
   for (const field of form.fields.filter((f) => f.type === "file")) {
     const err = validateFileAnswer(field.label, req.body.answers?.[field.id]);
     if (err) return res.status(400).json({ error: err });
@@ -421,6 +429,32 @@ router.post("/:id/responses", async (req, res) => {
     );
   }
   await rawResponses.insert(response);
+
+  // Optional per-form toggle (Settings tab) — turns a form into a lead-gen
+  // source. Best-effort field mapping since a form's fields are whatever
+  // the tenant designed, not a fixed schema: first email-type field →
+  // email, first phone-type field → mobile, first text-like field → name.
+  if (form.createLeadOnSubmit) {
+    const rawAnswers = req.body.answers || {};
+    const emailField = form.fields.find((f) => f.type === "email");
+    const phoneField = form.fields.find((f) => f.type === "phone");
+    const nameField = form.fields.find((f) => f.type === "text" || f.type === "longtext");
+    await rawLeads.insert({
+      id: uuid(),
+      name: (nameField && rawAnswers[nameField.id]) || "Website Visitor",
+      email: (emailField && rawAnswers[emailField.id]) || "",
+      mobile: (phoneField && rawAnswers[phoneField.id]) || "",
+      company: "",
+      source: form.name || "Website",
+      interestedProduct: "",
+      budget: 0,
+      priority: "Medium",
+      status: "New",
+      createdAt: new Date().toISOString(),
+      accountId: form.accountId,
+    });
+  }
+
   res.status(201).json(decryptResponse(response));
 });
 

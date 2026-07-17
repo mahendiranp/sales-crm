@@ -1,18 +1,67 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Sparkles } from "lucide-react";
+import { CheckCircle2, Sparkles, Rocket } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, Switch, Badge } from "../components/ui";
 import { APP_CATALOG, APP_CATEGORIES } from "../lib/appCatalog";
 import { CORE_MODULES } from "../lib/coreModules";
 import useLiveCollection from "../lib/useLiveCollection";
+import usePlatformFeatures from "../lib/usePlatformFeatures";
 
 const AI_PROVIDER_LABEL = { anthropic: "Anthropic (Claude)", gemini: "Google Gemini" };
+const MODULE_LABEL = Object.fromEntries(CORE_MODULES.map((m) => [m.key, m.label]));
+const APP_LABEL = Object.fromEntries(APP_CATALOG.map((a) => [a.key, a.label]));
 
-// Platform-wide, master-admin-only: every tenant with which AI provider
-// they've picked (Settings → AI Configuration on their end). Both
-// providers are configured via platform-wide env vars, not per-tenant
-// keys, so this is really "who's routed to which shared provider."
-function TenantAiProviders() {
+// The actual platform-wide release switch — separate from (and above) the
+// per-account toggles below. A module/app only ever reaches a real
+// customer's sidebar or the signup picker once it's released here, no
+// matter what any tenant's own settings.modules/apps says.
+function ReleaseFeatures() {
+  const { releasedModules, releasedApps, reload } = usePlatformFeatures();
+
+  const toggleModule = async (key, next) => {
+    await api.put("/platform", { releasedModules: { [key]: next } });
+    reload();
+  };
+  const toggleApp = async (key, next) => {
+    await api.put("/platform", { releasedApps: { [key]: next } });
+    reload();
+  };
+
+  return (
+    <div className="mb-8">
+      <h3 className="font-display font-semibold text-sm text-ink/70 mb-2.5 flex items-center gap-1.5">
+        <Rocket size={14} className="text-primary" /> Release to all users
+      </h3>
+      <p className="text-xs text-ink/40 mb-2.5 -mt-1.5">
+        Controls what every account other than yours can even see or pick — at signup, in Settings → Upgrade Plan,
+        and in their sidebar. Off here means invisible everywhere else, regardless of any tenant's own toggle below.
+      </p>
+      <div className="grid grid-cols-3 gap-2 mb-2.5">
+        {CORE_MODULES.filter((m) => m.key !== "dashboard").map((mod) => (
+          <div key={mod.key} className="flex items-center justify-between gap-2 border border-border rounded-lg px-3 py-2 text-sm">
+            <span className="truncate">{mod.label}</span>
+            <Switch checked={!!releasedModules[mod.key]} onChange={(next) => toggleModule(mod.key, next)} />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {APP_CATALOG.filter((a) => a.status !== "builtIn").map((app) => (
+          <div key={app.key} className="flex items-center justify-between gap-2 border border-border rounded-lg px-3 py-2 text-sm">
+            <span className="truncate">{app.label}</span>
+            <Switch checked={!!releasedApps[app.key]} onChange={(next) => toggleApp(app.key, next)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Platform-wide, master-admin-only: every tenant, which AI provider they've
+// picked, and which released features they've actually opted into. Both AI
+// providers are configured via platform-wide env vars, not per-tenant keys,
+// so this is really "who's routed to which shared provider" plus a
+// feature-adoption snapshot without opening each tenant's Settings.
+function TenantOverview() {
   const [rows, setRows] = useState(null);
 
   const load = () => api.get("/settings/accounts").then((r) => setRows(r.data)).catch(() => setRows([]));
@@ -21,12 +70,17 @@ function TenantAiProviders() {
   }, []);
   useLiveCollection(["settings"], load);
 
+  const featureLabels = (r) => [
+    ...r.optedModules.map((k) => MODULE_LABEL[k] || k),
+    ...r.optedApps.map((k) => APP_LABEL[k] || k),
+  ];
+
   return (
     <div className="mb-8">
       <h3 className="font-display font-semibold text-sm text-ink/70 mb-2.5 flex items-center gap-1.5">
-        <Sparkles size={14} className="text-primary" /> Tenant AI Providers
+        <Sparkles size={14} className="text-primary" /> Tenant Overview
       </h3>
-      <p className="text-xs text-ink/40 mb-2.5 -mt-1.5">Which AI provider each tenant's Form Builder AI Assistant is routed to.</p>
+      <p className="text-xs text-ink/40 mb-2.5 -mt-1.5">AI provider routing and which released features each tenant has opted into.</p>
       {rows === null ? (
         <p className="text-xs text-ink/40">Loading…</p>
       ) : rows.length === 0 ? (
@@ -40,6 +94,7 @@ function TenantAiProviders() {
                 <th className="p-2.5 font-medium text-ink/50 text-xs">Owner</th>
                 <th className="p-2.5 font-medium text-ink/50 text-xs">Plan</th>
                 <th className="p-2.5 font-medium text-ink/50 text-xs">AI Provider</th>
+                <th className="p-2.5 font-medium text-ink/50 text-xs">Features opted in</th>
               </tr>
             </thead>
             <tbody>
@@ -52,6 +107,9 @@ function TenantAiProviders() {
                   </td>
                   <td className="p-2.5 capitalize text-ink/60">{r.plan}</td>
                   <td className="p-2.5">{AI_PROVIDER_LABEL[r.aiProvider] || r.aiProvider}</td>
+                  <td className="p-2.5 text-xs text-ink/60 max-w-[220px]">
+                    {featureLabels(r).length ? featureLabels(r).join(", ") : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -93,13 +151,14 @@ export default function Apps() {
     <div>
       <PageHeader
         title="Admin Portal"
-        subtitle="Turn on the modules your team needs. Enabled apps show up in the sidebar right away — admins only."
+        subtitle="Release features platform-wide, then turn on the modules your own account needs — admins only."
       />
 
-      <TenantAiProviders />
+      <ReleaseFeatures />
+      <TenantOverview />
 
       <div className="mb-8">
-        <h3 className="font-display font-semibold text-sm text-ink/70 mb-2.5">Core CRM</h3>
+        <h3 className="font-display font-semibold text-sm text-ink/70 mb-2.5">Core CRM (your account)</h3>
         <p className="text-xs text-ink/40 mb-2.5 -mt-1.5">
           Hide sections your team isn't using yet — e.g. launch with only Dashboard + Forms turned on.
         </p>

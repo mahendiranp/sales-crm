@@ -1,22 +1,21 @@
 import { Check } from "lucide-react";
-import { APP_CATALOG, APP_CATEGORIES, RELEASED_APP_KEYS } from "../lib/appCatalog";
+import { APP_CATALOG, APP_CATEGORIES } from "../lib/appCatalog";
 import { useAuth } from "../context/AuthContext";
+import usePlatformFeatures from "../lib/usePlatformFeatures";
 
 // A "build your toolkit" style multi-select: tap a tile to pick it up into
 // your starter kit. Used on signup so picking features feels like putting
-// together a kit rather than filling out a form. Only offers apps that
-// are actually released (master admin sees the full catalog) — otherwise
-// an owner could turn on something that isn't live yet.
-//
-// No "Use recommended" shortcut — with only one released app (Forms),
-// a one-click "pick the recommended set" button is pointless busywork.
+// together a kit rather than filling out a form. Only offers apps master
+// admin has actually released platform-wide (master admin sees the full
+// catalog) — otherwise an owner could turn on something that isn't live yet.
 export default function FeaturePicker({ selected, onToggle }) {
   const { isMasterAdmin } = useAuth();
+  const { releasedApps } = usePlatformFeatures();
   // builtIn apps (CRM, Sales, WhatsApp) used to mean "already implemented,
   // always on" — none of those are actually part of this release either,
-  // so they no longer get a free pass here; gated by RELEASED_APP_KEYS
-  // like everything else. Master admin still sees the full catalog.
-  const visibleCatalog = isMasterAdmin ? APP_CATALOG : APP_CATALOG.filter((a) => RELEASED_APP_KEYS.includes(a.key));
+  // so they no longer get a free pass here; gated the same as everything
+  // else. Master admin still sees the full catalog.
+  const visibleCatalog = isMasterAdmin ? APP_CATALOG : APP_CATALOG.filter((a) => releasedApps[a.key]);
   const pickedApps = visibleCatalog.filter((a) => a.status === "builtIn" || selected[a.key]);
 
   return (

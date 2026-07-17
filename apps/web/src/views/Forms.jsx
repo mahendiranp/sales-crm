@@ -1863,18 +1863,20 @@ function ApprovalRequirementEditor({ enabled, approverIds, onChange }) {
 function FormSettingsPanel({ form, onSave }) {
   const [name, setName] = useState(form.name);
   const [description, setDescription] = useState(form.description || "");
+  const [createLeadOnSubmit, setCreateLeadOnSubmit] = useState(!!form.createLeadOnSubmit);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     setName(form.name);
     setDescription(form.description || "");
+    setCreateLeadOnSubmit(!!form.createLeadOnSubmit);
     setDirty(false);
   }, [form.id]);
 
   const markDirty = () => setDirty(true);
 
   const save = () => {
-    onSave({ name, description });
+    onSave({ name, description, createLeadOnSubmit });
     setDirty(false);
   };
 
@@ -1888,6 +1890,23 @@ function FormSettingsPanel({ form, onSave }) {
           <input className={inputCls} value={description} onChange={(e) => { setDescription(e.target.value); markDirty(); }} />
         </Field>
       </div>
+
+      <label className="flex items-start gap-2.5 text-sm text-ink/70 border border-border rounded-lg p-3.5 mb-4">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={createLeadOnSubmit}
+          onChange={(e) => { setCreateLeadOnSubmit(e.target.checked); markDirty(); }}
+        />
+        <span>
+          <span className="font-medium text-ink">Create a Lead from every submission</span>
+          <br />
+          <span className="text-xs text-ink/40">
+            Pulls a name from the first text field and matches email/phone-type fields into the new Lead —
+            source is set to this form's name. Turn this on for lead-gen forms (contact us, get a quote, etc.).
+          </span>
+        </span>
+      </label>
 
       <div className="flex justify-end mt-4">
         <Button onClick={save} disabled={!dirty}>Save Settings</Button>
