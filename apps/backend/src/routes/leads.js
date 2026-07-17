@@ -2,7 +2,7 @@ const express = require("express");
 const { randomUUID: uuid } = require("crypto");
 const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
-const { requireManager, requireFullAccess } = require("../middleware/auth");
+const { requireManager, requireFullAccess, PERMISSION_RANK } = require("../middleware/auth");
 const { isConfigured: aiConfigured, scoreLead, parseLeadText } = require("../integrations/aiClient");
 const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
 
@@ -13,9 +13,14 @@ const companies = (req) => scopedCollection("companies", req.user.accountId);
 
 // Backstop for the form's own required-field rules (Lead Name, plus a
 // Mobile Number or Email) — the UI already blocks this, but the API
-// shouldn't rely on that alone since it's reachable directly.
+// shouldn't rely on that alone since it's reachable directly. Checks
+// permission first so a view-only account still gets 403 (not 400) when
+// it sends an incomplete body — the permission failure should win.
 function requireLeadContactInfo(req, res, next) {
   if (req.method === "POST" && req.path === "/") {
+    if (PERMISSION_RANK[req.user?.permission] < PERMISSION_RANK.edit) {
+      return res.status(403).json({ error: "This account is view-only and cannot make changes." });
+    }
     const { name, mobile, email } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: "Lead Name is required." });
     if (!(mobile && mobile.trim()) && !(email && email.trim())) {
