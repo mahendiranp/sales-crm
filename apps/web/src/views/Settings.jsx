@@ -73,7 +73,7 @@ export default function Settings() {
 
   const update = (section, patch) => setSettings((s) => ({ ...s, [section]: { ...s[section], ...patch } }));
 
-  const toggleModule = (key) => setSettings((s) => ({ ...s, modules: { ...s.modules, [key]: !s.modules[key] } }));
+  const toggleModule = (key, next) => setSettings((s) => ({ ...s, modules: { ...s.modules, [key]: next ?? !s.modules[key] } }));
   const toggleApp = (key) => setSettings((s) => ({ ...s, apps: { ...s.apps, [key]: !s.apps[key] } }));
   const savePlan = async () => {
     await api.put("/settings", { modules: settings.modules, apps: settings.apps });

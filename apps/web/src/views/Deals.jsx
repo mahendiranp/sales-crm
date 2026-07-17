@@ -11,32 +11,38 @@ const STAGES = ["New Lead", "Qualified", "Meeting Scheduled", "Quotation Sent", 
 const PRODUCTS = ["ERP Suite", "CRM Pro", "Inventory Manager", "HR Toolkit", "Accounting Module"];
 
 const emptyForm = {
-  title: "", contactName: "", stage: "New Lead", expectedRevenue: "",
-  closingDate: "", products: [PRODUCTS[0]], notes: "",
+  title: "", contactId: "", companyId: "", stage: "New Lead", expectedRevenue: "",
+  probability: 20, closingDate: "", products: [PRODUCTS[0]], competitors: "", notes: "",
 };
 
 export default function Deals() {
   const { canManage } = useAuth();
   const [deals, setDeals] = useState([]);
   const [users, setUsers] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [activeStage, setActiveStage] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = () => {
-    Promise.all([api.get("/deals"), api.get("/users")]).then(([d, u]) => {
+    Promise.all([api.get("/deals"), api.get("/users"), api.get("/contacts"), api.get("/companies")]).then(([d, u, c, co]) => {
       setDeals(d.data);
       setUsers(u.data);
+      setContacts(c.data);
+      setCompanies(co.data);
       setLoading(false);
     });
   };
   useEffect(() => {
     load();
   }, []);
-  useLiveCollection(["deals", "users"], load);
+  useLiveCollection(["deals", "users", "contacts", "companies"], load);
 
   const userName = (id) => users.find((u) => u.id === id)?.name || "—";
+  const contactName = (id) => contacts.find((c) => c.id === id)?.name || "—";
+  const companyName = (id) => companies.find((c) => c.id === id)?.name || "";
 
   const stageCounts = STAGES.reduce((acc, s) => {
     acc[s] = deals.filter((d) => d.stage === s).length;
@@ -48,21 +54,38 @@ export default function Deals() {
     load();
   };
 
+  // Picking a Contact auto-fills their Company, if they have one — a deal
+  // almost always belongs to whichever org the contact works for, and
+  // re-picking it by hand every time would just be repetitive busywork.
+  const pickContact = (contactId) => {
+    const contact = contacts.find((c) => c.id === contactId);
+    setForm((f) => ({ ...f, contactId, companyId: contact?.companyId || f.companyId }));
+  };
+
   const save = async () => {
-    await api.post("/deals", { ...form, expectedRevenue: Number(form.expectedRevenue) || 0, probability: 20 });
+    await api.post("/deals", {
+      ...form,
+      expectedRevenue: Number(form.expectedRevenue) || 0,
+      probability: Math.min(100, Math.max(0, Number(form.probability) || 0)),
+    });
     setModal(false);
     setForm(emptyForm);
     load();
   };
 
   const visibleDeals = activeStage ? deals.filter((d) => d.stage === activeStage) : deals;
-  const totalPipelineValue = deals.filter((d) => !["Won", "Lost"].includes(d.stage)).reduce((s, d) => s + (d.expectedRevenue || 0), 0);
+  const activeDeals = deals.filter((d) => !["Won", "Lost"].includes(d.stage));
+  const totalPipelineValue = activeDeals.reduce((s, d) => s + (d.expectedRevenue || 0), 0);
+  // Probability-weighted forecast — a deal at 20% probability doesn't count
+  // the same as one at 80%, so the raw pipeline sum above overstates what's
+  // actually likely to close. This is the more honest "what to expect" number.
+  const weightedForecast = activeDeals.reduce((s, d) => s + (d.expectedRevenue || 0) * ((d.probability ?? 0) / 100), 0);
 
   return (
     <div>
       <PageHeader
         title="Deals"
-        subtitle={`${formatINR(totalPipelineValue)} in active pipeline`}
+        subtitle={`${formatINR(totalPipelineValue)} in active pipeline · ${formatINR(weightedForecast)} forecast (probability-weighted)`}
         action={canManage && <Button onClick={() => setModal(true)}><Plus size={15} /> Add Deal</Button>}
       />
 
@@ -80,11 +103,14 @@ export default function Deals() {
                 <h4 className="font-display font-semibold text-sm leading-tight">{deal.title}</h4>
                 <span className="text-xs font-mono text-ink/50 shrink-0 ml-2">{deal.probability}%</span>
               </div>
-              <p className="text-xs text-ink/40 mb-3">{deal.contactName}</p>
+              <p className="text-xs text-ink/40 mb-3">
+                {contactName(deal.contactId)}{deal.companyId ? ` · ${companyName(deal.companyId)}` : ""}
+              </p>
               <div className="flex justify-between text-sm mb-3">
                 <span className="font-mono font-medium">{formatINR(deal.expectedRevenue)}</span>
                 <span className="text-ink/40 text-xs">Close {formatDate(deal.closingDate)}</span>
               </div>
+              {deal.competitors && <div className="text-xs text-ink/40 mb-3">Competing against: {deal.competitors}</div>}
               <div className="text-xs text-ink/40 mb-3">Owner: {userName(deal.assignedTo)}</div>
               {canManage ? (
                 <select
@@ -105,8 +131,22 @@ export default function Deals() {
       <Modal open={modal} onClose={() => setModal(false)} title="Add Deal" wide>
         <div className="grid grid-cols-2 gap-x-4">
           <Field label="Deal Title"><input className={inputCls} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-          <Field label="Contact Name"><input className={inputCls} value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} /></Field>
+          <Field label="Contact">
+            <select className={inputCls} value={form.contactId} onChange={(e) => pickContact(e.target.value)}>
+              <option value="">Select…</option>
+              {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Company">
+            <select className={inputCls} value={form.companyId} onChange={(e) => setForm({ ...form, companyId: e.target.value })}>
+              <option value="">None</option>
+              {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
           <Field label="Expected Revenue (₹)"><input type="number" className={inputCls} value={form.expectedRevenue} onChange={(e) => setForm({ ...form, expectedRevenue: e.target.value })} /></Field>
+          <Field label="Probability (%)">
+            <input type="number" min="0" max="100" className={inputCls} value={form.probability} onChange={(e) => setForm({ ...form, probability: e.target.value })} />
+          </Field>
           <Field label="Closing Date"><input type="date" className={inputCls} value={form.closingDate} onChange={(e) => setForm({ ...form, closingDate: e.target.value })} /></Field>
           <Field label="Product">
             <select className={inputCls} value={form.products[0]} onChange={(e) => setForm({ ...form, products: [e.target.value] })}>
@@ -118,6 +158,7 @@ export default function Deals() {
               {STAGES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
+          <Field label="Competitors"><input className={inputCls} placeholder="e.g. Zoho, Salesforce" value={form.competitors} onChange={(e) => setForm({ ...form, competitors: e.target.value })} /></Field>
         </div>
         <Field label="Notes"><textarea className={inputCls} rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
         <div className="flex justify-end gap-2 mt-2">

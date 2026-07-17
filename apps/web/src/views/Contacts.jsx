@@ -1,26 +1,64 @@
 import { useEffect, useState } from "react";
-import { FileText, MapPin, ShoppingBag, Cake, CalendarClock } from "lucide-react";
+import { FileText, MapPin, ShoppingBag, Cake, CalendarClock, Phone, Mail, Users, Clock } from "lucide-react";
 import api from "../api/client";
-import { Card, PageHeader, EmptyState } from "../components/ui";
-import { formatINR, formatDate } from "../lib/format";
+import { useAuth } from "../context/AuthContext";
+import { Card, PageHeader, EmptyState, Button, inputCls } from "../components/ui";
+import { formatINR, formatDate, timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
+const LOG_TYPES = [
+  { type: "Phone Call", icon: Phone, color: "#3E6FA3" },
+  { type: "Email", icon: Mail, color: "#8B5FBF" },
+  { type: "Meeting", icon: Users, color: "#E8A33D" },
+];
+
 export default function Contacts() {
+  const { user } = useAuth();
   const [contacts, setContacts] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [active, setActive] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [logType, setLogType] = useState(null);
+  const [logSummary, setLogSummary] = useState("");
 
   const load = () => {
-    api.get("/contacts").then((r) => {
-      setContacts(r.data);
-      setActive((prev) => r.data.find((c) => c.id === prev?.id) || r.data[0] || null);
+    Promise.all([api.get("/contacts"), api.get("/activities")]).then(([c, a]) => {
+      setContacts(c.data);
+      setActivities(a.data);
+      setActive((prev) => c.data.find((x) => x.id === prev?.id) || c.data[0] || null);
       setLoading(false);
     });
   };
   useEffect(() => {
     load();
   }, []);
-  useLiveCollection(["contacts"], load);
+  useLiveCollection(["contacts", "activities"], load);
+
+  const contactActivities = active
+    ? activities
+        .filter((a) => a.contactId === active.id)
+        .sort((x, y) => new Date(y.timestamp) - new Date(x.timestamp))
+    : [];
+
+  const openLog = (type) => {
+    setLogType(type);
+    setLogSummary("");
+  };
+
+  const saveLog = async () => {
+    if (!logSummary.trim()) return;
+    await api.post("/activities", {
+      type: logType,
+      summary: logSummary.trim(),
+      contactId: active.id,
+      relatedTo: active.name,
+      performedBy: user.id,
+      timestamp: new Date().toISOString(),
+    });
+    setLogType(null);
+    setLogSummary("");
+    load();
+  };
 
   return (
     <div>
@@ -48,13 +86,28 @@ export default function Contacts() {
           {active && (
             <div className="col-span-2 space-y-4">
               <Card className="p-5">
-                <div className="flex items-center gap-3 mb-1">
-                  <div className="w-11 h-11 rounded-full bg-primary text-white flex items-center justify-center font-display font-semibold">
-                    {active.name.split(" ").map((n) => n[0]).join("")}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="w-11 h-11 rounded-full bg-primary text-white flex items-center justify-center font-display font-semibold">
+                      {active.name.split(" ").map((n) => n[0]).join("")}
+                    </div>
+                    <div>
+                      <h3 className="font-display font-semibold text-lg">{active.name}</h3>
+                      <p className="text-xs text-ink/40">{active.mobile} · {active.email}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-display font-semibold text-lg">{active.name}</h3>
-                    <p className="text-xs text-ink/40">{active.mobile} · {active.email}</p>
+                  <div className="flex gap-1.5">
+                    {LOG_TYPES.map(({ type, icon: Icon, color }) => (
+                      <button
+                        key={type}
+                        title={`Log ${type}`}
+                        onClick={() => openLog(type)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center hover:opacity-80"
+                        style={{ background: `${color}18`, color }}
+                      >
+                        <Icon size={14} />
+                      </button>
+                    ))}
                   </div>
                 </div>
                 <div className="flex items-start gap-2 mt-4 text-sm text-ink/60">
@@ -69,6 +122,55 @@ export default function Contacts() {
                   <CalendarClock size={15} className="shrink-0" />
                   Contract renewal: {active.contractRenewalDate ? formatDate(active.contractRenewalDate) : "Not on file"}
                 </div>
+
+                {logType && (
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <p className="text-xs font-medium text-ink/50 mb-1.5">Log {logType}</p>
+                    <textarea
+                      className={inputCls}
+                      rows={2}
+                      autoFocus
+                      placeholder={`What happened on this ${logType.toLowerCase()}?`}
+                      value={logSummary}
+                      onChange={(e) => setLogSummary(e.target.value)}
+                    />
+                    <div className="flex justify-end gap-2 mt-2">
+                      <Button variant="secondary" onClick={() => setLogType(null)}>Cancel</Button>
+                      <Button onClick={saveLog}>Save</Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              <Card className="p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock size={16} className="text-primary" />
+                  <h4 className="font-display font-semibold">Call, Email & Meeting History</h4>
+                </div>
+                {contactActivities.length === 0 ? (
+                  <p className="text-sm text-ink/40">No calls, emails, or meetings logged yet.</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {contactActivities.map((a) => {
+                      const meta = LOG_TYPES.find((l) => l.type === a.type);
+                      const Icon = meta?.icon || Clock;
+                      return (
+                        <div key={a.id} className="flex gap-3 py-2.5 border-b border-border last:border-0">
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                            style={{ background: `${meta?.color || "#999"}18`, color: meta?.color || "#999" }}
+                          >
+                            <Icon size={12} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm">{a.summary}</p>
+                            <p className="text-xs text-ink/40 mt-0.5">{a.type} · {timeAgo(a.timestamp)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </Card>
 
               <Card className="p-5">

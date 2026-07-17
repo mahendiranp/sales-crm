@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
-import { Plus, UserCheck, ArrowRightCircle, Merge, Pencil } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Plus, UserCheck, ArrowRightCircle, Merge, Pencil, Phone, MessageCircle, Mail, Sparkles, MoreVertical,
+  Globe, Share2, Link2, PhoneCall, Megaphone,
+} from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
-import { formatINR, timeAgo } from "../lib/format";
+import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
+import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
 const SOURCES = ["Website", "Facebook", "WhatsApp", "Referral", "Cold Call", "Google Ads", "Email Campaign"];
@@ -14,7 +17,165 @@ const STATUSES = ["New", "Contacted", "Qualified", "Converted", "Lost"];
 const emptyForm = {
   name: "", mobile: "", email: "", company: "", source: "Website",
   interestedProduct: "ERP Suite", budget: "", priority: "Medium", status: "New",
+  leadScore: "", notes: "",
 };
+
+// wa.me needs digits only (country code + number, no +/spaces/dashes) — a
+// best-effort strip since leads can have phone numbers typed any which way.
+const waLink = (mobile) => `https://wa.me/${(mobile || "").replace(/[^0-9]/g, "")}`;
+
+// Lucide doesn't ship brand logos (no literal Facebook/Google mark) — these
+// are neutral stand-ins for scanning by source at a glance, not literal
+// brand icons.
+const SOURCE_ICON = {
+  Website: Globe,
+  Facebook: Share2,
+  WhatsApp: MessageCircle,
+  Referral: Link2,
+  "Cold Call": PhoneCall,
+  "Google Ads": Megaphone,
+  "Email Campaign": Mail,
+};
+
+const STATUS_STYLE = {
+  New: "bg-blue-50 text-blue-700",
+  Contacted: "bg-amber-50 text-amber-700",
+  Qualified: "bg-emerald-50 text-emerald-700",
+  Converted: "bg-violet-50 text-violet-700",
+  Lost: "bg-red-50 text-red-700",
+};
+
+const PRIORITY_DOT = { High: "bg-red-500", Medium: "bg-amber-500", Low: "bg-ink/25" };
+
+function StatusPill({ status }) {
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[status] || "bg-base text-ink/60"}`}>{status}</span>;
+}
+
+function PriorityDot({ priority }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm text-ink/70">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[priority] || "bg-ink/25"}`} />
+      {priority}
+    </span>
+  );
+}
+
+// Compact Indian-numbering currency: ₹25K, ₹1.2L, ₹3.4Cr — a raw ₹250000
+// forces the eye to count digits every row; the standard Lakh/Crore
+// shorthand is what the budget field's own values are meant to be read in.
+function formatCompactINR(n) {
+  const num = Number(n) || 0;
+  if (num === 0) return "₹0";
+  const abs = Math.abs(num);
+  if (abs >= 1e7) return `₹${(num / 1e7).toFixed(num % 1e7 === 0 ? 0 : 1)}Cr`;
+  if (abs >= 1e5) return `₹${(num / 1e5).toFixed(num % 1e5 === 0 ? 0 : 1)}L`;
+  if (abs >= 1e3) return `₹${(num / 1e3).toFixed(num % 1e3 === 0 ? 0 : 1)}K`;
+  return `₹${num}`;
+}
+
+function ScoreBadge({ score }) {
+  if (score === undefined || score === null || score === "") return <span className="text-ink/30">—</span>;
+  const n = Number(score);
+  const color = n >= 70 ? "text-emerald-600 bg-emerald-50" : n >= 40 ? "text-amber-600 bg-amber-50" : "text-ink/50 bg-base";
+  return <span className={`inline-flex items-center justify-center w-8 h-6 rounded-md text-xs font-semibold ${color}`}>{n}</span>;
+}
+
+// Reuses the existing leadScore/aiScoreReasoning (from the "AI-score this
+// lead" action) as a short work-queue-style insight line, rather than a
+// bare number — this is what turns the score into something worth reading
+// at a glance instead of just a badge.
+function AiInsight({ score, reasoning }) {
+  if (score === undefined || score === null || score === "") return null;
+  const n = Number(score);
+  const emoji = n >= 70 ? "⭐" : n >= 40 ? "🤔" : "⚠️";
+  return (
+    <p className="text-xs text-ink/50 mt-1 max-w-[220px] truncate" title={reasoning || undefined}>
+      {emoji} {reasoning || `${n}% conversion likelihood`}
+    </p>
+  );
+}
+
+const AVATAR_COLORS = ["#6366f1", "#0891b2", "#d97706", "#db2777", "#059669", "#7c3aed"];
+
+function AvatarInitials({ user }) {
+  if (!user) return <span className="text-ink/40">Unassigned</span>;
+  const initials = user.name.split(" ").map((n) => n[0]).join("").slice(0, 2);
+  const colorIdx = user.name.split("").reduce((sum, c) => sum + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span
+        className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0"
+        style={{ background: AVATAR_COLORS[colorIdx] }}
+      >
+        {initials}
+      </span>
+      {user.name}
+    </span>
+  );
+}
+
+// Every row action (call, WhatsApp, email, edit, assign, convert) used to
+// be its own icon in the row — with 6 possible actions that pushed the
+// table wider than its card and spilled past the edge. One "⋯" menu keeps
+// the row a fixed width regardless of how many actions a given lead has.
+function RowActionsMenu({ lead, canManage, onEdit, onAssign, onConvert }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeIfOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeIfOutside);
+    return () => document.removeEventListener("mousedown", closeIfOutside);
+  }, [open]);
+
+  const itemCls = "flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left text-ink/70 hover:bg-base rounded-md";
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button title="More actions" onClick={() => setOpen((o) => !o)} className="p-1.5 text-ink/40 hover:text-ink hover:bg-base rounded">
+        <MoreVertical size={14} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-border rounded-lg shadow-card p-1 z-20">
+          {lead.mobile && (
+            <a href={`tel:${lead.mobile}`} className={itemCls}>
+              <Phone size={14} /> Call
+            </a>
+          )}
+          {lead.mobile && (
+            <a href={waLink(lead.mobile)} target="_blank" rel="noreferrer" className={itemCls}>
+              <MessageCircle size={14} /> WhatsApp
+            </a>
+          )}
+          {lead.email && (
+            <a href={`mailto:${lead.email}`} className={itemCls}>
+              <Mail size={14} /> Email
+            </a>
+          )}
+          {canManage && (
+            <>
+              {(lead.mobile || lead.email) && <div className="h-px bg-border my-1" />}
+              <button onClick={() => { setOpen(false); onEdit(); }} className={itemCls}>
+                <Pencil size={14} /> Edit
+              </button>
+              <button onClick={() => { setOpen(false); onAssign(); }} className={itemCls}>
+                <UserCheck size={14} /> Assign
+              </button>
+              {lead.status !== "Converted" && (
+                <button onClick={() => { setOpen(false); onConvert(); }} className={itemCls}>
+                  <ArrowRightCircle size={14} /> Convert to customer
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Leads() {
   const { canManage } = useAuth();
@@ -26,6 +187,8 @@ export default function Leads() {
   const [form, setForm] = useState(emptyForm);
   const [statusFilter, setStatusFilter] = useState("All");
   const [selected, setSelected] = useState([]);
+  const [scoringId, setScoringId] = useState(null);
+  const [scoreError, setScoreError] = useState("");
 
   const load = () => {
     Promise.all([api.get("/leads"), api.get("/users")]).then(([l, u]) => {
@@ -39,15 +202,37 @@ export default function Leads() {
   }, []);
   useLiveCollection(["leads", "users"], load);
 
-  const userName = (id) => users.find((u) => u.id === id)?.name || "Unassigned";
+  const userById = (id) => users.find((u) => u.id === id) || null;
 
   const filtered = statusFilter === "All" ? leads : leads.filter((l) => l.status === statusFilter);
+
+  // Quick-scan summary — computed straight from what's already loaded, no
+  // extra request. Gives a sense of the pipeline before scrolling the list.
+  const todayStr = new Date().toDateString();
+  const stats = {
+    total: leads.length,
+    today: leads.filter((l) => new Date(l.createdAt).toDateString() === todayStr).length,
+    qualified: leads.filter((l) => l.status === "Qualified").length,
+    conversion: leads.length ? Math.round((leads.filter((l) => l.status === "Converted").length / leads.length) * 100) : 0,
+  };
 
   const openAdd = () => { setForm(emptyForm); setModal("add"); };
   const openEdit = (lead) => { setActiveLead(lead); setForm(lead); setModal("edit"); };
 
+  // Simple duplicate detection: same phone or email as an existing lead.
+  // Flags it inline while adding rather than silently letting duplicates
+  // pile up — doesn't block saving, since a genuine repeat inquiry from
+  // the same person is a real, valid lead too.
+  const duplicateOf = (() => {
+    if (modal !== "add") return null;
+    const mobile = form.mobile?.trim();
+    const email = form.email?.trim().toLowerCase();
+    if (!mobile && !email) return null;
+    return leads.find((l) => (mobile && l.mobile?.trim() === mobile) || (email && l.email?.trim().toLowerCase() === email)) || null;
+  })();
+
   const saveLead = async () => {
-    const payload = { ...form, budget: Number(form.budget) || 0 };
+    const payload = { ...form, budget: Number(form.budget) || 0, leadScore: form.leadScore === "" ? null : Number(form.leadScore) };
     if (modal === "add") await api.post("/leads", payload);
     else await api.put(`/leads/${activeLead.id}`, payload);
     setModal(null);
@@ -64,6 +249,19 @@ export default function Leads() {
     await api.post(`/leads/${activeLead.id}/convert`, {});
     setModal(null);
     load();
+  };
+
+  const aiScoreLead = async (lead) => {
+    setScoringId(lead.id);
+    setScoreError("");
+    try {
+      await api.post(`/leads/${lead.id}/ai-score`);
+      load();
+    } catch (err) {
+      setScoreError(err.response?.data?.error || "Couldn't score this lead right now.");
+    } finally {
+      setScoringId(null);
+    }
   };
 
   const mergeLeads = async () => {
@@ -96,6 +294,27 @@ export default function Leads() {
         }
       />
 
+      {scoreError && <p className="text-xs text-danger bg-danger/5 border border-danger/20 rounded-lg px-3 py-2 mb-3">{scoreError}</p>}
+
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <Card className="p-3.5">
+          <div className="text-xs text-ink/40">Total Leads</div>
+          <div className="text-xl font-display font-bold mt-0.5">{stats.total}</div>
+        </Card>
+        <Card className="p-3.5">
+          <div className="text-xs text-ink/40">Added Today</div>
+          <div className="text-xl font-display font-bold mt-0.5">{stats.today}</div>
+        </Card>
+        <Card className="p-3.5">
+          <div className="text-xs text-ink/40">Qualified</div>
+          <div className="text-xl font-display font-bold mt-0.5">{stats.qualified}</div>
+        </Card>
+        <Card className="p-3.5">
+          <div className="text-xs text-ink/40">Conversion Rate</div>
+          <div className="text-xl font-display font-bold mt-0.5">{stats.conversion}%</div>
+        </Card>
+      </div>
+
       <div className="flex gap-2 mb-4">
         {["All", ...STATUSES].map((s) => (
           <button
@@ -114,7 +333,11 @@ export default function Leads() {
         {loading ? (
           <div className="p-8 text-center text-ink/40 text-sm">Loading…</div>
         ) : filtered.length === 0 ? (
-          <EmptyState title="No leads here" subtitle="Try a different filter or add a new lead." />
+          <EmptyState
+            title="No leads here"
+            subtitle="Try a different filter or add a new lead."
+            action={canManage && <Button onClick={openAdd}><Plus size={15} /> Add Lead</Button>}
+          />
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -124,6 +347,7 @@ export default function Leads() {
                 <th className="p-3">Source</th>
                 <th className="p-3">Product</th>
                 <th className="p-3">Budget</th>
+                <th className="p-3">Score</th>
                 <th className="p-3">Priority</th>
                 <th className="p-3">Status</th>
                 <th className="p-3">Owner</th>
@@ -141,29 +365,45 @@ export default function Leads() {
                     <div className="font-medium">{lead.name}</div>
                     <div className="text-xs text-ink/40">{lead.mobile} · {lead.email}</div>
                   </td>
-                  <td className="p-3 text-ink/70">{lead.source}</td>
+                  <td className="p-3 text-ink/70">
+                    <span className="inline-flex items-center gap-1.5">
+                      {(() => {
+                        const SourceIcon = SOURCE_ICON[lead.source];
+                        return SourceIcon ? <SourceIcon size={13} className="text-ink/35 shrink-0" /> : null;
+                      })()}
+                      {lead.source}
+                    </span>
+                  </td>
                   <td className="p-3 text-ink/70">{lead.interestedProduct}</td>
-                  <td className="p-3 font-mono text-ink/70">{formatINR(lead.budget)}</td>
-                  <td className="p-3"><Badge>{lead.priority}</Badge></td>
-                  <td className="p-3"><Badge>{lead.status}</Badge></td>
-                  <td className="p-3 text-ink/60">{userName(lead.assignedTo)}</td>
-                  <td className="p-3 text-ink/40 text-xs">{timeAgo(lead.createdAt)}</td>
+                  <td className="p-3 font-mono text-ink/70">{formatCompactINR(lead.budget)}</td>
                   <td className="p-3">
-                    {canManage && (
-                      <div className="flex gap-1 justify-end">
-                        <button title="Edit" onClick={() => openEdit(lead)} className="p-1.5 text-ink/40 hover:text-ink hover:bg-base rounded">
-                          <Pencil size={14} />
+                    <div className="flex items-center gap-1.5" title={lead.aiScoreReasoning || undefined}>
+                      <ScoreBadge score={lead.leadScore} />
+                      {canManage && (
+                        <button
+                          title="AI-score this lead"
+                          disabled={scoringId === lead.id}
+                          onClick={() => aiScoreLead(lead)}
+                          className="p-1 text-ink/30 hover:text-primary disabled:opacity-40 rounded"
+                        >
+                          <Sparkles size={12} className={scoringId === lead.id ? "animate-pulse" : ""} />
                         </button>
-                        <button title="Assign" onClick={() => { setActiveLead(lead); setModal("assign"); }} className="p-1.5 text-ink/40 hover:text-ink hover:bg-base rounded">
-                          <UserCheck size={14} />
-                        </button>
-                        {lead.status !== "Converted" && (
-                          <button title="Convert to customer" onClick={() => { setActiveLead(lead); setModal("convert"); }} className="p-1.5 text-ink/40 hover:text-primary hover:bg-base rounded">
-                            <ArrowRightCircle size={14} />
-                          </button>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
+                    <AiInsight score={lead.leadScore} reasoning={lead.aiScoreReasoning} />
+                  </td>
+                  <td className="p-3"><PriorityDot priority={lead.priority} /></td>
+                  <td className="p-3"><StatusPill status={lead.status} /></td>
+                  <td className="p-3 text-ink/60"><AvatarInitials user={userById(lead.assignedTo)} /></td>
+                  <td className="p-3 text-ink/40 text-xs">{timeAgo(lead.createdAt)}</td>
+                  <td className="p-3 text-right">
+                    <RowActionsMenu
+                      lead={lead}
+                      canManage={canManage}
+                      onEdit={() => openEdit(lead)}
+                      onAssign={() => { setActiveLead(lead); setModal("assign"); }}
+                      onConvert={() => { setActiveLead(lead); setModal("convert"); }}
+                    />
                   </td>
                 </tr>
               ))}
@@ -210,7 +450,25 @@ export default function Leads() {
               {STATUSES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
+          <Field label="Lead Score (0–100)">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              className={inputCls}
+              value={form.leadScore ?? ""}
+              onChange={(e) => setForm({ ...form, leadScore: e.target.value })}
+            />
+          </Field>
         </div>
+        <Field label="Notes">
+          <textarea className={inputCls} rows={2} value={form.notes || ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        </Field>
+        {duplicateOf && (
+          <p className="text-xs text-accent-dark bg-accent/10 border border-accent/25 rounded-lg px-3 py-2 mb-2">
+            A lead with this phone or email already exists: <strong>{duplicateOf.name}</strong> ({duplicateOf.status}). You can still save — this is just a heads-up.
+          </p>
+        )}
         <div className="flex justify-end gap-2 mt-2">
           <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
           <Button onClick={saveLead}>Save Lead</Button>
@@ -220,7 +478,10 @@ export default function Leads() {
       {/* Assign modal */}
       <Modal open={modal === "assign"} onClose={() => setModal(null)} title="Assign Salesperson">
         <div className="space-y-1.5">
-          {users.filter((u) => u.role.includes("Sales")).map((u) => (
+          {users.length === 0 && (
+            <p className="text-sm text-ink/40 text-center py-6">No team members yet — add one from Settings → Users.</p>
+          )}
+          {users.map((u) => (
             <button
               key={u.id}
               onClick={() => assignLead(u.id)}
@@ -241,7 +502,15 @@ export default function Leads() {
       {/* Convert modal */}
       <Modal open={modal === "convert"} onClose={() => setModal(null)} title="Convert to Customer">
         <p className="text-sm text-ink/60 mb-4">
-          This creates a Contact record for <strong>{activeLead?.name}</strong> and marks the lead as Converted.
+          This creates a Contact record for <strong>{activeLead?.name}</strong>
+          {activeLead?.company ? (
+            <>
+              , linked to <strong>{activeLead.company}</strong> (created as a new Company if it doesn't already exist),
+            </>
+          ) : (
+            ""
+          )}{" "}
+          and marks the lead as Converted.
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>

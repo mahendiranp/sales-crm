@@ -44,9 +44,21 @@ export const CORE_MODULES = [
 // turns it on from Settings > Upgrade Plan as those areas go live.
 export const RECOMMENDED_MODULE_KEYS = ["dashboard"];
 
-// Single source of truth for what's actually released — used by
-// Layout.jsx's nav (to hide unreleased sections) AND CoreModulePicker (to
-// stop the Upgrade Plan / signup UI from offering to turn on a module that
-// isn't live yet). Master admin bypasses this everywhere, same as every
-// other gate in the app. Widening the release later is editing this array.
-export const RELEASED_MODULE_KEYS = ["dashboard"];
+// Mirrors Layout.jsx's NAV_SECTIONS groupings exactly — a user picks/
+// unpicks a whole section at once (e.g. "Pipeline") rather than four
+// separate Leads/Contacts/Companies/Deals toggles, since that's how they
+// actually show up together in the sidebar. Dashboard has its own
+// "Overview" section in the nav but isn't included here — it's excluded
+// from the toggleable grid entirely (see CoreModulePicker).
+export const MODULE_GROUPS = [
+  { key: "pipeline", label: "Pipeline", icon: Target, moduleKeys: ["leads", "contacts", "companies", "deals"] },
+  { key: "work", label: "Work", icon: ListChecks, moduleKeys: ["activities", "tasks"] },
+  { key: "engage", label: "Engage", icon: MessageCircle, moduleKeys: ["whatsapp", "email", "templates"] },
+  { key: "insights", label: "Insights", icon: BarChart3, moduleKeys: ["analytics", "reports", "performance"] },
+  { key: "admin", label: "Admin", icon: UserCog, moduleKeys: ["users", "teams"] },
+];
+
+// What's actually released platform-wide now lives in the backend
+// (routes/platform.js, GET/PUT /api/platform) — editable at runtime by
+// master admin from the Admin Portal instead of a hardcoded array here.
+// See lib/usePlatformFeatures.js.

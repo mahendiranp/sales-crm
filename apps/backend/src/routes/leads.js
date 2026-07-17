@@ -3,10 +3,13 @@ const { randomUUID: uuid } = require("crypto");
 const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
 const { requireManager, requireFullAccess } = require("../middleware/auth");
+const { isConfigured: aiConfigured, scoreLead } = require("../integrations/aiClient");
+const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
 
 const router = express.Router();
 const leads = (req) => scopedCollection("leads", req.user.accountId);
 const contacts = (req) => scopedCollection("contacts", req.user.accountId);
+const companies = (req) => scopedCollection("companies", req.user.accountId);
 
 // mount base CRUD first, then add extra action routes
 router.use("/", crudRouter("leads"));
@@ -19,10 +22,38 @@ router.post("/:id/assign", requireManager, async (req, res) => {
   res.json(updated);
 });
 
-// Convert a lead into a customer (Contact)
+// Convert a lead into a customer (Contact) — and, per the CRM's usual
+// Lead → Contact + Company flow, links (or creates) the Company that
+// matches the lead's free-text `company` name, so a B2B lead doesn't just
+// become a floating Contact with no organization behind it.
 router.post("/:id/convert", requireManager, async (req, res) => {
   const lead = await leads(req).find(req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  let company = null;
+  // Explicit companyId (picked from an existing-companies dropdown) wins
+  // over matching by name — a tenant might have two companies with
+  // similar names and want to be precise about which one this is.
+  if (req.body.companyId) {
+    company = await companies(req).find(req.body.companyId);
+  } else if (lead.company && lead.company.trim()) {
+    const existing = await companies(req).query((c) => c.name.trim().toLowerCase() === lead.company.trim().toLowerCase());
+    if (existing.length > 0) {
+      company = existing[0];
+    } else {
+      company = {
+        id: uuid(),
+        name: lead.company.trim(),
+        industry: "",
+        employees: "1-10",
+        gst: "",
+        website: "",
+        accountManager: lead.assignedTo || "",
+        createdAt: new Date().toISOString(),
+      };
+      await companies(req).insert(company);
+    }
+  }
 
   const contact = {
     id: uuid(),
@@ -31,7 +62,7 @@ router.post("/:id/convert", requireManager, async (req, res) => {
     mobile: lead.mobile,
     email: lead.email,
     address: req.body.address || "",
-    companyId: req.body.companyId || null,
+    companyId: company?.id || null,
     purchaseHistory: [],
     notes: req.body.notes || "",
     documents: [],
@@ -39,7 +70,54 @@ router.post("/:id/convert", requireManager, async (req, res) => {
   };
   await contacts(req).insert(contact);
   await leads(req).update(lead.id, { status: "Converted" });
-  res.status(201).json({ ...contact, accountId: req.user.accountId });
+  res.status(201).json({ ...contact, accountId: req.user.accountId, company });
+});
+
+// AI qualification: scores 0-100 how likely this lead is to convert, using
+// whichever provider the account has configured — same plan gate (Growth+)
+// and shared monthly usage counter as the Form Builder's AI Assistant.
+router.post("/:id/ai-score", requireManager, async (req, res) => {
+  const lead = await leads(req).find(req.params.id);
+  if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+  if (!req.user.isMasterAdmin) {
+    const limits = await getLimitsForAccount(req.user.accountId);
+    if (!limits.aiAssistant) {
+      return res.status(403).json({ error: `AI lead scoring requires the Growth plan or higher. Your account is on ${limits.label}.` });
+    }
+    const usage = await getAiUsage(req.user.accountId);
+    if (usage.used >= usage.limit) {
+      return res.status(403).json({ error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` });
+    }
+  }
+
+  const provider = await getAiProviderForAccount(req.user.accountId);
+  if (!aiConfigured(provider)) {
+    const providerLabel = provider === "gemini" ? "Gemini" : "Anthropic";
+    const envVar = provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY";
+    return res.status(503).json({ error: `${providerLabel} isn't configured yet. Ask your admin to set ${envVar} in the backend environment.` });
+  }
+
+  try {
+    const { score, reasoning } = await scoreLead({
+      provider,
+      lead: {
+        name: lead.name,
+        source: lead.source,
+        interestedProduct: lead.interestedProduct,
+        budget: lead.budget,
+        priority: lead.priority,
+        status: lead.status,
+        notes: lead.notes || "",
+      },
+    });
+    if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
+    const updated = await leads(req).update(lead.id, { leadScore: score, aiScoreReasoning: reasoning });
+    res.json(updated);
+  } catch (err) {
+    const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;
+    res.status(status).json({ error: err.message });
+  }
 });
 
 // Merge duplicate leads: keep primary, drop the rest

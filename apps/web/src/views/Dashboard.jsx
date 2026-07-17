@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader } from "../components/ui";
 import { formatINR, formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
-import { RELEASED_MODULE_KEYS } from "../lib/coreModules";
+import usePlatformFeatures from "../lib/usePlatformFeatures";
 
 function StatCard({ icon: Icon, label, value, accent }) {
   return (
@@ -52,6 +52,7 @@ function MetricRow({ label, value }) {
 
 export default function Dashboard() {
   const { isMasterAdmin } = useAuth();
+  const { releasedModules, releasedApps } = usePlatformFeatures();
   const [data, setData] = useState(null);
   const [formStats, setFormStats] = useState(null);
   const [modules, setModules] = useState(null);
@@ -77,16 +78,15 @@ export default function Dashboard() {
 
   const { salesPerformance, leadStatus, todaysActivities, teamPerformance, revenueSummary, leadSources, notifications } = data;
 
-  // UI-only release lock, same as Layout.jsx's nav — this build only
-  // ships Dashboard + Forms, so these widgets stay hidden for
-  // non-master-admin regardless of this tenant's stored flags.
-  // Master admin sees every widget regardless of this tenant's flags.
-  const on = (key) => isMasterAdmin || (RELEASED_MODULE_KEYS.includes(key) && modules[key] !== false);
+  // Release gate, same as Layout.jsx's nav — a widget only shows for
+  // non-master-admin once master admin has released that module platform-
+  // wide AND this tenant has it enabled. Master admin sees everything.
+  const on = (key) => isMasterAdmin || (releasedModules[key] && modules[key] !== false);
   const showLeads = on("leads");
   const showDeals = on("deals");
   const showTasks = on("tasks");
   const showActivities = on("activities");
-  const showForms = isMasterAdmin || appsFlags.forms !== false;
+  const showForms = isMasterAdmin || (releasedApps.forms && appsFlags.forms !== false);
   const showPipelineData = showLeads || showDeals || showTasks;
 
   return (

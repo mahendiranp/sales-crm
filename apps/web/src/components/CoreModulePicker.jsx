@@ -1,36 +1,45 @@
 import { Check } from "lucide-react";
-import { CORE_MODULES, RELEASED_MODULE_KEYS } from "../lib/coreModules";
+import { MODULE_GROUPS } from "../lib/coreModules";
 import { useAuth } from "../context/AuthContext";
+import usePlatformFeatures from "../lib/usePlatformFeatures";
 
-// Tile picker for core CRM sections (Leads, Deals, Dashboard, etc.) — used
-// on signup and again in Settings → Upgrade Plan so an owner can adjust
-// their selection later without going through the master admin. Only
-// shows modules that are actually released — otherwise an owner could
-// toggle on a section that isn't live yet and get an empty/broken page.
-// Master admin sees the full catalog, same as everywhere else.
+// Group picker for core CRM sections — one tile per sidebar section
+// (Pipeline, Work, Engage, Insights, Admin), matching Layout.jsx's
+// NAV_SECTIONS exactly: picking "Pipeline" turns on Leads, Contacts,
+// Companies, and Deals together, since that's how they show up together
+// in the sidebar — not four separate toggles for one visual section.
+// Only shows groups with at least one module master admin has released
+// platform-wide from the Admin Portal; toggling only ever touches the
+// released members of a group, never one that isn't live yet. Master
+// admin sees every group in full, same as everywhere else.
 //
-// Dashboard is excluded from the toggleable grid entirely — it's included
-// in every plan by default, so there's nothing to pick and no reason to
-// let someone accidentally uncheck it.
+// Dashboard has its own "Overview" section but isn't included here at
+// all — it's on every plan by default, so there's nothing to pick.
 export default function CoreModulePicker({ selected, onToggle }) {
   const { isMasterAdmin } = useAuth();
-  const visibleModules = (isMasterAdmin ? CORE_MODULES : CORE_MODULES.filter((m) => RELEASED_MODULE_KEYS.includes(m.key)))
-    .filter((m) => m.key !== "dashboard");
+  const { releasedModules } = usePlatformFeatures();
 
-  if (!isMasterAdmin && visibleModules.length === 0) {
-    return <p className="text-xs text-ink/40">Dashboard is included in every plan — no other core modules are available yet.</p>;
+  const visibleGroups = MODULE_GROUPS
+    .map((g) => ({
+      ...g,
+      keys: isMasterAdmin ? g.moduleKeys : g.moduleKeys.filter((k) => releasedModules[k]),
+    }))
+    .filter((g) => g.keys.length > 0);
+
+  if (!isMasterAdmin && visibleGroups.length === 0) {
+    return <p className="text-xs text-ink/40">Dashboard is included in every plan — no other core sections are available yet.</p>;
   }
 
   return (
     <div className="grid grid-cols-4 gap-2">
-      {visibleModules.map((mod) => {
-        const Icon = mod.icon;
-        const on = !!selected[mod.key];
+      {visibleGroups.map((group) => {
+        const Icon = group.icon;
+        const on = group.keys.every((k) => !!selected[k]);
         return (
           <button
             type="button"
-            key={mod.key}
-            onClick={() => onToggle(mod.key)}
+            key={group.key}
+            onClick={() => group.keys.forEach((k) => onToggle(k, !on))}
             className={`relative flex flex-col items-center gap-1 rounded-xl border-2 px-1.5 py-2.5 text-center transition-all duration-150 ${
               on ? "border-primary bg-primary/10 text-primary shadow-sm -translate-y-0.5" : "border-border bg-white text-ink/60 hover:border-primary/40 hover:-translate-y-0.5"
             }`}
@@ -41,7 +50,7 @@ export default function CoreModulePicker({ selected, onToggle }) {
               </span>
             )}
             <Icon size={18} />
-            <span className="text-[10.5px] font-medium leading-tight line-clamp-2">{mod.label}</span>
+            <span className="text-[10.5px] font-medium leading-tight line-clamp-2">{group.label}</span>
           </button>
         );
       })}

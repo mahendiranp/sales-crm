@@ -39,4 +39,44 @@ async function generateFormFields({ prompt, currentFields }) {
   return parseModelResponse(data.content?.[0]?.text || "");
 }
 
-module.exports = { isConfigured, generateFormFields };
+const LEAD_SCORE_SYSTEM_PROMPT =
+  "You are a sales qualification assistant. Given a lead's details, score how likely they are to convert into a " +
+  "paying customer, from 0 (very unlikely) to 100 (very likely). Base it on source quality, stated budget, urgency " +
+  "signals in notes, and any other field given. Respond with ONLY a JSON object of the shape " +
+  '{"score": <0-100 integer>, "reasoning": "<one short sentence>"} — no other text.';
+
+async function scoreLead({ lead }) {
+  if (!isConfigured()) {
+    throw new Error("Anthropic isn't configured yet — ask your platform admin to set ANTHROPIC_API_KEY.");
+  }
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 200,
+      system: LEAD_SCORE_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: JSON.stringify(lead) }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Anthropic request failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const text = data.content?.[0]?.text || "{}";
+  const parsed = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+  return {
+    score: Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0))),
+    reasoning: parsed.reasoning || "",
+  };
+}
+
+module.exports = { isConfigured, generateFormFields, scoreLead };

@@ -203,7 +203,7 @@ export function ErrorModal({ open, title = "Something went wrong", message, onCl
   );
 }
 
-export function EmptyState({ icon: Icon, title, subtitle }) {
+export function EmptyState({ icon: Icon, title, subtitle, action }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       {Icon && (
@@ -213,6 +213,7 @@ export function EmptyState({ icon: Icon, title, subtitle }) {
       )}
       <p className="font-medium text-ink/70">{title}</p>
       {subtitle && <p className="text-sm text-ink/40 mt-1">{subtitle}</p>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }

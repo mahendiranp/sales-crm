@@ -20,4 +20,8 @@ function generateFormFields({ provider, prompt, currentFields }) {
   return PROVIDERS[resolveProvider(provider)].generateFormFields({ prompt, currentFields });
 }
 
-module.exports = { isConfigured, generateFormFields, PROVIDER_KEYS: Object.keys(PROVIDERS) };
+function scoreLead({ provider, lead }) {
+  return PROVIDERS[resolveProvider(provider)].scoreLead({ lead });
+}
+
+module.exports = { isConfigured, generateFormFields, scoreLead, PROVIDER_KEYS: Object.keys(PROVIDERS) };

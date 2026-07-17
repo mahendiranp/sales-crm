@@ -66,6 +66,42 @@ async function callGemini({ prompt, currentFields }) {
   return parseModelResponse(res.text || "");
 }
 
+const LEAD_SCORE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    score: { type: Type.NUMBER },
+    reasoning: { type: Type.STRING },
+  },
+  required: ["score", "reasoning"],
+};
+
+const LEAD_SCORE_SYSTEM_PROMPT =
+  "You are a sales qualification assistant. Given a lead's details, score how likely they are to convert into a " +
+  "paying customer, from 0 (very unlikely) to 100 (very likely). Base it on source quality, stated budget, urgency " +
+  "signals in notes, and any other field given. Return a whole number 0-100 and one short sentence explaining why.";
+
+async function scoreLead({ lead }) {
+  if (!isConfigured()) {
+    throw new Error("Gemini isn't configured yet — ask your platform admin to set GEMINI_API_KEY.");
+  }
+  const res = await client.models.generateContent({
+    model: MODEL,
+    contents: JSON.stringify(lead),
+    config: {
+      systemInstruction: LEAD_SCORE_SYSTEM_PROMPT,
+      maxOutputTokens: 300,
+      responseMimeType: "application/json",
+      responseSchema: LEAD_SCORE_SCHEMA,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+  const parsed = JSON.parse(res.text || "{}");
+  return {
+    score: Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0))),
+    reasoning: parsed.reasoning || "",
+  };
+}
+
 async function generateFormFields({ prompt, currentFields }) {
   if (!isConfigured()) {
     throw new Error("Gemini isn't configured yet — ask your platform admin to set GEMINI_API_KEY.");
@@ -97,4 +133,4 @@ async function generateFormFields({ prompt, currentFields }) {
   }
 }
 
-module.exports = { isConfigured, generateFormFields };
+module.exports = { isConfigured, generateFormFields, scoreLead };

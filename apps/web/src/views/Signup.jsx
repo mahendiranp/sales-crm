@@ -103,7 +103,7 @@ export default function Signup() {
   const [payError, setPayError] = useState("");
   const { requestSignupOtp, verifySignupOtp } = useAuth();
 
-  const toggleModule = (key) => setSelectedModules((s) => ({ ...s, [key]: !s[key] }));
+  const toggleModule = (key, next) => setSelectedModules((s) => ({ ...s, [key]: next ?? !s[key] }));
   const toggleApp = (key) => setSelectedApps((s) => ({ ...s, [key]: !s[key] }));
 
   const continueToStep2 = async (e) => {
