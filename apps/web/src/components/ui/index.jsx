@@ -72,7 +72,7 @@ export function PageHeader({ title, subtitle, action }) {
   );
 }
 
-export function Modal({ open, onClose, title, children, wide, xl }) {
+export function Modal({ open, onClose, title, subtitle, children, wide, xl }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
@@ -81,7 +81,10 @@ export function Modal({ open, onClose, title, children, wide, xl }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-white">
-          <h3 className="font-display font-semibold text-lg">{title}</h3>
+          <div>
+            <h3 className="font-display font-semibold text-lg">{title}</h3>
+            {subtitle && <p className="text-xs text-ink/45 mt-0.5">{subtitle}</p>}
+          </div>
           <button onClick={onClose} className="text-ink/40 hover:text-ink">
             <X size={19} />
           </button>
@@ -92,13 +95,20 @@ export function Modal({ open, onClose, title, children, wide, xl }) {
   );
 }
 
-export function Field({ label, children }) {
+export function Field({ label, required, children }) {
   return (
     <label className="block mb-3.5">
-      <span className="block text-xs font-medium text-ink/60 mb-1.5">{label}</span>
+      <span className="block text-xs font-medium text-ink/60 mb-1.5">
+        {label}
+        {required && <span className="text-danger"> *</span>}
+      </span>
       {children}
     </label>
   );
+}
+
+export function SectionHeading({ children }) {
+  return <h4 className="text-xs font-semibold uppercase tracking-wide text-ink/40 mt-1 mb-2.5">{children}</h4>;
 }
 
 export const inputCls =

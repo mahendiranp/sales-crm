@@ -79,4 +79,42 @@ async function scoreLead({ lead }) {
   };
 }
 
-module.exports = { isConfigured, generateFormFields, scoreLead };
+const LEAD_PARSE_SYSTEM_PROMPT =
+  "You extract lead details from a pasted message (e.g. a WhatsApp message, email, or call note) for a CRM. " +
+  "Return only the fields you can confidently infer from the text — omit any field you're not sure about rather " +
+  "than guessing. budget should be a plain number in rupees (e.g. \"15 lakh\" -> 1500000). Put anything else " +
+  "useful (timing, requirements, context) into notes as a short summary, not a verbatim copy. Respond with ONLY a " +
+  'JSON object using any of these keys: name, mobile, email, company, budget, interestedProduct, priority ' +
+  '("High"/"Medium"/"Low"), notes — no other text.';
+
+async function parseLeadText({ text }) {
+  if (!isConfigured()) {
+    throw new Error("Anthropic isn't configured yet — ask your platform admin to set ANTHROPIC_API_KEY.");
+  }
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 500,
+      system: LEAD_PARSE_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: text }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Anthropic request failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const raw = data.content?.[0]?.text || "{}";
+  return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+}
+
+module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText };

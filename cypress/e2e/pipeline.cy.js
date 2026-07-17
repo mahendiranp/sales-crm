@@ -39,7 +39,7 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     });
   });
 
-  it("adds a lead with a lead score and notes, and flags a duplicate", () => {
+  it("adds a lead with just the required fields plus notes, and flags a duplicate", () => {
     const unique = `Cypress Lead ${Date.now()}`;
     const mobile = "9812345678";
 
@@ -47,30 +47,24 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     cy.visit("/app/leads");
     cy.contains("button", "Add Lead").click();
 
-    // Field's <input>/<textarea> is a direct child of the same <label>
-    // that holds the label text (see components/ui/index.jsx's Field) —
-    // so the lookup is .find() straight off the matched label, no
-    // .parent() hop needed (that would search across every field at once).
+    // Only Lead Name and Mobile Number are required now — lead score is
+    // AI-only (no manual input), and Notes is a plain textarea under its
+    // own section heading rather than wrapped in its own <label>.
     cy.contains("label", "Lead Name").find("input").type(unique);
     cy.contains("label", "Mobile Number").find("input").type(mobile);
-    cy.contains("label", "Email").find("input").type(`${Date.now()}@example.com`);
     cy.contains("label", "Company").find("input").type(`${unique} Co`);
-    cy.contains("label", "Lead Score (0–100)").find("input").type("77");
-    cy.contains("label", "Notes").find("textarea").type("Created by Cypress pipeline test.");
+    cy.get("textarea[placeholder*='Looking for ERP']").type("Created by Cypress pipeline test.");
     cy.contains("button", "Save Lead").click();
     cy.wait("@createLead").its("response.statusCode").should("eq", 201);
 
     cy.contains(unique).should("be.visible");
-    // Score badge renders the number we set. Call/WhatsApp/Email are
-    // inside the row's "⋯" actions menu (consolidated there to keep the
-    // table from overflowing, rendered in-place, not portaled) — open it
-    // to confirm they're offered since mobile/email were both filled in.
+    // Call/WhatsApp/Email are inside the row's "⋯" actions menu
+    // (consolidated there to keep the table from overflowing, rendered
+    // in-place, not portaled) — open it to confirm Call is offered since
+    // mobile was filled in (email wasn't, since it's optional now).
     cy.contains("tr", unique).within(() => {
-      cy.contains("77").should("be.visible");
       cy.get('button[title="More actions"]').click();
       cy.get('a[title="Call"]').should("exist");
-      cy.get('a[title="WhatsApp"]').should("exist");
-      cy.get('a[title="Email"]').should("exist");
     });
 
     // Duplicate detection: adding a second lead with the same mobile
