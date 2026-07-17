@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
+import { Card, PageHeader, Button, Modal, Field, SectionHeading, inputCls, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
@@ -16,9 +16,12 @@ const STATUSES = ["New", "Contacted", "Qualified", "Converted", "Lost"];
 
 const emptyForm = {
   name: "", mobile: "", email: "", company: "", source: "Website",
-  interestedProduct: "ERP Suite", budget: "", priority: "Medium", status: "New",
-  leadScore: "", notes: "",
+  interestedProduct: "", budget: "", priority: "Medium", status: "New",
+  assignedTo: "", notes: "",
 };
+
+const PHONE_RE = /^[0-9+\-\s]{7,15}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // wa.me needs digits only (country code + number, no +/spaces/dashes) — a
 // best-effort strip since leads can have phone numbers typed any which way.
@@ -114,6 +117,58 @@ function AvatarInitials({ user }) {
   );
 }
 
+const PRIORITY_EMOJI = { High: "🔴", Medium: "🟡", Low: "🟢" };
+
+// Free-text search over the fixed product catalog instead of a plain
+// <select> — useful once the catalog grows past a handful of items and
+// scrolling a dropdown stops being the fastest way to find one.
+function ProductSearch({ value, onChange }) {
+  const [query, setQuery] = useState(value || "");
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => setQuery(value || ""), [value]);
+  useEffect(() => {
+    if (!open) return;
+    const closeIfOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeIfOutside);
+    return () => document.removeEventListener("mousedown", closeIfOutside);
+  }, [open]);
+
+  const matches = PRODUCTS.filter((p) => p.toLowerCase().includes(query.toLowerCase()));
+  return (
+    <div className="relative" ref={ref}>
+      <input
+        className={inputCls}
+        placeholder="Search product…"
+        value={query}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+      />
+      {open && matches.length > 0 && (
+        <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-border rounded-lg shadow-card max-h-48 overflow-y-auto">
+          {matches.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => { onChange(p); setQuery(p); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-base"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Every row action (call, WhatsApp, email, edit, assign, convert) used to
 // be its own icon in the row — with 6 possible actions that pushed the
 // table wider than its card and spilled past the edge. One "⋯" menu keeps
@@ -189,6 +244,11 @@ export default function Leads() {
   const [selected, setSelected] = useState([]);
   const [scoringId, setScoringId] = useState(null);
   const [scoreError, setScoreError] = useState("");
+  const [triedSave, setTriedSave] = useState(false);
+  const [showAiPaste, setShowAiPaste] = useState(false);
+  const [aiPasteText, setAiPasteText] = useState("");
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiParseError, setAiParseError] = useState("");
 
   const load = () => {
     Promise.all([api.get("/leads"), api.get("/users")]).then(([l, u]) => {
@@ -216,8 +276,8 @@ export default function Leads() {
     conversion: leads.length ? Math.round((leads.filter((l) => l.status === "Converted").length / leads.length) * 100) : 0,
   };
 
-  const openAdd = () => { setForm(emptyForm); setModal("add"); };
-  const openEdit = (lead) => { setActiveLead(lead); setForm(lead); setModal("edit"); };
+  const openAdd = () => { setForm(emptyForm); setShowAiPaste(false); setAiPasteText(""); setAiParseError(""); setTriedSave(false); setModal("add"); };
+  const openEdit = (lead) => { setActiveLead(lead); setForm(lead); setTriedSave(false); setModal("edit"); };
 
   // Simple duplicate detection: same phone or email as an existing lead.
   // Flags it inline while adding rather than silently letting duplicates
@@ -231,12 +291,77 @@ export default function Leads() {
     return leads.find((l) => (mobile && l.mobile?.trim() === mobile) || (email && l.email?.trim().toLowerCase() === email)) || null;
   })();
 
-  const saveLead = async () => {
-    const payload = { ...form, budget: Number(form.budget) || 0, leadScore: form.leadScore === "" ? null : Number(form.leadScore) };
-    if (modal === "add") await api.post("/leads", payload);
-    else await api.put(`/leads/${activeLead.id}`, payload);
-    setModal(null);
+  // Name plus at least one of mobile/email — everything else is optional.
+  // A single message instead of a bare boolean so clicking Save with
+  // something missing tells you exactly what, rather than just silently
+  // not doing anything.
+  const leadValidationError = !form.name.trim()
+    ? "Lead Name is required."
+    : !(form.mobile?.trim() || form.email?.trim())
+    ? "A Mobile Number or Email is required."
+    : form.mobile && !PHONE_RE.test(form.mobile)
+    ? "Mobile Number doesn't look valid."
+    : form.email && !EMAIL_RE.test(form.email)
+    ? "Email doesn't look valid."
+    : null;
+
+  // Lead score is never entered manually anymore — it's set by the AI-score
+  // action (see aiScoreLead below), which we fire automatically right after
+  // a lead is created so the score just shows up in the table on its own.
+  const saveLead = async ({ addAnother } = {}) => {
+    if (leadValidationError) {
+      setTriedSave(true);
+      return;
+    }
+    const payload = { ...form, budget: Number(form.budget) || 0 };
+    if (modal === "add") {
+      const { data: created } = await api.post("/leads", payload);
+      aiScoreLead(created);
+      if (addAnother) {
+        setForm(emptyForm);
+        setShowAiPaste(false);
+        setAiPasteText("");
+      } else {
+        setModal(null);
+      }
+    } else {
+      await api.put(`/leads/${activeLead.id}`, payload);
+      setModal(null);
+    }
     load();
+  };
+
+  const openExisting = () => {
+    if (!duplicateOf) return;
+    setActiveLead(duplicateOf);
+    setForm(duplicateOf);
+    setModal("edit");
+  };
+
+  const fillWithAI = async () => {
+    if (!aiPasteText.trim()) return;
+    setAiParsing(true);
+    setAiParseError("");
+    try {
+      const { data } = await api.post("/leads/parse-ai", { text: aiPasteText });
+      setForm((f) => ({
+        ...f,
+        ...(data.name && { name: data.name }),
+        ...(data.mobile && { mobile: data.mobile }),
+        ...(data.email && { email: data.email }),
+        ...(data.company && { company: data.company }),
+        ...(data.budget && { budget: data.budget }),
+        ...(data.interestedProduct && { interestedProduct: data.interestedProduct }),
+        ...(PRIORITIES.includes(data.priority) && { priority: data.priority }),
+        ...(data.notes && { notes: data.notes }),
+      }));
+      setShowAiPaste(false);
+      setAiPasteText("");
+    } catch (err) {
+      setAiParseError(err.response?.data?.error || "Couldn't parse that — try filling the fields in manually.");
+    } finally {
+      setAiParsing(false);
+    }
   };
 
   const assignLead = async (userId) => {
@@ -413,36 +538,117 @@ export default function Leads() {
       </Card>
 
       {/* Add / Edit modal */}
-      <Modal open={modal === "add" || modal === "edit"} onClose={() => setModal(null)} title={modal === "add" ? "Add Lead" : "Edit Lead"} wide>
+      <Modal
+        open={modal === "add" || modal === "edit"}
+        onClose={() => setModal(null)}
+        title={modal === "add" ? "Add New Lead" : "Edit Lead"}
+        subtitle={modal === "add" ? "Capture a new prospect for your sales pipeline. Only name and a mobile or email are required." : undefined}
+        wide
+      >
+        {modal === "add" && (
+          <div className="mb-4">
+            {!showAiPaste ? (
+              <button
+                type="button"
+                onClick={() => setShowAiPaste(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary-dark"
+              >
+                <Sparkles size={13} /> Fill with AI — paste a message
+              </button>
+            ) : (
+              <div className="bg-base rounded-lg p-3">
+                <textarea
+                  className={`${inputCls} bg-white`}
+                  rows={3}
+                  autoFocus
+                  placeholder={'e.g. "Hi, I\'m John from ABC. Need ERP software for 200 employees. Budget 15 lakh. Call me tomorrow."'}
+                  value={aiPasteText}
+                  onChange={(e) => setAiPasteText(e.target.value)}
+                />
+                {aiParseError && <p className="text-xs text-danger mt-1.5">{aiParseError}</p>}
+                <div className="flex justify-end gap-2 mt-2">
+                  <Button variant="secondary" onClick={() => { setShowAiPaste(false); setAiPasteText(""); setAiParseError(""); }}>
+                    Cancel
+                  </Button>
+                  <Button onClick={fillWithAI} disabled={aiParsing || !aiPasteText.trim()}>
+                    <Sparkles size={13} className={aiParsing ? "animate-pulse" : ""} /> {aiParsing ? "Reading…" : "Autofill"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <SectionHeading>Contact Information</SectionHeading>
         <div className="grid grid-cols-2 gap-x-4">
-          <Field label="Lead Name">
+          <Field label="Lead Name" required>
             <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label="Mobile Number">
-            <input className={inputCls} value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+          <Field label="Mobile Number" required={!form.email}>
+            <input
+              className={inputCls}
+              placeholder="+91 98765 43210"
+              value={form.mobile}
+              onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+            />
+            {form.mobile && !PHONE_RE.test(form.mobile) && (
+              <span className="block text-xs text-danger mt-1">Doesn't look like a valid phone number.</span>
+            )}
           </Field>
-          <Field label="Email">
+          <Field label="Email" required={!form.mobile}>
             <input className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            {form.email && !EMAIL_RE.test(form.email) && (
+              <span className="block text-xs text-danger mt-1">Doesn't look like a valid email.</span>
+            )}
           </Field>
           <Field label="Company">
             <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
           </Field>
+        </div>
+        {!form.mobile && !form.email && !triedSave && (
+          <p className="text-xs text-ink/40 -mt-2 mb-3">At least one of Mobile Number or Email is required.</p>
+        )}
+        {triedSave && leadValidationError && (
+          <p className="text-xs text-danger bg-danger/5 border border-danger/20 rounded-lg px-3 py-2 mb-3">
+            {leadValidationError}
+          </p>
+        )}
+
+        {duplicateOf && (
+          <p className="text-xs text-accent-dark bg-accent/10 border border-accent/25 rounded-lg px-3 py-2 mb-3 flex items-center justify-between gap-3">
+            <span>
+              ⚠️ A lead with this phone or email already exists: <strong>{duplicateOf.name}</strong> ({duplicateOf.status}).
+            </span>
+            <button type="button" onClick={openExisting} className="shrink-0 font-medium text-primary hover:text-primary-dark underline">
+              Open Existing
+            </button>
+          </p>
+        )}
+
+        <SectionHeading>Sales Information</SectionHeading>
+        <div className="grid grid-cols-2 gap-x-4">
           <Field label="Source">
             <select className={inputCls} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })}>
               {SOURCES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
           <Field label="Interested Product">
-            <select className={inputCls} value={form.interestedProduct} onChange={(e) => setForm({ ...form, interestedProduct: e.target.value })}>
-              {PRODUCTS.map((s) => <option key={s}>{s}</option>)}
-            </select>
+            <ProductSearch value={form.interestedProduct} onChange={(v) => setForm({ ...form, interestedProduct: v })} />
           </Field>
           <Field label="Budget (₹)">
-            <input type="number" className={inputCls} value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} />
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₹</span>
+              <input
+                type="number"
+                className={`${inputCls} pl-7`}
+                value={form.budget}
+                onChange={(e) => setForm({ ...form, budget: e.target.value })}
+              />
+            </div>
           </Field>
           <Field label="Priority">
             <select className={inputCls} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-              {PRIORITIES.map((s) => <option key={s}>{s}</option>)}
+              {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_EMOJI[p]} {p}</option>)}
             </select>
           </Field>
           <Field label="Status">
@@ -450,28 +656,29 @@ export default function Leads() {
               {STATUSES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
-          <Field label="Lead Score (0–100)">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              className={inputCls}
-              value={form.leadScore ?? ""}
-              onChange={(e) => setForm({ ...form, leadScore: e.target.value })}
-            />
+          <Field label="Owner">
+            <select className={inputCls} value={form.assignedTo || ""} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}>
+              <option value="">Unassigned</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
           </Field>
         </div>
-        <Field label="Notes">
-          <textarea className={inputCls} rows={2} value={form.notes || ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-        </Field>
-        {duplicateOf && (
-          <p className="text-xs text-accent-dark bg-accent/10 border border-accent/25 rounded-lg px-3 py-2 mb-2">
-            A lead with this phone or email already exists: <strong>{duplicateOf.name}</strong> ({duplicateOf.status}). You can still save — this is just a heads-up.
-          </p>
-        )}
-        <div className="flex justify-end gap-2 mt-2">
+
+        <SectionHeading>Notes</SectionHeading>
+        <textarea
+          className={`${inputCls} mb-1`}
+          rows={2}
+          placeholder="e.g. Looking for ERP implementation, needs demo next week, budget approved"
+          value={form.notes || ""}
+          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+        />
+
+        <div className="flex justify-end gap-2 mt-4">
           <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
-          <Button onClick={saveLead}>Save Lead</Button>
+          <Button onClick={() => saveLead()}>Save Lead</Button>
+          {modal === "add" && (
+            <Button variant="secondary" onClick={() => saveLead({ addAnother: true })}>Save & Add Another</Button>
+          )}
         </div>
       </Modal>
 

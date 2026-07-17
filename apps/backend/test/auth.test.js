@@ -144,7 +144,7 @@ test("tenant isolation: a fresh signup sees none of another tenant's leads", asy
   const createRes = await request(app)
     .post("/api/leads")
     .set("Authorization", `Bearer ${tenantA.token}`)
-    .send({ name: "Tenant A Lead", status: "New" });
+    .send({ name: "Tenant A Lead", mobile: "9000000001", status: "New" });
   assert.equal(createRes.status, 201);
   const leadId = createRes.body.id;
 
@@ -205,7 +205,7 @@ test("permission=edit can create but not delete", async () => {
   const create = await request(app)
     .post("/api/leads")
     .set("Authorization", `Bearer ${editToken}`)
-    .send({ name: "Edit-created lead" });
+    .send({ name: "Edit-created lead", mobile: "9000000002" });
   assert.equal(create.status, 201);
 
   const del = await request(app).delete(`/api/leads/${create.body.id}`).set("Authorization", `Bearer ${editToken}`);

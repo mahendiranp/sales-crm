@@ -24,4 +24,8 @@ function scoreLead({ provider, lead }) {
   return PROVIDERS[resolveProvider(provider)].scoreLead({ lead });
 }
 
-module.exports = { isConfigured, generateFormFields, scoreLead, PROVIDER_KEYS: Object.keys(PROVIDERS) };
+function parseLeadText({ provider, text }) {
+  return PROVIDERS[resolveProvider(provider)].parseLeadText({ text });
+}
+
+module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText, PROVIDER_KEYS: Object.keys(PROVIDERS) };

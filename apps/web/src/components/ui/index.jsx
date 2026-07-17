@@ -107,6 +107,10 @@ export function Field({ label, required, children }) {
   );
 }
 
+export function SectionHeading({ children }) {
+  return <h4 className="text-xs font-semibold uppercase tracking-wide text-ink/40 mt-1 mb-2.5">{children}</h4>;
+}
+
 export const inputCls =
   "w-full px-3 py-2 border border-border rounded-lg text-sm outline-none focus:border-primary transition-colors";
 
