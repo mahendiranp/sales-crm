@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { FileText, MapPin, ShoppingBag, Cake, CalendarClock, Phone, Mail, Users, Clock } from "lucide-react";
+import Link from "next/link";
+import { Plus, FileText, MapPin, ShoppingBag, Cake, CalendarClock, Phone, Mail, Users, Clock } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, PageHeader, EmptyState, Button, inputCls } from "../components/ui";
+import { Card, PageHeader, EmptyState, Button, Modal, Field, inputCls } from "../components/ui";
 import { formatINR, formatDate, timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+
+const emptyForm = { name: "", mobile: "", email: "", companyId: "", address: "", notes: "" };
 
 const LOG_TYPES = [
   { type: "Phone Call", icon: Phone, color: "#3E6FA3" },
@@ -13,18 +16,22 @@ const LOG_TYPES = [
 ];
 
 export default function Contacts() {
-  const { user } = useAuth();
+  const { user, canManage } = useAuth();
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [active, setActive] = useState(null);
   const [loading, setLoading] = useState(true);
   const [logType, setLogType] = useState(null);
   const [logSummary, setLogSummary] = useState("");
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState(emptyForm);
 
   const load = () => {
-    Promise.all([api.get("/contacts"), api.get("/activities")]).then(([c, a]) => {
+    Promise.all([api.get("/contacts"), api.get("/activities"), api.get("/companies")]).then(([c, a, co]) => {
       setContacts(c.data);
       setActivities(a.data);
+      setCompanies(co.data);
       setActive((prev) => c.data.find((x) => x.id === prev?.id) || c.data[0] || null);
       setLoading(false);
     });
@@ -32,7 +39,17 @@ export default function Contacts() {
   useEffect(() => {
     load();
   }, []);
-  useLiveCollection(["contacts", "activities"], load);
+  useLiveCollection(["contacts", "activities", "companies"], load);
+
+  const openAdd = () => { setForm(emptyForm); setModal(true); };
+
+  const saveContact = async () => {
+    if (!form.name.trim()) return;
+    await api.post("/contacts", { ...form, purchaseHistory: [], documents: [] });
+    setModal(false);
+    setForm(emptyForm);
+    load();
+  };
 
   const contactActivities = active
     ? activities
@@ -62,12 +79,29 @@ export default function Contacts() {
 
   return (
     <div>
-      <PageHeader title="Contacts" subtitle="Customers who were once leads — full history, one place." />
+      <PageHeader
+        title="Contacts"
+        subtitle="Customers who were once leads — full history, one place."
+        action={canManage && <Button onClick={openAdd}><Plus size={15} /> Add Contact</Button>}
+      />
 
       {loading ? (
         <div className="text-ink/40 text-sm">Loading…</div>
       ) : contacts.length === 0 ? (
-        <Card><EmptyState title="No contacts yet" subtitle="Convert a lead to see it appear here." /></Card>
+        <Card>
+          <EmptyState
+            icon={Users}
+            title="No contacts yet"
+            subtitle="Contacts are people you've qualified and want to build relationships with — created by converting a lead, or added directly."
+            primaryAction={canManage && <Button onClick={openAdd}><Plus size={15} /> Add Contact</Button>}
+            secondaryAction={
+              <Link href="/app/leads">
+                <Button variant="secondary">View Leads</Button>
+              </Link>
+            }
+            tip="Tip — Convert a qualified lead into a contact to start tracking their full call, email, and meeting history in one place."
+          />
+        </Card>
       ) : (
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-2 h-fit max-h-[70vh] overflow-y-auto">
@@ -216,6 +250,34 @@ export default function Contacts() {
           )}
         </div>
       )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Add Contact" subtitle="Add someone directly, without going through the Leads pipeline.">
+        <Field label="Name" required>
+          <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </Field>
+        <Field label="Mobile Number">
+          <input className={inputCls} value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+        </Field>
+        <Field label="Email">
+          <input className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        </Field>
+        <Field label="Company">
+          <select className={inputCls} value={form.companyId} onChange={(e) => setForm({ ...form, companyId: e.target.value })}>
+            <option value="">None</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Address">
+          <input className={inputCls} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+        </Field>
+        <Field label="Notes">
+          <textarea className={inputCls} rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        </Field>
+        <div className="flex justify-end gap-2 mt-2">
+          <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
+          <Button onClick={saveContact} disabled={!form.name.trim()}>Save Contact</Button>
+        </div>
+      </Modal>
     </div>
   );
 }

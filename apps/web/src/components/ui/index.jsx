@@ -213,17 +213,30 @@ export function ErrorModal({ open, title = "Something went wrong", message, onCl
   );
 }
 
-export function EmptyState({ icon: Icon, title, subtitle, action }) {
+// `action` is kept as an alias for `primaryAction` — existing call sites
+// that only pass `action` keep working unchanged.
+export function EmptyState({ icon: Icon, title, subtitle, action, primaryAction, secondaryAction, tip }) {
+  const primary = primaryAction || action;
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
+    <div className="flex flex-col items-center justify-center py-16 text-center px-6">
       {Icon && (
         <div className="w-12 h-12 rounded-full bg-base flex items-center justify-center mb-3">
           <Icon size={20} className="text-ink/30" />
         </div>
       )}
       <p className="font-medium text-ink/70">{title}</p>
-      {subtitle && <p className="text-sm text-ink/40 mt-1">{subtitle}</p>}
-      {action && <div className="mt-4">{action}</div>}
+      {subtitle && <p className="text-sm text-ink/40 mt-1 max-w-sm">{subtitle}</p>}
+      {(primary || secondaryAction) && (
+        <div className="flex items-center gap-2 mt-4">
+          {primary}
+          {secondaryAction}
+        </div>
+      )}
+      {tip && (
+        <div className="mt-6 pt-4 border-t border-border w-full max-w-sm text-left">
+          <p className="text-xs text-ink/50 leading-relaxed">{tip}</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -48,7 +48,15 @@ export default function Companies() {
       {loading ? (
         <div className="text-ink/40 text-sm">Loading…</div>
       ) : companies.length === 0 ? (
-        <Card><EmptyState icon={Building2} title="No companies yet" subtitle="Add your first B2B account." /></Card>
+        <Card>
+          <EmptyState
+            icon={Building2}
+            title="No companies yet"
+            subtitle="Manage your customers and organizations in one place."
+            primaryAction={canManage && <Button onClick={() => setModal(true)}><Plus size={15} /> Add Company</Button>}
+            tip="Tip — Companies let you organize contacts, track multiple deals, and see full account history in one place."
+          />
+        </Card>
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {companies.map((c) => (
