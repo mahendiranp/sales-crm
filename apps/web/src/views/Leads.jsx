@@ -244,6 +244,7 @@ export default function Leads() {
   const [selected, setSelected] = useState([]);
   const [scoringId, setScoringId] = useState(null);
   const [scoreError, setScoreError] = useState("");
+  const [triedSave, setTriedSave] = useState(false);
   const [showAiPaste, setShowAiPaste] = useState(false);
   const [aiPasteText, setAiPasteText] = useState("");
   const [aiParsing, setAiParsing] = useState(false);
@@ -275,8 +276,8 @@ export default function Leads() {
     conversion: leads.length ? Math.round((leads.filter((l) => l.status === "Converted").length / leads.length) * 100) : 0,
   };
 
-  const openAdd = () => { setForm(emptyForm); setShowAiPaste(false); setAiPasteText(""); setAiParseError(""); setModal("add"); };
-  const openEdit = (lead) => { setActiveLead(lead); setForm(lead); setModal("edit"); };
+  const openAdd = () => { setForm(emptyForm); setShowAiPaste(false); setAiPasteText(""); setAiParseError(""); setTriedSave(false); setModal("add"); };
+  const openEdit = (lead) => { setActiveLead(lead); setForm(lead); setTriedSave(false); setModal("edit"); };
 
   // Simple duplicate detection: same phone or email as an existing lead.
   // Flags it inline while adding rather than silently letting duplicates
@@ -291,16 +292,27 @@ export default function Leads() {
   })();
 
   // Name plus at least one of mobile/email — everything else is optional.
-  const canSaveLead =
-    form.name.trim() &&
-    (form.mobile?.trim() || form.email?.trim()) &&
-    (!form.mobile || PHONE_RE.test(form.mobile)) &&
-    (!form.email || EMAIL_RE.test(form.email));
+  // A single message instead of a bare boolean so clicking Save with
+  // something missing tells you exactly what, rather than just silently
+  // not doing anything.
+  const leadValidationError = !form.name.trim()
+    ? "Lead Name is required."
+    : !(form.mobile?.trim() || form.email?.trim())
+    ? "A Mobile Number or Email is required."
+    : form.mobile && !PHONE_RE.test(form.mobile)
+    ? "Mobile Number doesn't look valid."
+    : form.email && !EMAIL_RE.test(form.email)
+    ? "Email doesn't look valid."
+    : null;
 
   // Lead score is never entered manually anymore — it's set by the AI-score
   // action (see aiScoreLead below), which we fire automatically right after
   // a lead is created so the score just shows up in the table on its own.
   const saveLead = async ({ addAnother } = {}) => {
+    if (leadValidationError) {
+      setTriedSave(true);
+      return;
+    }
     const payload = { ...form, budget: Number(form.budget) || 0 };
     if (modal === "add") {
       const { data: created } = await api.post("/leads", payload);
@@ -593,8 +605,13 @@ export default function Leads() {
             <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
           </Field>
         </div>
-        {!form.mobile && !form.email && (
+        {!form.mobile && !form.email && !triedSave && (
           <p className="text-xs text-ink/40 -mt-2 mb-3">At least one of Mobile Number or Email is required.</p>
+        )}
+        {triedSave && leadValidationError && (
+          <p className="text-xs text-danger bg-danger/5 border border-danger/20 rounded-lg px-3 py-2 mb-3">
+            {leadValidationError}
+          </p>
         )}
 
         {duplicateOf && (
@@ -658,24 +675,9 @@ export default function Leads() {
 
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
-          <Button
-            onClick={() => saveLead()}
-            disabled={!canSaveLead}
-            className="disabled:opacity-40 disabled:cursor-not-allowed"
-            title={!canSaveLead ? "Lead Name and a Mobile Number or Email are required." : undefined}
-          >
-            Save Lead
-          </Button>
+          <Button onClick={() => saveLead()}>Save Lead</Button>
           {modal === "add" && (
-            <Button
-              variant="secondary"
-              onClick={() => saveLead({ addAnother: true })}
-              disabled={!canSaveLead}
-              className="disabled:opacity-40 disabled:cursor-not-allowed"
-              title={!canSaveLead ? "Lead Name and a Mobile Number or Email are required." : undefined}
-            >
-              Save & Add Another
-            </Button>
+            <Button variant="secondary" onClick={() => saveLead({ addAnother: true })}>Save & Add Another</Button>
           )}
         </div>
       </Modal>
