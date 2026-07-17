@@ -231,6 +231,13 @@ export default function Landing() {
       <Seo
         description="Build forms with AI, automate approvals, and track everything from one dashboard."
         keywords={[
+          "Formora",
+          "Formora forms",
+          "online form builder",
+          "form creation tool",
+          "form builder software",
+          "AI form creation",
+          "approval workflow tool",
           "form builder",
           "AI form builder",
           "drag and drop form builder",
