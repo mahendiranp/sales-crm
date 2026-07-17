@@ -3,7 +3,7 @@ const { randomUUID: uuid } = require("crypto");
 const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
 const { requireManager, requireFullAccess } = require("../middleware/auth");
-const { isConfigured: aiConfigured, scoreLead } = require("../integrations/aiClient");
+const { isConfigured: aiConfigured, scoreLead, parseLeadText } = require("../integrations/aiClient");
 const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
 
 const router = express.Router();
@@ -114,6 +114,42 @@ router.post("/:id/ai-score", requireManager, async (req, res) => {
     if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
     const updated = await leads(req).update(lead.id, { leadScore: score, aiScoreReasoning: reasoning });
     res.json(updated);
+  } catch (err) {
+    const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+// AI paste-to-autofill: extracts lead fields from an arbitrary pasted
+// message (WhatsApp text, email, call note) — same plan gate and shared
+// monthly usage counter as AI lead scoring, since it's the same underlying
+// per-account AI allowance.
+router.post("/parse-ai", requireManager, async (req, res) => {
+  const text = (req.body.text || "").trim();
+  if (!text) return res.status(400).json({ error: "Paste some text to extract a lead from first." });
+
+  if (!req.user.isMasterAdmin) {
+    const limits = await getLimitsForAccount(req.user.accountId);
+    if (!limits.aiAssistant) {
+      return res.status(403).json({ error: `AI autofill requires the Growth plan or higher. Your account is on ${limits.label}.` });
+    }
+    const usage = await getAiUsage(req.user.accountId);
+    if (usage.used >= usage.limit) {
+      return res.status(403).json({ error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` });
+    }
+  }
+
+  const provider = await getAiProviderForAccount(req.user.accountId);
+  if (!aiConfigured(provider)) {
+    const providerLabel = provider === "gemini" ? "Gemini" : "Anthropic";
+    const envVar = provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY";
+    return res.status(503).json({ error: `${providerLabel} isn't configured yet. Ask your admin to set ${envVar} in the backend environment.` });
+  }
+
+  try {
+    const fields = await parseLeadText({ provider, text });
+    if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
+    res.json(fields);
   } catch (err) {
     const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;
     res.status(status).json({ error: err.message });

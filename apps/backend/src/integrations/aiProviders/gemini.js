@@ -102,6 +102,44 @@ async function scoreLead({ lead }) {
   };
 }
 
+const LEAD_PARSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING },
+    mobile: { type: Type.STRING },
+    email: { type: Type.STRING },
+    company: { type: Type.STRING },
+    budget: { type: Type.NUMBER },
+    interestedProduct: { type: Type.STRING },
+    priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+    notes: { type: Type.STRING },
+  },
+};
+
+const LEAD_PARSE_SYSTEM_PROMPT =
+  "You extract lead details from a pasted message (e.g. a WhatsApp message, email, or call note) for a CRM. " +
+  "Return only the fields you can confidently infer from the text — omit any field you're not sure about rather " +
+  "than guessing. budget should be a plain number in rupees (e.g. \"15 lakh\" -> 1500000). Put anything else " +
+  "useful (timing, requirements, context) into notes as a short summary, not a verbatim copy.";
+
+async function parseLeadText({ text }) {
+  if (!isConfigured()) {
+    throw new Error("Gemini isn't configured yet — ask your platform admin to set GEMINI_API_KEY.");
+  }
+  const res = await client.models.generateContent({
+    model: MODEL,
+    contents: text,
+    config: {
+      systemInstruction: LEAD_PARSE_SYSTEM_PROMPT,
+      maxOutputTokens: 500,
+      responseMimeType: "application/json",
+      responseSchema: LEAD_PARSE_SCHEMA,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+  return JSON.parse(res.text || "{}");
+}
+
 async function generateFormFields({ prompt, currentFields }) {
   if (!isConfigured()) {
     throw new Error("Gemini isn't configured yet — ask your platform admin to set GEMINI_API_KEY.");
@@ -133,4 +171,4 @@ async function generateFormFields({ prompt, currentFields }) {
   }
 }
 
-module.exports = { isConfigured, generateFormFields, scoreLead };
+module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText };
