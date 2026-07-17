@@ -61,15 +61,20 @@ const HOW_IT_WORKS = [
 // page customization, Excel export, coding requirement, Google Forms
 // migration, API availability).
 const FAQS = [
-  { q: "Is Flowora free?", a: "Yes — the Free plan is free forever, no credit card required. Upgrade to Team or Enterprise when you need approval workflows and more responses." },
-  { q: "Can I collect unlimited responses?", a: "The Free plan includes 100 responses/month. Team and Enterprise plans raise or remove that limit." },
+  { q: "Is Flowora free?", a: "Yes — the Free plan is free forever, no credit card required." },
+  { q: "Can I collect unlimited responses?", a: "The Free plan includes 100 responses/month." },
   { q: "Does Flowora support approvals?", a: "Yes — route submissions through multi-step approval chains (e.g. Employee → Manager → HR) with role-based or specific-person approvers." },
   { q: "Can I embed forms on my website?", a: "Yes — every published form gets a public share link you can embed directly on your site or link to from anywhere." },
-  { q: "Can I remove Flowora branding?", a: "Yes, on Team and Enterprise plans. The Free plan shows a small Flowora badge on public forms." },
-  { q: "Can multiple team members collaborate?", a: "Yes — invite teammates with role-based permissions (Admin, Manager, Viewer) on Team and Enterprise plans." },
+  { q: "Can multiple team members collaborate?", a: "Yes — invite teammates with role-based permissions (Admin, Manager, Viewer)." },
   { q: "Can AI build my form?", a: "Yes — describe the form you need in plain language and the AI Assistant generates the fields for you." },
 ];
 
+// Team/Enterprise are kept in this array (so the underlying signup/payment
+// flow in Signup.jsx and Settings → Upgrade Plan still works) but filtered
+// out of what's actually shown on the public pricing section below — paid
+// plans weren't converting, so for now every visitor is only offered Free.
+// No trial-gating exists on the backend yet (see utils/plans.js) — the
+// copy below only claims what the Free plan actually grants today.
 const PLANS = [
   {
     key: "free",
@@ -77,7 +82,7 @@ const PLANS = [
     tagline: "For individuals",
     price: "₹0",
     period: "forever",
-    features: ["Up to 3 forms", "100 responses / month", "3 AI generations / month", "CSV/Excel export", "1 user"],
+    features: ["Up to 3 forms", "100 responses / month", "CSV/Excel export", "1 user"],
     cta: "Start free",
     href: "/signup",
   },
@@ -187,6 +192,11 @@ function FaqItem({ q, a }) {
   );
 }
 
+// Only the plans actually shown on the pricing section — kept separate
+// from PLANS so JSON-LD structured data doesn't advertise a plan visitors
+// can't currently see or pick on this page.
+const VISIBLE_PLANS = PLANS.filter((p) => p.key === "free");
+
 const JSON_LD = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -195,7 +205,7 @@ const JSON_LD = {
   operatingSystem: "Web",
   description:
     "Flowora is an AI form builder with multi-step approval workflows — build forms with AI, automate approvals, and track everything from one dashboard.",
-  offers: PLANS.map((p) => ({
+  offers: VISIBLE_PLANS.map((p) => ({
     "@type": "Offer",
     name: p.name,
     price: p.price === "Custom" ? undefined : p.price.replace(/[^\d]/g, "") || "0",
@@ -423,19 +433,11 @@ export default function Landing() {
       <section id="pricing" className="max-w-6xl mx-auto px-6 py-20">
         <div className="text-center mb-12">
           <h2 className="font-display font-bold text-3xl">Simple, transparent pricing</h2>
-          <p className="text-ink/50 mt-2">Start free. Upgrade when you need approval workflows and more responses.</p>
+          <p className="text-ink/50 mt-2">Free to use, no credit card required.</p>
         </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {PLANS.map((p) => (
-            <div
-              key={p.name}
-              className={`rounded-card p-6 border ${p.highlighted ? "border-primary shadow-lg bg-white relative" : "border-border bg-white shadow-card"}`}
-            >
-              {p.highlighted && (
-                <span className="absolute -top-3 left-6 bg-accent text-white text-xs font-medium px-2.5 py-1 rounded-full">
-                  Most popular
-                </span>
-              )}
+        <div className="grid gap-5 max-w-sm mx-auto">
+          {VISIBLE_PLANS.map((p) => (
+            <div key={p.name} className="rounded-card p-6 border border-border bg-white shadow-card">
               <h3 className="font-display font-semibold text-lg">{p.name}</h3>
               <p className="text-xs text-ink/50 mt-1 mb-4 h-8">{p.tagline}</p>
               <div className="flex items-baseline gap-1 mb-5">
