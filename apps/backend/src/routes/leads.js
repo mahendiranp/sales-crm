@@ -11,8 +11,22 @@ const leads = (req) => scopedCollection("leads", req.user.accountId);
 const contacts = (req) => scopedCollection("contacts", req.user.accountId);
 const companies = (req) => scopedCollection("companies", req.user.accountId);
 
+// Backstop for the form's own required-field rules (Lead Name, plus a
+// Mobile Number or Email) — the UI already blocks this, but the API
+// shouldn't rely on that alone since it's reachable directly.
+function requireLeadContactInfo(req, res, next) {
+  if (req.method === "POST" && req.path === "/") {
+    const { name, mobile, email } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: "Lead Name is required." });
+    if (!(mobile && mobile.trim()) && !(email && email.trim())) {
+      return res.status(400).json({ error: "A Mobile Number or Email is required." });
+    }
+  }
+  next();
+}
+
 // mount base CRUD first, then add extra action routes
-router.use("/", crudRouter("leads"));
+router.use("/", requireLeadContactInfo, crudRouter("leads"));
 
 // Assign a salesperson to a lead
 router.post("/:id/assign", requireManager, async (req, res) => {

@@ -290,6 +290,13 @@ export default function Leads() {
     return leads.find((l) => (mobile && l.mobile?.trim() === mobile) || (email && l.email?.trim().toLowerCase() === email)) || null;
   })();
 
+  // Name plus at least one of mobile/email — everything else is optional.
+  const canSaveLead =
+    form.name.trim() &&
+    (form.mobile?.trim() || form.email?.trim()) &&
+    (!form.mobile || PHONE_RE.test(form.mobile)) &&
+    (!form.email || EMAIL_RE.test(form.email));
+
   // Lead score is never entered manually anymore — it's set by the AI-score
   // action (see aiScoreLead below), which we fire automatically right after
   // a lead is created so the score just shows up in the table on its own.
@@ -523,7 +530,7 @@ export default function Leads() {
         open={modal === "add" || modal === "edit"}
         onClose={() => setModal(null)}
         title={modal === "add" ? "Add New Lead" : "Edit Lead"}
-        subtitle={modal === "add" ? "Capture a new prospect for your sales pipeline. Only name and mobile are required." : undefined}
+        subtitle={modal === "add" ? "Capture a new prospect for your sales pipeline. Only name and a mobile or email are required." : undefined}
         wide
       >
         {modal === "add" && (
@@ -565,7 +572,7 @@ export default function Leads() {
           <Field label="Lead Name" required>
             <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label="Mobile Number" required>
+          <Field label="Mobile Number" required={!form.email}>
             <input
               className={inputCls}
               placeholder="+91 98765 43210"
@@ -576,7 +583,7 @@ export default function Leads() {
               <span className="block text-xs text-danger mt-1">Doesn't look like a valid phone number.</span>
             )}
           </Field>
-          <Field label="Email">
+          <Field label="Email" required={!form.mobile}>
             <input className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             {form.email && !EMAIL_RE.test(form.email) && (
               <span className="block text-xs text-danger mt-1">Doesn't look like a valid email.</span>
@@ -586,6 +593,9 @@ export default function Leads() {
             <input className={inputCls} value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
           </Field>
         </div>
+        {!form.mobile && !form.email && (
+          <p className="text-xs text-ink/40 -mt-2 mb-3">At least one of Mobile Number or Email is required.</p>
+        )}
 
         {duplicateOf && (
           <p className="text-xs text-accent-dark bg-accent/10 border border-accent/25 rounded-lg px-3 py-2 mb-3 flex items-center justify-between gap-3">
@@ -648,9 +658,24 @@ export default function Leads() {
 
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
-          <Button onClick={() => saveLead()}>Save Lead</Button>
+          <Button
+            onClick={() => saveLead()}
+            disabled={!canSaveLead}
+            className="disabled:opacity-40 disabled:cursor-not-allowed"
+            title={!canSaveLead ? "Lead Name and a Mobile Number or Email are required." : undefined}
+          >
+            Save Lead
+          </Button>
           {modal === "add" && (
-            <Button variant="secondary" onClick={() => saveLead({ addAnother: true })}>Save & Add Another</Button>
+            <Button
+              variant="secondary"
+              onClick={() => saveLead({ addAnother: true })}
+              disabled={!canSaveLead}
+              className="disabled:opacity-40 disabled:cursor-not-allowed"
+              title={!canSaveLead ? "Lead Name and a Mobile Number or Email are required." : undefined}
+            >
+              Save & Add Another
+            </Button>
           )}
         </div>
       </Modal>
