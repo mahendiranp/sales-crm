@@ -72,7 +72,7 @@ export function PageHeader({ title, subtitle, action }) {
   );
 }
 
-export function Modal({ open, onClose, title, children, wide, xl }) {
+export function Modal({ open, onClose, title, subtitle, children, wide, xl }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
@@ -81,7 +81,10 @@ export function Modal({ open, onClose, title, children, wide, xl }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-white">
-          <h3 className="font-display font-semibold text-lg">{title}</h3>
+          <div>
+            <h3 className="font-display font-semibold text-lg">{title}</h3>
+            {subtitle && <p className="text-xs text-ink/45 mt-0.5">{subtitle}</p>}
+          </div>
           <button onClick={onClose} className="text-ink/40 hover:text-ink">
             <X size={19} />
           </button>
@@ -92,10 +95,13 @@ export function Modal({ open, onClose, title, children, wide, xl }) {
   );
 }
 
-export function Field({ label, children }) {
+export function Field({ label, required, children }) {
   return (
     <label className="block mb-3.5">
-      <span className="block text-xs font-medium text-ink/60 mb-1.5">{label}</span>
+      <span className="block text-xs font-medium text-ink/60 mb-1.5">
+        {label}
+        {required && <span className="text-danger"> *</span>}
+      </span>
       {children}
     </label>
   );
@@ -203,17 +209,30 @@ export function ErrorModal({ open, title = "Something went wrong", message, onCl
   );
 }
 
-export function EmptyState({ icon: Icon, title, subtitle, action }) {
+// `action` is kept as an alias for `primaryAction` — existing call sites
+// that only pass `action` keep working unchanged.
+export function EmptyState({ icon: Icon, title, subtitle, action, primaryAction, secondaryAction, tip }) {
+  const primary = primaryAction || action;
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
+    <div className="flex flex-col items-center justify-center py-16 text-center px-6">
       {Icon && (
         <div className="w-12 h-12 rounded-full bg-base flex items-center justify-center mb-3">
           <Icon size={20} className="text-ink/30" />
         </div>
       )}
       <p className="font-medium text-ink/70">{title}</p>
-      {subtitle && <p className="text-sm text-ink/40 mt-1">{subtitle}</p>}
-      {action && <div className="mt-4">{action}</div>}
+      {subtitle && <p className="text-sm text-ink/40 mt-1 max-w-sm">{subtitle}</p>}
+      {(primary || secondaryAction) && (
+        <div className="flex items-center gap-2 mt-4">
+          {primary}
+          {secondaryAction}
+        </div>
+      )}
+      {tip && (
+        <div className="mt-6 pt-4 border-t border-border w-full max-w-sm text-left">
+          <p className="text-xs text-ink/50 leading-relaxed">{tip}</p>
+        </div>
+      )}
     </div>
   );
 }
