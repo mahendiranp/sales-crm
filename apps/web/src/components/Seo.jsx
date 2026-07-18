@@ -34,10 +34,16 @@ export default function Seo({ title, description, keywords, noindex = false, pat
           {description && <meta name="twitter:description" content={description} />}
         </>
       )}
-      {jsonLd && (
+      {/* One <script> tag per schema.org object rather than a single tag
+          wrapping them in a bare array — Google's own structured-data
+          guidance (and most third-party validators/SEO browser extensions)
+          expect each ld+json script's root to be one object with its own
+          "@context", not an array; a bare array trips up anything that
+          reads `data["@context"]` directly instead of checking Array.isArray first. */}
+      {jsonLd && (Array.isArray(jsonLd) ? jsonLd : [jsonLd]).map((obj, i) => (
         // eslint-disable-next-line react/no-danger
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      )}
+        <script key={i} type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(obj) }} />
+      ))}
     </Head>
   );
 }
