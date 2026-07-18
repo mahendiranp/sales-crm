@@ -182,7 +182,10 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div>
-          <p className="font-medium text-sm">{ticket.subject}</p>
+          <p className="font-medium text-sm">
+            {ticket.ticketNumber && <span className="text-ink/40 font-normal">#{ticket.ticketNumber} · </span>}
+            {ticket.subject}
+          </p>
           <p className="text-xs text-ink/40 mt-0.5">
             {ticket.type === "issue" ? "Issue" : "Feedback"}
             {ticket.companyName ? ` · ${ticket.companyName}` : ""} · {ticket.createdBy?.name}
@@ -307,7 +310,10 @@ export default function Feedback() {
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium truncate">{t.subject}</p>
+                  <p className="text-sm font-medium truncate">
+                    {t.ticketNumber && <span className="text-ink/40 font-normal">#{t.ticketNumber} · </span>}
+                    {t.subject}
+                  </p>
                   <Badge>{STATUS_LABEL[t.status]}</Badge>
                 </div>
                 <p className="text-xs text-ink/40 mt-0.5 truncate">

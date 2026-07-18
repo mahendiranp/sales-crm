@@ -1,12 +1,57 @@
 const express = require("express");
 const { randomUUID: uuid } = require("crypto");
-const { collection } = require("../db/store");
+const { collection, nextSequence } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
 const { validateImageAnswer } = require("../utils/fileUploads");
+const emailClient = require("../integrations/emailClient");
+const { emailLayout } = require("../utils/emailTemplate");
 
 const router = express.Router();
 const feedback = collection("feedback");
 const accounts = collection("accounts");
+
+const SUPPORT_INBOX = "floworaone@gmail.com";
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Best-effort notification to the team inbox whenever a tenant opens a new
+// ticket, or follows up on an existing one with a reply — never throws: a
+// transient SMTP failure shouldn't turn an otherwise-successful submission
+// into a 500 for the user filing it. `message` is whichever entry (the
+// opening message, or a later reply) should be quoted in the email — always
+// the specific one just added, never a stale/earlier one from the thread.
+async function notifySupportInbox(ticket, account, message, { isReply = false } = {}) {
+  try {
+    const typeLabel = ticket.type === "issue" ? "Issue report" : "Feedback";
+    const company = account?.company || account?.name || "Unknown account";
+    const kind = isReply ? `Reply on ${typeLabel.toLowerCase()}` : `New ${typeLabel}`;
+    // A short, sequential, human-friendly number (#1000, #1001, ...) rather
+    // than a UUID fragment — easy to say out loud, write down, or search for
+    // when following up, and guaranteed unique/ordered (see nextSequence in
+    // db/store.js). Older tickets created before this existed won't have
+    // one — fall back to the UUID so the email still has *some* reference.
+    const ref = ticket.ticketNumber ? `#${ticket.ticketNumber}` : ticket.id;
+    await emailClient.sendMail({
+      to: SUPPORT_INBOX,
+      subject: `[Flowora ${typeLabel} ${ref}] ${ticket.subject}`,
+      html: emailLayout({
+        preheader: `${kind} from ${company}`,
+        heading: kind,
+        bodyHtml: `
+          <p><strong>Ticket:</strong> ${escapeHtml(ref)} <span style="color:#9CA3AF;">(${escapeHtml(ticket.id)})</span></p>
+          <p><strong>From:</strong> ${escapeHtml(message.authorName)} (${escapeHtml(company)})</p>
+          <p><strong>Subject:</strong> ${escapeHtml(ticket.subject)}</p>
+          <p style="white-space:pre-wrap;">${escapeHtml(message.body)}</p>
+          ${message.attachment ? "<p><em>(Includes an image attachment — view it in the Admin Portal.)</em></p>" : ""}
+        `,
+      }),
+    });
+  } catch {
+    // Notification is a nice-to-have — the ticket/reply itself is already saved.
+  }
+}
 
 const STATUSES = ["open", "in_progress", "resolved"];
 
@@ -51,8 +96,10 @@ router.post("/", requireManager, async (req, res) => {
   if (attachmentError) return res.status(400).json({ error: attachmentError });
 
   const now = new Date().toISOString();
+  const ticketNumber = await nextSequence("feedback_ticket", 1000);
   const ticket = {
     id: uuid(),
+    ticketNumber,
     accountId: req.user.accountId,
     subject: subject.trim(),
     type: type === "issue" ? "issue" : "feedback",
@@ -73,6 +120,8 @@ router.post("/", requireManager, async (req, res) => {
     ],
   };
   await feedback.insert(ticket);
+  const account = await accounts.find(req.user.accountId);
+  await notifySupportInbox(ticket, account, ticket.messages[0]);
   res.status(201).json(ticket);
 });
 
@@ -124,6 +173,14 @@ router.post("/:id/reply", requireManager, async (req, res) => {
   // change status; only the master admin's own explicit status change does.
   const status = req.user.isMasterAdmin && ticket.status === "resolved" ? "in_progress" : ticket.status;
   const updated = await feedback.update(ticket.id, { messages, status, updatedAt: now });
+
+  // Only notify on the tenant's own follow-ups — a master admin replying to
+  // their own team's ticket has no reason to email themselves about it.
+  if (!req.user.isMasterAdmin) {
+    const account = await accounts.find(req.user.accountId);
+    await notifySupportInbox(updated, account, reply, { isReply: true });
+  }
+
   res.json(updated);
 });
 
