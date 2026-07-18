@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, FileSpreadsheet, FileText as FileTextIcon, Trash2, Eye, FormInput } from "lucide-react";
+import { Search, FileSpreadsheet, FileText as FileTextIcon, Trash2, Eye, FormInput, Sparkles } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, inputCls, EmptyState, ConfirmDialog, ErrorModal } from "../components/ui";
@@ -8,6 +8,10 @@ import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import useResizableColumns from "../lib/useResizableColumns";
 import ResizableTh from "../components/ResizableTh";
+import UpgradeCreditsDialog from "../components/UpgradeCreditsDialog";
+import { limitsFor } from "../lib/plans";
+
+const INSIGHTS_MIN_RESPONSES = 3;
 
 const PAGE_SIZE = 25;
 
@@ -182,7 +186,7 @@ function ResponseDetailModal({ formId, form, response, onClose, onDecided }) {
 // form. Used both inline (Forms.jsx builder page's Responses tab) and as a
 // standalone page (/app/forms/[id]/responses) so there's one implementation.
 export default function FormResponses({ formId, headerless, highlightResponseId }) {
-  const { canManage } = useAuth();
+  const { canManage, isMasterAdmin } = useAuth();
   const [form, setForm] = useState(null);
   const [responses, setResponses] = useState([]);
   const [pageInfo, setPageInfo] = useState({ page: 1, totalPages: 1, total: 0, limit: PAGE_SIZE });
@@ -194,6 +198,38 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [accountPlan, setAccountPlan] = useState(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsResult, setInsightsResult] = useState(null);
+  const [insightsError, setInsightsError] = useState("");
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
+
+  // Same "hide, don't show-then-block" pattern as Forms.jsx/Leads.jsx's AI
+  // features — a Starter account never sees this button at all.
+  const aiAllowed = isMasterAdmin || !accountPlan || limitsFor(accountPlan).aiAssistant;
+
+  const runInsights = async () => {
+    setInsightsOpen(true);
+    setInsightsLoading(true);
+    setInsightsError("");
+    setInsightsResult(null);
+    try {
+      const { data } = await api.post(`/forms/${formId}/insights`);
+      setInsightsResult(data);
+    } catch (err) {
+      if (["insufficient_credits", "plan_required"].includes(err.response?.data?.code)) {
+        setInsightsOpen(false);
+        setUpgradeMessage(err.response.data.error);
+        setUpgradeOpen(true);
+      } else {
+        setInsightsError(err.response?.data?.error || "Couldn't generate insights right now.");
+      }
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
 
   // Field ids are unique per-form, so a "Submitted"/"Approval" column from
   // one form's response table can't collide with another's — but the
@@ -231,6 +267,7 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
   useEffect(() => {
     if (!formId) return;
     loadForm();
+    api.get("/settings").then((r) => setAccountPlan(r.data.subscription?.plan)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formId]);
   // Search/filter changes should always jump back to page 1 — staying on
@@ -290,6 +327,16 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
         <Button variant="secondary" onClick={() => window.open(`/api/forms/${formId}/responses/export/excel`, "_blank")}>
           <FileSpreadsheet size={15} /> Excel
         </Button>
+        {aiAllowed && (
+          <Button
+            variant="secondary"
+            onClick={runInsights}
+            disabled={pageInfo.total < INSIGHTS_MIN_RESPONSES}
+            title={pageInfo.total < INSIGHTS_MIN_RESPONSES ? `Needs at least ${INSIGHTS_MIN_RESPONSES} responses` : undefined}
+          >
+            <Sparkles size={15} /> AI Insights
+          </Button>
+        )}
       </div>
 
       {responses.length === 0 ? (
@@ -379,6 +426,26 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
       />
 
       <ErrorModal open={!!deleteError} message={deleteError} onClose={() => setDeleteError("")} />
+
+      <Modal open={insightsOpen} onClose={() => setInsightsOpen(false)} title="AI Insights" wide>
+        {insightsLoading ? (
+          <p className="text-sm text-ink/50 py-4">Analyzing responses…</p>
+        ) : insightsError ? (
+          <p className="text-sm text-danger">{insightsError}</p>
+        ) : insightsResult ? (
+          <div>
+            <p className="text-xs text-ink/40 mb-3">
+              Based on the {insightsResult.responseCount} most recent of {insightsResult.totalResponses} response
+              {insightsResult.totalResponses === 1 ? "" : "s"}.
+            </p>
+            {insightsResult.summary.split("\n\n").map((para, i) => (
+              <p key={i} className="text-sm text-ink/80 mb-3 last:mb-0 whitespace-pre-wrap">{para}</p>
+            ))}
+          </div>
+        ) : null}
+      </Modal>
+
+      <UpgradeCreditsDialog open={upgradeOpen} onClose={() => setUpgradeOpen(false)} message={upgradeMessage} />
     </div>
   );
 

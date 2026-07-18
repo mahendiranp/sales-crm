@@ -4,6 +4,7 @@ const { collection } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
 const { PLANS } = require("../utils/plans");
 const razorpay = require("../integrations/razorpayClient");
+const { topUpCreditsForPlan } = require("../utils/aiCredits");
 
 const router = express.Router();
 const settings = collection("settings");
@@ -93,6 +94,10 @@ router.post("/verify", requireManager, async (req, res) => {
     const renewsOn = new Date();
     renewsOn.setMonth(renewsOn.getMonth() + 1);
     await settings.update(id, { subscription: { plan, renewsOn: renewsOn.toISOString() } });
+    // Top up (not reset) AI credits by this plan's monthly allotment —
+    // unused credits from before this billing cycle roll over rather than
+    // being wiped, same reasoning as a mobile carrier's data rollover.
+    await topUpCreditsForPlan(req.user.accountId, planConfig.monthlyAiCredits);
 
     // Audit trail — separate from `settings` (which only ever holds current
     // state) so there's a durable record of what was actually paid, by whom,

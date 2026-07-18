@@ -10,7 +10,8 @@ const { randomUUID: uuid } = require("crypto");
 const { scopedCollection } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
 const aiClient = require("../integrations/aiClient");
-const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
+const { getLimitsForAccount, getAiProviderForAccount } = require("./settings");
+const { hasEnoughCredits, deductCredits, CREDIT_COSTS } = require("../utils/aiCredits");
 const { isGoogleFormUrl, fetchGoogleForm } = require("../integrations/googleFormsClient");
 
 const router = express.Router();
@@ -74,19 +75,23 @@ function handleUpload(req, res, next) {
   });
 }
 
-// Same plan gates as the AI Assistant / "Generate with AI" flow (forms.js,
-// /:id/ai/build) — importing a form (from a file or a URL) is just another
-// way to spend an AI generation, so it shouldn't be a free side door around
-// that limit. Returns an { status, error } pair to send as-is, or null if OK.
+// Importing a form (from a file or a URL) is just another way to spend an
+// AI credit, so it's gated the same way as the AI Assistant / "Generate
+// with AI" flow (forms.js) — plan tier first (Growth+ only), then credit
+// balance on top of that.
+// Returns an { status, error, code } pair to send as-is, or null if OK.
 async function checkImportAllowed(req) {
   if (req.user.isMasterAdmin) return null;
   const limits = await getLimitsForAccount(req.user.accountId);
   if (!limits.aiAssistant) {
-    return { status: 403, error: `Importing forms with AI requires the Growth plan or higher. Your account is on ${limits.label}.` };
+    return { status: 403, code: "plan_required", error: `Importing forms with AI requires the Growth plan or higher. Your account is on ${limits.label}.` };
   }
-  const usage = await getAiUsage(req.user.accountId);
-  if (usage.used >= usage.limit) {
-    return { status: 403, error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` };
+  if (!(await hasEnoughCredits(req.user.accountId, "documentImport"))) {
+    return {
+      status: 403,
+      code: "insufficient_credits",
+      error: `You don't have enough AI credits for this (needs ${CREDIT_COSTS.documentImport}). Upgrade your plan for more.`,
+    };
   }
   const formCount = (await formsFor(req).all()).length;
   if (formCount >= limits.maxForms) {
@@ -117,7 +122,7 @@ async function saveImportedForm(req, extracted) {
     updatedAt: new Date().toISOString(),
   };
   await formsFor(req).insert(form);
-  if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
+  if (!req.user.isMasterAdmin) await deductCredits(req.user.accountId, req.user.id, "documentImport", { formId: form.id });
   return form;
 }
 
@@ -127,7 +132,7 @@ router.post("/", requireManager, handleUpload, async (req, res) => {
   }
 
   const gateError = await checkImportAllowed(req);
-  if (gateError) return res.status(gateError.status).json({ error: gateError.error });
+  if (gateError) return res.status(gateError.status).json({ error: gateError.error, code: gateError.code });
 
   let provider;
   try {
@@ -190,7 +195,7 @@ router.post("/url", requireManager, async (req, res) => {
   }
 
   const gateError = await checkImportAllowed(req);
-  if (gateError) return res.status(gateError.status).json({ error: gateError.error });
+  if (gateError) return res.status(gateError.status).json({ error: gateError.error, code: gateError.code });
 
   let provider;
   try {

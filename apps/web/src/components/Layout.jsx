@@ -27,6 +27,7 @@ import {
   UserCheck,
   Menu,
   X,
+  AlertTriangle,
   LifeBuoy,
   PanelLeftClose,
   PanelLeftOpen,
@@ -38,6 +39,7 @@ import { APP_CATALOG } from "../lib/appCatalog";
 import useLiveCollection from "../lib/useLiveCollection";
 import usePlatformFeatures from "../lib/usePlatformFeatures";
 import { APP_NAME } from "../lib/brand";
+import { limitsFor } from "../lib/plans";
 
 // Each item's `module` key maps to settings.modules (see routes/settings.js)
 // — omit it (like Admin Portal / Settings) to always show it regardless of
@@ -124,6 +126,8 @@ export default function Layout({ children }) {
   const [enabledApps, setEnabledApps] = useState({});
   const [enabledModules, setEnabledModules] = useState(null);
   const [companyName, setCompanyName] = useState("");
+  const [subscription, setSubscription] = useState(null);
+  const [downgradeDismissed, setDowngradeDismissed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   // Which nav section labels are collapsed — persisted so a collapsed
   // "Insights" (say) stays collapsed across page navigations and reloads,
@@ -169,6 +173,7 @@ export default function Layout({ children }) {
         setEnabledApps(r.data.apps || {});
         setEnabledModules(r.data.modules || {});
         setCompanyName(r.data.companyProfile?.name || "");
+        setSubscription(r.data.subscription || null);
       })
       .catch(() => {});
   useEffect(() => {
@@ -370,6 +375,21 @@ export default function Layout({ children }) {
             </div>
           </div>
         </header>
+        {subscription?.downgradedFrom && !downgradeDismissed && (
+          <div className="bg-danger/8 border-b border-danger/20 px-6 py-2.5 flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-2 text-danger">
+              <AlertTriangle size={15} className="shrink-0" />
+              <span>
+                Your {limitsFor(subscription.downgradedFrom).label} plan expired and your account moved back to Starter.
+                {" "}
+                <Link href="/app/settings" className="underline font-medium">Upgrade again</Link>
+              </span>
+            </div>
+            <button onClick={() => setDowngradeDismissed(true)} className="text-danger/50 hover:text-danger shrink-0">
+              <X size={15} />
+            </button>
+          </div>
+        )}
         <main ref={mainRef} className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>

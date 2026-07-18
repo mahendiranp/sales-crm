@@ -73,4 +73,46 @@ function parseImportResponse(text) {
   };
 }
 
-module.exports = { ALLOWED_TYPES, SYSTEM_PROMPT, parseModelResponse, IMPORT_SYSTEM_PROMPT, parseImportResponse };
+// Form Responses' "AI Insights" (routes/forms.js): given a form's fields
+// and a capped batch of its recent responses, summarize themes/trends
+// rather than making someone read every submission by hand. Deliberately
+// a single free-text summary, not a rigid schema — response data is far
+// more varied than a form's own field definitions (open text, ratings,
+// choices all mixed together), so forcing it into structured categories
+// would either be empty for most forms or fight the model on every call.
+const INSIGHTS_SYSTEM_PROMPT = `You are a data analyst. You receive a form's field definitions and a batch of its recent responses (as JSON), and reply with ONLY a single JSON object — no markdown fences, no prose outside the JSON — matching exactly this shape:
+
+{
+  "summary": "a few short paragraphs (plain text, use \\n\\n between them) covering: the main themes/patterns across responses, anything notable or unusual, and one actionable suggestion if one is warranted",
+  "responseCount": <number of responses actually analyzed>
+}
+
+Rules:
+- Reference specific field labels and concrete values/examples from the actual data, not generic advice — this must clearly be about *this* form's *actual* responses, not a template answer.
+- If a field is mostly free text, characterize the range of answers (sentiment, common complaints/requests) rather than listing every one.
+- If there's too little data to say anything meaningful, say so plainly instead of inventing patterns.
+- Keep the whole summary under 200 words.`;
+
+function parseInsightsResponse(text) {
+  const jsonText = (text || "").trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error("The AI response wasn't valid JSON — try again.");
+  }
+  if (typeof parsed.summary !== "string" || !parsed.summary.trim()) {
+    throw new Error("The AI response didn't match the expected format.");
+  }
+  return { summary: parsed.summary.trim() };
+}
+
+module.exports = {
+  ALLOWED_TYPES,
+  SYSTEM_PROMPT,
+  parseModelResponse,
+  IMPORT_SYSTEM_PROMPT,
+  parseImportResponse,
+  INSIGHTS_SYSTEM_PROMPT,
+  parseInsightsResponse,
+};

@@ -18,6 +18,7 @@ import useLiveCollection from "../lib/useLiveCollection";
 import FormResponses from "./FormResponses";
 import WhatsAppSurveyPanel from "./WhatsAppSurveyPanel";
 import FormFieldInput from "../components/FormFieldInput";
+import UpgradeCreditsDialog from "../components/UpgradeCreditsDialog";
 import { FORM_THEMES, FORM_THEME_CATEGORIES } from "../lib/formThemes";
 import {
   FORM_LAYOUTS, FORM_LAYOUT_CATEGORIES, getLayoutStyleClasses, findFormLayout,
@@ -2307,15 +2308,39 @@ export function AddFormPage() {
   const [category, setCategory] = useState("All Categories");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  const [aiUsage, setAiUsage] = useState(null);
+  const [aiCredits, setAiCredits] = useState(null);
+  const [accountPlan, setAccountPlan] = useState(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
   const gridRef = useRef(null);
   const { isMasterAdmin } = useAuth();
 
-  const loadAiUsage = () => api.get("/settings").then((r) => setAiUsage(r.data.aiUsage)).catch(() => {});
+  const loadAiCredits = () =>
+    api
+      .get("/settings")
+      .then((r) => {
+        setAiCredits(r.data.aiCredits);
+        setAccountPlan(r.data.subscription?.plan);
+      })
+      .catch(() => {});
+
+  // Shared by every AI-calling action below (generate/modify/import) — a
+  // 403 with either of these codes means the fix is "upgrade your plan",
+  // whether that's because AI isn't available on this plan at all
+  // (plan_required) or because credits ran out (insufficient_credits), so
+  // both get the same actionable dialog instead of just an inline error line.
+  const handleAiError = (err, fallback) => {
+    if (["insufficient_credits", "plan_required"].includes(err.response?.data?.code)) {
+      setUpgradeMessage(err.response.data.error);
+      setUpgradeOpen(true);
+      return;
+    }
+    setError(err.response?.data?.error || fallback);
+  };
 
   useEffect(() => {
     api.get("/forms/templates").then((r) => setTemplates(r.data));
-    loadAiUsage();
+    loadAiCredits();
   }, []);
 
   const goToBuild = (form) => router.push(`/app/forms/${form.id}/build`);
@@ -2348,7 +2373,7 @@ export function AddFormPage() {
       const { data } = await api.post("/import/url", { provider: "google", url: googleFormUrl.trim() });
       goToBuild(data);
     } catch (err) {
-      setError(err.response?.data?.error || "Couldn't import that Google Form.");
+      handleAiError(err, "Couldn't import that Google Form.");
     } finally {
       setImportingUrl(false);
     }
@@ -2366,7 +2391,7 @@ export function AddFormPage() {
       const { data } = await api.post("/import", formData);
       goToBuild(data);
     } catch (err) {
-      setError(err.response?.data?.error || "Couldn't import that file.");
+      handleAiError(err, "Couldn't import that file.");
     } finally {
       setImporting(false);
     }
@@ -2412,11 +2437,11 @@ export function AddFormPage() {
       clearInterval(stepTimerRef.current);
       setGenStep(GEN_STEPS.length - 1);
       setGenResult({ form: saved, summary: buildSummary(fields, saved) });
-      loadAiUsage();
+      loadAiCredits();
       setTimeout(() => setGenPhase("ready"), 400);
     } catch (err) {
       clearInterval(stepTimerRef.current);
-      setError(err.response?.data?.error || "Couldn't generate that form.");
+      handleAiError(err, "Couldn't generate that form.");
       setGenPhase("idle");
     }
   };
@@ -2448,9 +2473,9 @@ export function AddFormPage() {
       const { data: saved } = await api.put(`/forms/${genResult.form.id}`, { fields });
       setGenResult({ form: saved, summary: buildSummary(fields, saved) });
       setModifyPrompt("");
-      loadAiUsage();
+      loadAiCredits();
     } catch (err) {
-      setError(err.response?.data?.error || "Couldn't modify that form.");
+      handleAiError(err, "Couldn't modify that form.");
     } finally {
       setModifying(false);
     }
@@ -2475,10 +2500,11 @@ export function AddFormPage() {
     return true;
   });
 
-  // Generate-with-AI is a premium (Team/Enterprise) capability — Free plan
+  // Generate-with-AI is a premium (Growth/Enterprise) capability — Starter
   // shows no trace of it, not just a disabled button, hence hiding the
-  // whole card rather than dimming it.
-  const aiAllowed = isMasterAdmin || !aiUsage || aiUsage.limit > 0;
+  // whole card rather than dimming it. Unknown (still loading) treated as
+  // allowed so the UI doesn't flash the card away after first paint.
+  const aiAllowed = isMasterAdmin || !accountPlan || limitsFor(accountPlan).aiAssistant;
 
   const jumpToGrid = () => gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const pickCategory = (cat) => {
@@ -2514,22 +2540,14 @@ export function AddFormPage() {
               <Sparkles size={19} className="text-primary" /> Generate with AI
               <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">Recommended</span>
             </p>
-            {aiUsage && (
-              <div className="border border-border rounded-lg px-3 py-2 min-w-[150px]" title="Resets on the 1st of each month">
-                {isMasterAdmin || !Number.isFinite(aiUsage.limit) ? (
-                  <p className="text-xs font-medium text-ink/60">AI Left: Unlimited{isMasterAdmin ? " (Admin)" : ""}</p>
+            {aiCredits && (
+              <div className="border border-border rounded-lg px-3 py-2 min-w-[150px]" title="Paid plans top this up every billing cycle">
+                {isMasterAdmin ? (
+                  <p className="text-xs font-medium text-ink/60">AI Credits: Unlimited (Admin)</p>
                 ) : (
-                  <>
-                    <p className="text-xs font-medium text-ink/60 flex items-center gap-1">
-                      AI Left: {Math.max(0, aiUsage.limit - aiUsage.used)} / {aiUsage.limit}
-                    </p>
-                    <div className="h-1.5 rounded-full bg-base overflow-hidden mt-1.5">
-                      <div
-                        className="h-full bg-primary transition-all"
-                        style={{ width: `${Math.min(100, (aiUsage.used / aiUsage.limit) * 100)}%` }}
-                      />
-                    </div>
-                  </>
+                  <p className="text-xs font-medium text-ink/60 flex items-center gap-1">
+                    <Sparkles size={11} className="text-primary" /> {aiCredits.remaining} AI credits left
+                  </p>
                 )}
               </div>
             )}
@@ -2553,14 +2571,14 @@ export function AddFormPage() {
           <p className="text-[11px] text-ink/35 mt-1">⌘ Enter to generate</p>
 
           {(() => {
-            const quotaExhausted = !isMasterAdmin && aiUsage && Number.isFinite(aiUsage.limit) && aiUsage.used >= aiUsage.limit;
+            const quotaExhausted = !isMasterAdmin && aiCredits && aiCredits.remaining <= 0;
             return (
               <div className="my-4">
                 <Button onClick={generate} disabled={!prompt.trim() || quotaExhausted} className="h-12 px-6 rounded-xl text-base">
                   Generate Form <ArrowRight size={15} />
                 </Button>
                 {quotaExhausted && (
-                  <p className="text-xs text-danger mt-2">You've used all {aiUsage.limit} AI generations this month. It resets on the 1st.</p>
+                  <p className="text-xs text-danger mt-2">You're out of AI credits. Upgrade your plan for more.</p>
                 )}
               </div>
             );
@@ -2779,6 +2797,7 @@ export function AddFormPage() {
       </div>
 
       {error && <p className="text-xs text-danger mt-4">{error}</p>}
+      <UpgradeCreditsDialog open={upgradeOpen} onClose={() => setUpgradeOpen(false)} message={upgradeMessage} />
     </div>
   );
 }

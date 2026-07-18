@@ -1,9 +1,15 @@
 // Plan limits matching the pricing table on the public landing page
-// (apps/web/src/views/Landing.jsx). There's no payment processor wired
-// up yet (Razorpay is listed in settings.paymentGateway but not
-// integrated) — every account defaults to "starter" and stays there
-// until real billing exists to move someone to a paid tier. Enforcing
-// these limits now means the pricing page isn't just marketing copy.
+// (apps/web/src/views/Landing.jsx). Razorpay is wired up (see
+// routes/payments.js) for Growth's self-serve checkout; Enterprise stays
+// sales-assisted (no priceInPaise, no checkout button).
+//
+// AI features need both `aiAssistant: true` on the plan AND a positive AI
+// credit balance (utils/aiCredits.js) — Starter (and any account currently
+// downgraded to it) can't use AI at all regardless of remaining credits;
+// Growth/Enterprise can, until their balance runs out. `monthlyAiCredits`
+// is what a paid plan additionally tops up by on each successful billing
+// cycle (routes/payments.js's /verify) — unused credits roll over, this
+// isn't a reset-to-cap allowance like the old monthly-limit model was.
 const PLANS = {
   starter: {
     label: "Starter",
@@ -12,10 +18,8 @@ const PLANS = {
     maxResponsesPerMonth: 100,
     workflows: false,
     whatsappBot: false,
-    // AI Generate is a premium (Team/Enterprise) capability — Free plan
-    // users don't get it at all, not even a trial.
     aiAssistant: false,
-    aiMonthlyLimit: 0,
+    monthlyAiCredits: 0,
     // Free — never purchasable through checkout, it's just the default.
     priceInPaise: null,
   },
@@ -27,7 +31,7 @@ const PLANS = {
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,
-    aiMonthlyLimit: 30,
+    monthlyAiCredits: 500,
     // ₹999/month flat (matches the landing page's "/month" display copy).
     priceInPaise: 99900,
   },
@@ -39,7 +43,7 @@ const PLANS = {
     workflows: true,
     whatsappBot: true,
     aiAssistant: true,
-    aiMonthlyLimit: Infinity,
+    monthlyAiCredits: 2000,
     // "Custom" pricing — sales-assisted, not self-serve checkout.
     priceInPaise: null,
   },

@@ -32,11 +32,16 @@ function extractFormFromDocument({ provider, text, imageBase64, imageMimeType })
   return PROVIDERS[resolveProvider(provider)].extractFormFromDocument({ text, imageBase64, imageMimeType });
 }
 
+function generateInsights({ provider, formName, fields, responses }) {
+  return PROVIDERS[resolveProvider(provider)].generateInsights({ formName, fields, responses });
+}
+
 module.exports = {
   isConfigured,
   generateFormFields,
   scoreLead,
   parseLeadText,
   extractFormFromDocument,
+  generateInsights,
   PROVIDER_KEYS: Object.keys(PROVIDERS),
 };

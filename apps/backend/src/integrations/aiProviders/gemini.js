@@ -3,7 +3,15 @@
 // routes/forms.js's AI route can call either provider identically — only
 // the request/response shape of the underlying call differs.
 const { GoogleGenAI, Type } = require("@google/genai");
-const { SYSTEM_PROMPT, ALLOWED_TYPES, parseModelResponse, IMPORT_SYSTEM_PROMPT, parseImportResponse } = require("./shared");
+const {
+  SYSTEM_PROMPT,
+  ALLOWED_TYPES,
+  parseModelResponse,
+  IMPORT_SYSTEM_PROMPT,
+  parseImportResponse,
+  INSIGHTS_SYSTEM_PROMPT,
+  parseInsightsResponse,
+} = require("./shared");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // gemini-2.0-flash was deprecated by Google and returns 404 "no longer
@@ -243,4 +251,58 @@ async function extractFormFromDocument({ text, imageBase64, imageMimeType }) {
   }
 }
 
-module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText, extractFormFromDocument };
+const INSIGHTS_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    summary: { type: Type.STRING },
+    responseCount: { type: Type.NUMBER },
+  },
+  required: ["summary"],
+};
+
+// `formName`/`fields` give the model the questions being asked; `responses`
+// is an array of plain answer objects (already decrypted, already capped
+// to a reasonable batch size by the caller — see routes/forms.js).
+async function generateInsights({ formName, fields, responses }) {
+  if (!isConfigured()) {
+    throw new Error("Gemini isn't configured yet — ask your platform admin to set GEMINI_API_KEY.");
+  }
+  const contents = JSON.stringify({ formName, fields: fields.map((f) => ({ label: f.label, type: f.type })), responses });
+
+  const call = () =>
+    client.models.generateContent({
+      model: MODEL,
+      contents,
+      config: {
+        systemInstruction: INSIGHTS_SYSTEM_PROMPT,
+        maxOutputTokens: 800,
+        responseMimeType: "application/json",
+        responseSchema: INSIGHTS_RESPONSE_SCHEMA,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+  try {
+    const res = await call();
+    return parseInsightsResponse(res.text || "");
+  } catch (err) {
+    const message = err.message || String(err);
+    if (/"code":\s*429/.test(message) || /rate-limited|quota/i.test(message)) {
+      throw new Error("Gemini's free tier is rate-limited — you've hit the request quota for now. Wait a minute and try again.");
+    }
+    if (/"code":\s*503/.test(message)) {
+      throw new Error("Gemini is temporarily overloaded on Google's end. Wait a moment and try again.");
+    }
+    if (/wasn't valid JSON|didn't match the expected format/.test(message)) {
+      try {
+        const res = await call();
+        return parseInsightsResponse(res.text || "");
+      } catch {
+        throw new Error("Gemini's response wasn't usable after a retry — try again.");
+      }
+    }
+    throw new Error(`Gemini request failed: ${message.slice(0, 300)}`);
+  }
+}
+
+module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText, extractFormFromDocument, generateInsights };

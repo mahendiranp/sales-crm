@@ -8,8 +8,9 @@ const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
 const { buildSnapshot, autoAdvance, currentApprovers, applyDecision, applyEscalations } = require("../utils/workflowEngine");
-const { isConfigured: aiConfigured, generateFormFields } = require("../integrations/aiClient");
-const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
+const { isConfigured: aiConfigured, generateFormFields, generateInsights } = require("../integrations/aiClient");
+const { getLimitsForAccount, getAiProviderForAccount } = require("./settings");
+const { hasEnoughCredits, deductCredits, CREDIT_COSTS } = require("../utils/aiCredits");
 const { availableDates, allSlotsForDate, slotsForDate, extractBookedTimes } = require("../utils/bookingSlots");
 const { validateFileAnswer } = require("../utils/fileUploads");
 const { validateSubmission } = require("../utils/formValidation");
@@ -275,11 +276,13 @@ router.post("/:id/ai/build", requireManager, async (req, res) => {
   if (!req.user.isMasterAdmin) {
     const limits = await getLimitsForAccount(req.user.accountId);
     if (!limits.aiAssistant) {
-      return res.status(403).json({ error: `The AI Assistant requires the Growth plan or higher. Your account is on ${limits.label}.` });
+      return res.status(403).json({ error: `The AI Assistant requires the Growth plan or higher. Your account is on ${limits.label}.`, code: "plan_required" });
     }
-    const usage = await getAiUsage(req.user.accountId);
-    if (usage.used >= usage.limit) {
-      return res.status(403).json({ error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` });
+    if (!(await hasEnoughCredits(req.user.accountId, "formBuild"))) {
+      return res.status(403).json({
+        error: `You don't have enough AI credits for this (needs ${CREDIT_COSTS.formBuild}). Upgrade your plan for more.`,
+        code: "insufficient_credits",
+      });
     }
   }
   const provider = await getAiProviderForAccount(req.user.accountId);
@@ -292,7 +295,7 @@ router.post("/:id/ai/build", requireManager, async (req, res) => {
   if (!prompt) return res.status(400).json({ error: "prompt is required." });
   try {
     const result = await generateFormFields({ provider, prompt, currentFields: form.fields || [] });
-    if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
+    if (!req.user.isMasterAdmin) await deductCredits(req.user.accountId, req.user.id, "formBuild", { formId: form.id });
     res.json(result);
   } catch (err) {
     const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;
@@ -405,6 +408,72 @@ router.get("/:id/responses", async (req, res) => {
   }
 
   res.json(sorted);
+});
+
+// Cap on how many responses go into a single AI Insights call — unbounded
+// would get slow/expensive as a form accumulates thousands of responses,
+// and a summary of the most recent N is what's actually useful (trends
+// change over time; nobody wants "insights" blending in 2-year-old data).
+const INSIGHTS_MAX_RESPONSES = 100;
+// Below this, there's too little data for a summary to say anything real
+// — better to tell the user that plainly than spend a credit on filler.
+const INSIGHTS_MIN_RESPONSES = 3;
+
+// AI Insights: summarizes themes/trends across a form's most recent
+// responses instead of making someone read every submission by hand.
+// Gated the same way as every other AI action — plan tier, then credits.
+router.post("/:id/insights", requireManager, async (req, res) => {
+  const form = await formsFor(req).find(req.params.id);
+  if (!form) return res.status(404).json({ error: "Not found" });
+
+  const allResponses = (await responsesFor(req).query((r) => r.formId === req.params.id)).map(decryptResponse);
+  if (allResponses.length < INSIGHTS_MIN_RESPONSES) {
+    return res.status(422).json({ error: `This form needs at least ${INSIGHTS_MIN_RESPONSES} responses before AI Insights has enough to work with.` });
+  }
+
+  if (!req.user.isMasterAdmin) {
+    const limits = await getLimitsForAccount(req.user.accountId);
+    if (!limits.aiAssistant) {
+      return res.status(403).json({ error: `AI Insights requires the Growth plan or higher. Your account is on ${limits.label}.`, code: "plan_required" });
+    }
+    if (!(await hasEnoughCredits(req.user.accountId, "formInsights"))) {
+      return res.status(403).json({
+        error: `You don't have enough AI credits for this (needs ${CREDIT_COSTS.formInsights}). Upgrade your plan for more.`,
+        code: "insufficient_credits",
+      });
+    }
+  }
+
+  const provider = await getAiProviderForAccount(req.user.accountId);
+  if (!aiConfigured(provider)) {
+    const providerLabel = provider === "gemini" ? "Gemini" : "Anthropic";
+    const envVar = provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY";
+    return res.status(503).json({ error: `${providerLabel} isn't configured yet. Ask your admin to set ${envVar} in the backend environment.` });
+  }
+
+  const recent = allResponses
+    .sort((a, b) => dayjs(b.submittedAt).diff(dayjs(a.submittedAt)))
+    .slice(0, INSIGHTS_MAX_RESPONSES)
+    // File answers are a { name, type, dataUrl } object — the (potentially
+    // megabytes-long) base64 payload has no business going to the model,
+    // same reasoning as the CSV/Excel export's file-answer handling above.
+    .map((r) => {
+      const answers = {};
+      for (const f of form.fields) {
+        const value = r.answers?.[f.id];
+        answers[f.label] = f.type === "file" && value?.name ? value.name : value;
+      }
+      return answers;
+    });
+
+  try {
+    const { summary } = await generateInsights({ provider, formName: form.name, fields: form.fields, responses: recent });
+    if (!req.user.isMasterAdmin) await deductCredits(req.user.accountId, req.user.id, "formInsights", { formId: form.id, responseCount: recent.length });
+    res.json({ summary, responseCount: recent.length, totalResponses: allResponses.length });
+  } catch (err) {
+    const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;
+    res.status(status).json({ error: err.message });
+  }
 });
 
 // Public submission — anonymous form-fillers and the WhatsApp survey engine
