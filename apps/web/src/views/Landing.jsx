@@ -257,7 +257,6 @@ export default function Landing() {
           "sales CRM",
           "lead management CRM",
           "free CRM",
-          // AI form builder
           "AI form builder",
           "create with AI",
           "generate form",
@@ -266,7 +265,6 @@ export default function Landing() {
           "smart form",
           "prompt to form",
           "AI assistant",
-          // PDF import
           "PDF import",
           "PDF to form",
           "import PDF",
@@ -276,7 +274,6 @@ export default function Landing() {
           "generate from PDF",
           "PDF form import",
           "PDF upload",
-          // Image import
           "image import",
           "image to form",
           "import image",
@@ -286,7 +283,6 @@ export default function Landing() {
           "convert image",
           "JPG to form",
           "PNG to form",
-          // Word import
           "Word import",
           "Word to form",
           "import Word",
@@ -294,7 +290,6 @@ export default function Landing() {
           "DOCX to form",
           "Word converter",
           "generate from Word",
-          // Google Forms
           "Google Forms",
           "import Google Form",
           "Google Forms import",
@@ -302,7 +297,6 @@ export default function Landing() {
           "copy Google Form",
           "Google Form converter",
           "Google Forms migration",
-          // Universal import
           "universal import",
           "import form",
           "import existing form",
