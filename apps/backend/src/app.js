@@ -20,6 +20,7 @@ const performanceRouter = require("./routes/performance");
 const settingsRouter = require("./routes/settings");
 const authRouter = require("./routes/auth");
 const formsRouter = require("./routes/forms");
+const importRouter = require("./routes/import");
 const whatsappSurveysRouter = require("./routes/whatsappSurveys");
 const paymentsRouter = require("./routes/payments");
 const feedbackRouter = require("./routes/feedback");
@@ -111,10 +112,13 @@ app.use("/api", apiLimiter);
 // that are genuinely meant to be public (published-form viewing/submission,
 // and the WhatsApp webhook, which Meta calls directly with no session).
 const PUBLIC_ROUTES = [
+  { method: "GET", pattern: /^\/api\/forms\/directory\/[^/]+$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/public$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-dates$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-slots$/ },
   { method: "POST", pattern: /^\/api\/forms\/[^/]+\/responses$/ },
+  { method: "POST", pattern: /^\/api\/forms\/[^/]+\/responses\/[^/]+\/send-link$/ },
+  { method: "GET", pattern: /^\/api\/forms\/claim$/ },
   { method: "GET", pattern: /^\/api\/whatsapp-surveys\/webhook$/ },
   { method: "POST", pattern: /^\/api\/whatsapp-surveys\/webhook$/ },
   // Signup's feature/module pickers need this before any session exists.
@@ -138,6 +142,7 @@ app.use("/api/reports", reportsRouter);
 app.use("/api/performance", performanceRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/forms", formsRouter);
+app.use("/api/import", importRouter);
 app.use("/api/whatsapp-surveys", whatsappSurveysRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/feedback", feedbackRouter);

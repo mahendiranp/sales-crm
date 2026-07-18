@@ -86,6 +86,10 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     cy.visit("/app/leads");
     cy.contains("button", "Add Lead").click();
     cy.contains("label", "Lead Name").find("input").type(unique);
+    // Mobile Number is required (see the previous test) — omitting it blocks
+    // the save client-side and cy.wait("@createLead") below would never see
+    // a request at all.
+    cy.contains("label", "Mobile Number").find("input").type("9812345679");
     cy.contains("label", "Company").find("input").type(companyName);
     cy.contains("button", "Save Lead").click();
     cy.wait("@createLead");
@@ -122,8 +126,11 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     cy.get("textarea").last().type(note);
     cy.contains("button", "Save").click();
     cy.wait("@logActivity").its("response.statusCode").should("eq", 201);
-    cy.contains(note).should("be.visible");
-    cy.contains("Phone Call").should("be.visible");
+    // Activity history is its own internally-scrolling panel (same reasoning
+    // as the Contacts list a few tests up) — a newly logged activity can
+    // land below the fold within it.
+    cy.contains(note).scrollIntoView().should("be.visible");
+    cy.contains("Phone Call").scrollIntoView().should("be.visible");
   });
 
   it("creates a deal linked to a real Contact and Company, and updates the weighted forecast", () => {

@@ -81,7 +81,10 @@ describe("Forms — Add Form page", () => {
     cy.contains("Generate with AI").should("be.visible");
     cy.contains("Browse Templates").should("be.visible");
     cy.contains("Start from Scratch").should("be.visible");
-    cy.contains("Popular Templates").should("be.visible");
+    // "Import from File" (added below the AI/Browse/Scratch grid) pushes
+    // Popular Templates further down — below the fold on a 900px-tall
+    // viewport, same reasoning as the category filter scroll below.
+    cy.contains("Popular Templates").scrollIntoView().should("be.visible");
 
     // Category filter is a <select>, not pill buttons. It's below the AI
     // card / Browse Templates / Start from Scratch grid and the Popular

@@ -196,17 +196,17 @@ function RowActionsMenu({ lead, canManage, onEdit, onAssign, onConvert }) {
       {open && (
         <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-border rounded-lg shadow-card p-1 z-20">
           {lead.mobile && (
-            <a href={`tel:${lead.mobile}`} className={itemCls}>
+            <a href={`tel:${lead.mobile}`} title="Call" className={itemCls}>
               <Phone size={14} /> Call
             </a>
           )}
           {lead.mobile && (
-            <a href={waLink(lead.mobile)} target="_blank" rel="noreferrer" className={itemCls}>
+            <a href={waLink(lead.mobile)} target="_blank" rel="noreferrer" title="WhatsApp" className={itemCls}>
               <MessageCircle size={14} /> WhatsApp
             </a>
           )}
           {lead.email && (
-            <a href={`mailto:${lead.email}`} className={itemCls}>
+            <a href={`mailto:${lead.email}`} title="Email" className={itemCls}>
               <Mail size={14} /> Email
             </a>
           )}

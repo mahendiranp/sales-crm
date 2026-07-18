@@ -1,7 +1,8 @@
 const express = require("express");
 const dayjs = require("dayjs");
 const XLSX = require("xlsx");
-const { randomUUID: uuid } = require("crypto");
+const crypto = require("crypto");
+const { randomUUID: uuid } = crypto;
 const { collection, scopedCollection } = require("../db/store");
 const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
@@ -14,6 +15,21 @@ const { validateFileAnswer } = require("../utils/fileUploads");
 const { validateSubmission } = require("../utils/formValidation");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
+
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+const CLAIM_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+// No ambiguous chars (0/O, 1/I) — this is read aloud/typed by support agents.
+const REFERENCE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateReferenceId() {
+  let code = "";
+  for (let i = 0; i < 6; i++) code += REFERENCE_CHARS[crypto.randomInt(REFERENCE_CHARS.length)];
+  return `FR-${code}`;
+}
+
+function hashClaimToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 
 const router = express.Router();
 // Public routes (/public, /responses POST) bypass auth entirely (see
@@ -155,6 +171,21 @@ router.post("/from-template", requireManager, async (req, res) => {
   res.status(201).json({ ...form, accountId: req.user.accountId });
 });
 
+// Public, unauthenticated: every published form for a tenant, so an
+// anonymous visitor can browse and pick one without needing a direct link
+// to a specific form. accountId is the only identifier available (no slug
+// concept exists yet) — safe to expose since it only unlocks the same
+// published/name/description fields /:id/public already exposes per form.
+router.get("/directory/:accountId", async (req, res) => {
+  const account = await accounts.find(req.params.accountId);
+  if (!account) return res.status(404).json({ error: "Not found" });
+  const forms = (await rawForms.all()).filter((f) => f.accountId === req.params.accountId && f.status === "Published");
+  res.json({
+    company: account.company || account.name || "",
+    forms: forms.map((f) => ({ id: f.id, name: f.name, description: f.description })),
+  });
+});
+
 // Public, unauthenticated: only exposes published forms, and only the
 // fields needed to render + submit them (no response counts/settings internals).
 router.get("/:id/public", async (req, res) => {
@@ -197,6 +228,26 @@ router.get("/:id/booking-slots", async (req, res) => {
   const bookedIsoTimes = extractBookedTimes(field, decryptedAnswers);
   const slots = allSlotsForDate(field, req.query.date, bookedIsoTimes);
   res.json({ slots });
+});
+
+// Public, unauthenticated: resolves a magic-link token (sent by
+// /:id/responses/:responseId/send-link) to the response + its form's
+// fields, so a respondent can view what they submitted without an account.
+// Placed before /:id so "claim" isn't swallowed as a form id.
+router.get("/claim", async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: "token is required." });
+
+  const tokenHash = hashClaimToken(String(token));
+  const [response] = await rawResponses.query((r) => r.claimTokenHash === tokenHash);
+  const valid = response?.claimTokenExpiresAt && new Date(response.claimTokenExpiresAt) > new Date();
+  if (!valid) return res.status(400).json({ error: "This link is invalid or has expired." });
+
+  const form = await rawForms.find(response.formId);
+  res.json({
+    response: decryptResponse(response),
+    form: form ? { id: form.id, name: form.name, description: form.description, fields: form.fields } : null,
+  });
 });
 
 // Manager-only: same shape as /public but works regardless of publish
@@ -408,6 +459,10 @@ router.post("/:id/responses", async (req, res) => {
     answers: encryptAnswers(req.body.answers || {}),
     submittedAt: new Date().toISOString(),
     accountId: form.accountId,
+    // Short, human-friendly id a respondent can quote to support — the
+    // real lookup key for /claim is still the hashed magic-link token below,
+    // never this (it's short enough to be guessable/enumerable).
+    referenceId: generateReferenceId(),
   };
   // Snapshotted at submission time so later edits to the form's workflow
   // config don't retroactively change an approval already in flight.
@@ -456,6 +511,45 @@ router.post("/:id/responses", async (req, res) => {
   }
 
   res.status(201).json(decryptResponse(response));
+});
+
+// Public, unauthenticated — same reasoning as POST /:id/responses: a
+// respondent who just submitted has no session, but wants a way to come
+// back later. Emails a one-time link (24h TTL) that resolves via GET /claim.
+router.post("/:id/responses/:responseId/send-link", async (req, res) => {
+  const response = await rawResponses.find(req.params.responseId);
+  if (!response || response.formId !== req.params.id) return res.status(404).json({ error: "Not found" });
+
+  const email = (req.body.email || "").trim();
+  if (!email) return res.status(400).json({ error: "email is required." });
+
+  const form = await rawForms.find(req.params.id);
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  await rawResponses.update(response.id, {
+    claimTokenHash: hashClaimToken(rawToken),
+    claimTokenExpiresAt: new Date(Date.now() + CLAIM_TOKEN_TTL_MS).toISOString(),
+    claimEmail: email,
+  });
+
+  const claimLink = `${FRONTEND_URL}/claim?token=${rawToken}`;
+  const mailResult = await emailClient.sendMail({
+    to: email,
+    subject: `Your response to "${form?.name || "a form"}"`,
+    html: emailLayout({
+      preheader: "View or revisit your submission — this link expires in 24 hours.",
+      heading: "Access your submission",
+      bodyHtml: `<p>Here's the link to view your submission${form ? ` for <strong>${form.name}</strong>` : ""} (reference <strong>${response.referenceId}</strong>). This link expires in 24 hours.</p>`,
+      cta: { label: "View my submission", url: claimLink },
+    }),
+  });
+
+  const genericResponse = { message: "If that's a valid response, a link has been sent." };
+  // Dev convenience only, mirroring /forgot-password — never surfaced once
+  // real email is configured, and never in production regardless.
+  if (mailResult.mocked && process.env.NODE_ENV !== "production") {
+    return res.json({ ...genericResponse, devClaimLink: claimLink });
+  }
+  res.json(genericResponse);
 });
 
 router.get("/:id/responses/:responseId/workflow", async (req, res) => {
