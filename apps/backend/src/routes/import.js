@@ -11,6 +11,7 @@ const { scopedCollection } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
 const aiClient = require("../integrations/aiClient");
 const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
+const { isGoogleFormUrl, fetchGoogleForm } = require("../integrations/googleFormsClient");
 
 const router = express.Router();
 const formsFor = (req) => scopedCollection("forms", req.user.accountId);
@@ -73,34 +74,66 @@ function handleUpload(req, res, next) {
   });
 }
 
+// Same plan gates as the AI Assistant / "Generate with AI" flow (forms.js,
+// /:id/ai/build) — importing a form (from a file or a URL) is just another
+// way to spend an AI generation, so it shouldn't be a free side door around
+// that limit. Returns an { status, error } pair to send as-is, or null if OK.
+async function checkImportAllowed(req) {
+  if (req.user.isMasterAdmin) return null;
+  const limits = await getLimitsForAccount(req.user.accountId);
+  if (!limits.aiAssistant) {
+    return { status: 403, error: `Importing forms with AI requires the Growth plan or higher. Your account is on ${limits.label}.` };
+  }
+  const usage = await getAiUsage(req.user.accountId);
+  if (usage.used >= usage.limit) {
+    return { status: 403, error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` };
+  }
+  const formCount = (await formsFor(req).all()).length;
+  if (formCount >= limits.maxForms) {
+    return { status: 403, error: `Your plan (${limits.label}) allows up to ${limits.maxForms} form${limits.maxForms === 1 ? "" : "s"}. Upgrade to create more.` };
+  }
+  return null;
+}
+
+async function resolveAiProvider(req) {
+  const provider = await getAiProviderForAccount(req.user.accountId);
+  if (!aiClient.isConfigured(provider)) {
+    const providerLabel = provider === "gemini" ? "Gemini" : "Anthropic";
+    const envVar = provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY";
+    throw Object.assign(new Error(`${providerLabel} isn't configured yet. Ask your admin to set ${envVar} in the backend environment.`), { status: 503 });
+  }
+  return provider;
+}
+
+async function saveImportedForm(req, extracted) {
+  const form = {
+    id: uuid(),
+    name: extracted.title,
+    description: extracted.description || "",
+    fields: extracted.fields.map((f) => ({ ...f, id: uuid() })),
+    settings: { submitButtonText: "Submit", confirmationMessage: "Thanks for your submission!" },
+    status: "Draft",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await formsFor(req).insert(form);
+  if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
+  return form;
+}
+
 router.post("/", requireManager, handleUpload, async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "Upload a PDF, Word (.docx), or image (PNG/JPEG/WebP) file under 20MB." });
   }
 
-  // Same plan gates as the AI Assistant / "Generate with AI" flow (forms.js,
-  // /:id/ai/build) — importing a document is just another way to spend an
-  // AI generation, so it shouldn't be a free side door around that limit.
-  if (!req.user.isMasterAdmin) {
-    const limits = await getLimitsForAccount(req.user.accountId);
-    if (!limits.aiAssistant) {
-      return res.status(403).json({ error: `Importing forms with AI requires the Growth plan or higher. Your account is on ${limits.label}.` });
-    }
-    const usage = await getAiUsage(req.user.accountId);
-    if (usage.used >= usage.limit) {
-      return res.status(403).json({ error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` });
-    }
-    const formCount = (await formsFor(req).all()).length;
-    if (formCount >= limits.maxForms) {
-      return res.status(403).json({ error: `Your plan (${limits.label}) allows up to ${limits.maxForms} form${limits.maxForms === 1 ? "" : "s"}. Upgrade to create more.` });
-    }
-  }
+  const gateError = await checkImportAllowed(req);
+  if (gateError) return res.status(gateError.status).json({ error: gateError.error });
 
-  const provider = await getAiProviderForAccount(req.user.accountId);
-  if (!aiClient.isConfigured(provider)) {
-    const providerLabel = provider === "gemini" ? "Gemini" : "Anthropic";
-    const envVar = provider === "gemini" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY";
-    return res.status(503).json({ error: `${providerLabel} isn't configured yet. Ask your admin to set ${envVar} in the backend environment.` });
+  let provider;
+  try {
+    provider = await resolveAiProvider(req);
+  } catch (err) {
+    return res.status(err.status || 503).json({ error: err.message });
   }
 
   const isImage = req.file.mimetype.startsWith("image/");
@@ -130,22 +163,69 @@ router.post("/", requireManager, handleUpload, async (req, res) => {
       return res.status(422).json({ error: extracted.description || "Couldn't find any fillable fields in that document." });
     }
 
-    const form = {
-      id: uuid(),
-      name: extracted.title,
-      description: extracted.description || "",
-      fields: extracted.fields.map((f) => ({ ...f, id: uuid() })),
-      settings: { submitButtonText: "Submit", confirmationMessage: "Thanks for your submission!" },
-      status: "Draft",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await formsFor(req).insert(form);
-    if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
-
+    const form = await saveImportedForm(req, extracted);
     res.status(201).json({ ...form, accountId: req.user.accountId });
   } catch (err) {
     const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+// Import from an external form builder by URL. Only Google Forms works
+// today (see integrations/googleFormsClient.js for why — no read API for
+// someone else's form, so this scrapes the page's embedded data instead).
+// Typeform/Tally have real APIs but need the account's own API key/OAuth
+// token to read a form they own — not supported yet, hence the explicit
+// "not supported" branch below rather than silently failing.
+router.post("/url", requireManager, async (req, res) => {
+  const { provider: source, url } = req.body;
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({ error: "url is required." });
+  }
+  if (source !== "google") {
+    return res.status(400).json({ error: `Importing from "${source || "that provider"}" isn't supported yet — only Google Forms right now.` });
+  }
+  if (!isGoogleFormUrl(url)) {
+    return res.status(400).json({ error: "That doesn't look like a Google Form link — expected something like https://docs.google.com/forms/d/e/.../viewform." });
+  }
+
+  const gateError = await checkImportAllowed(req);
+  if (gateError) return res.status(gateError.status).json({ error: gateError.error });
+
+  let provider;
+  try {
+    provider = await resolveAiProvider(req);
+  } catch (err) {
+    return res.status(err.status || 503).json({ error: err.message });
+  }
+
+  try {
+    const googleForm = await fetchGoogleForm(url);
+    const text = cleanText(
+      `Form title: ${googleForm.title}\n${googleForm.description}\n\n` +
+        googleForm.questions
+          .map((q, i) => {
+            const lines = [`${i + 1}. ${q.label}${q.required ? " (required)" : ""}`];
+            if (q.helpText) lines.push(`   Help text: ${q.helpText}`);
+            if (q.options.length) lines.push(`   Options: ${q.options.join(", ")}`);
+            return lines.join("\n");
+          })
+          .join("\n\n")
+    );
+
+    const extracted = await aiClient.extractFormFromDocument({ provider, text });
+    if (extracted.fields.length === 0) {
+      return res.status(422).json({ error: "Couldn't turn that form's questions into fields — it may use a question type this importer doesn't understand yet." });
+    }
+
+    // Use the title scraped straight from Google, not Gemini's guess — Gemini
+    // is only trusted to normalize/type the *fields*, not to rename the form;
+    // asking it to also infer a title from a text blob risks it paraphrasing
+    // or genericizing a name we already know exactly, verbatim, from the source.
+    const form = await saveImportedForm(req, { ...extracted, title: googleForm.title || extracted.title });
+    res.status(201).json({ ...form, accountId: req.user.accountId });
+  } catch (err) {
+    const status = /rate-limited|quota/i.test(err.message) ? 429 : err.status || 502;
     res.status(status).json({ error: err.message });
   }
 });
