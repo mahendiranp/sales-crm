@@ -108,7 +108,10 @@ function AiInsight({ score, reasoning }) {
   const n = Number(score);
   const emoji = n >= 70 ? "⭐" : n >= 40 ? "🤔" : "⚠️";
   return (
-    <p className="text-xs text-ink/50 mt-1 max-w-[220px] truncate" title={reasoning || undefined}>
+    // data-private — AI-generated reasoning routinely paraphrases the
+    // lead's own notes/budget/source, which is exactly the kind of detail
+    // this element (a <p>, not an <input>) needs explicit protection for.
+    <p data-private className="text-xs text-ink/50 mt-1 max-w-[220px] truncate" title={reasoning || undefined}>
       {emoji} {reasoning || `${n}% conversion likelihood`}
     </p>
   );
@@ -544,7 +547,7 @@ export default function Leads() {
                   <td className="p-3 text-ink/70">{lead.interestedProduct}</td>
                   <td className="p-3 font-mono text-ink/70">{formatCompactINR(lead.budget)}</td>
                   <td className="p-3">
-                    <div className="flex items-center gap-1.5" title={lead.aiScoreReasoning || undefined}>
+                    <div data-private className="flex items-center gap-1.5" title={lead.aiScoreReasoning || undefined}>
                       <ScoreBadge score={lead.leadScore} />
                       {canManage && aiAllowed && (
                         <button

@@ -1402,7 +1402,10 @@ function AIAssistantPanel({ formId, formName, onApplyResult, onAddField, onClose
         <button onClick={onClose} className="text-ink/40 hover:text-ink"><XIcon size={16} /></button>
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto p-3.5 space-y-3">
+      {/* data-private — prompts can be confidential ("Generate an employee
+          termination approval form...") and this is a chat log, not an
+          <input>, so LogRocket's inputSanitizer doesn't cover it. */}
+      <div ref={listRef} data-private className="flex-1 overflow-y-auto p-3.5 space-y-3">
         {messages.map((m, i) => (
           <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
             <div className={`text-sm rounded-lg px-3 py-2 max-w-[85%] ${m.role === "user" ? "bg-primary text-white" : "bg-base text-ink/80"}`}>

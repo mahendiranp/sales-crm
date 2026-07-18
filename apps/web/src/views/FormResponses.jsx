@@ -40,7 +40,10 @@ function AnswerValue({ field, value }) {
   if (field?.type === "file" && value?.dataUrl) {
     const isImage = (value.type || "").startsWith("image/");
     return (
-      <div>
+      // data-private: respondent-submitted content (a file/image they
+      // uploaded) — hidden from LogRocket session replay regardless of
+      // element type, since inputSanitizer only covers actual form inputs.
+      <div data-private>
         {isImage && (
           <a href={value.dataUrl} target="_blank" rel="noreferrer">
             <img src={value.dataUrl} alt={value.name} className="max-h-64 rounded-lg border border-border mb-1.5" />
@@ -52,7 +55,8 @@ function AnswerValue({ field, value }) {
       </div>
     );
   }
-  return <p className="text-sm whitespace-pre-wrap">{formatAnswer(field, value)}</p>;
+  // data-private — respondent-submitted answer text, same reasoning as above.
+  return <p data-private className="text-sm whitespace-pre-wrap">{formatAnswer(field, value)}</p>;
 }
 
 // Approval history + (if the current user is an eligible approver of the
@@ -387,7 +391,7 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
                 <tr key={r.id} className={`border-b border-border last:border-0 ${r.id === highlightResponseId ? "bg-primary/5" : ""}`}>
                   <td className="p-2.5 text-ink/50 text-xs whitespace-nowrap">{formatDate(r.submittedAt)}</td>
                   {form.fields.map((f) => (
-                    <td key={f.id} className="p-2.5 max-w-[200px] truncate">
+                    <td key={f.id} data-private className="p-2.5 max-w-[200px] truncate">
                       {formatAnswer(f, r.answers?.[f.id])}
                     </td>
                   ))}
@@ -433,7 +437,11 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
         ) : insightsError ? (
           <p className="text-sm text-danger">{insightsError}</p>
         ) : insightsResult ? (
-          <div>
+          // data-private — an AI summary of respondent answers routinely
+          // quotes them verbatim (see the insights prompt in
+          // aiProviders/shared.js), so it's just as sensitive as the raw
+          // answers themselves.
+          <div data-private>
             <p className="text-xs text-ink/40 mb-3">
               Based on the {insightsResult.responseCount} most recent of {insightsResult.totalResponses} response
               {insightsResult.totalResponses === 1 ? "" : "s"}.
