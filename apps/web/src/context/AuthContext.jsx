@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import api from "../api/client";
 import { reconnectSocket } from "../lib/socket";
+import { identifyLogRocketUser } from "../lib/logrocket";
 
 const AuthContext = createContext(null);
 const STORAGE_KEY = "pipeline_auth_user";
@@ -13,10 +14,12 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        setUser(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        setUser(parsed);
         // Socket doesn't autoConnect (see lib/socket.js) — a returning,
         // already-logged-in visitor (page refresh) still needs it dialed.
         reconnectSocket();
+        identifyLogRocketUser(parsed);
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -31,6 +34,7 @@ export function AuthProvider({ children }) {
     setUser(withToken);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(withToken));
     reconnectSocket();
+    identifyLogRocketUser(withToken);
   };
 
   const login = async (email, password) => {
