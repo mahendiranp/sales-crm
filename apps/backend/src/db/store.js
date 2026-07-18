@@ -42,6 +42,24 @@ function emit(name, action, record) {
   if (io) io.emit("db:change", { collection: name, action, record });
 }
 
+// Mongo has no native auto-increment, so this is the standard workaround: a
+// single "counters" document per named sequence, incremented atomically via
+// $inc (safe under concurrent requests — the increment happens server-side
+// in one atomic operation, not read-then-write from Node). `startAt` only
+// matters the first time a given `name` is ever used — every increment
+// after that just continues from wherever the raw counter is. Nothing
+// needs pre-seeding: the very first call both creates the counter (via
+// upsert) and returns `startAt`.
+async function nextSequence(name, startAt = 1) {
+  const result = await db.collection("counters").findOneAndUpdate(
+    { _id: name },
+    { $inc: { seq: 1 } },
+    { upsert: true, returnDocument: "after" }
+  );
+  const rawSeq = (result?.value ?? result)?.seq ?? 1;
+  return startAt - 1 + rawSeq;
+}
+
 function collection(name) {
   const col = () => db.collection(name);
 
@@ -148,4 +166,4 @@ function scopedCollection(name, accountId) {
   };
 }
 
-module.exports = { connectDB, closeDB, ensureConnected, setIO, collection, scopedCollection };
+module.exports = { connectDB, closeDB, ensureConnected, setIO, collection, scopedCollection, nextSequence };
