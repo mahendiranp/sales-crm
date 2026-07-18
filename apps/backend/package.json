@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node src/index.js",
+    "dev:cypress": "NODE_ENV=test node src/index.js",
     "build": "echo 'backend has no build step'",
     "test": "NODE_ENV=test node test/auth.test.js"
   },
@@ -22,8 +23,11 @@
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.12.0",
     "mongodb": "^6.21.0",
+    "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
+    "pdf-parse": "^1.1.4",
     "pdfkit": "^0.19.1",
     "razorpay": "^2.9.6",
     "socket.io": "^4.8.3",

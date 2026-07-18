@@ -8,7 +8,7 @@ import {
   Paperclip, Star, ToggleLeft, CalendarClock, Search, UserPlus, Briefcase, ShoppingBag, Users,
   LifeBuoy, Bug, Plane, UserCheck, LogOut, HeartPulse, Receipt, Home, RotateCcw, GraduationCap,
   TrendingUp, FileText, Palette, Columns3, Navigation as NavigationIcon, Image as FormImageIcon, Target,
-  ArrowRight, ChevronDown, ArrowLeft,
+  ArrowRight, ChevronDown, ArrowLeft, UploadCloud,
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -2334,6 +2334,27 @@ export function AddFormPage() {
 
   const startFromScratch = () => createFromTemplate({ key: "blank" });
 
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef(null);
+
+  const importFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // lets picking the same file again re-trigger onChange
+    if (!file) return;
+    setImporting(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await api.post("/import", formData);
+      goToBuild(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't import that file.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   // Fake step-by-step progress — the backend does this in one request, not
   // 6 discrete phases, but a flat spinner for several seconds reads as
   // "is this stuck?" whereas a checklist that advances on a timer (and
@@ -2592,7 +2613,40 @@ export function AddFormPage() {
           <Button variant="secondary" onClick={startFromScratch} disabled={creating} className="h-12 px-6 rounded-xl text-base">Start Blank Form <ArrowRight size={15} /></Button>
         </div>
       </div>
-      ) : (
+      ) : null}
+
+      {genPhase === "idle" && (
+        <div className={`border border-[#E7E9EC] rounded-2xl p-6 flex items-center justify-between gap-6 bg-white mb-14 ${CARD_HOVER}`}>
+          <div className="flex items-center gap-4">
+            <div className={ICON_BOX}>
+              <UploadCloud size={22} className="text-ink/60" />
+            </div>
+            <div>
+              <p className="text-[22px] font-display font-semibold">Import from File</p>
+              <p className="text-[15px] text-secondary mt-1">Upload a PDF, Word doc, or a photo of a paper form — AI rebuilds it as a real Flowora form.</p>
+            </div>
+          </div>
+          <div className="shrink-0">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".pdf,.docx,image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={importFile}
+            />
+            <Button
+              variant="secondary"
+              onClick={() => importInputRef.current?.click()}
+              disabled={importing}
+              className="h-12 px-6 rounded-xl text-base whitespace-nowrap"
+            >
+              {importing ? "Importing…" : "Choose File"} {!importing && <ArrowRight size={15} />}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {genPhase !== "idle" && (
         <AIGenerationStepper
           prompt={prompt}
           onPromptChange={setPrompt}

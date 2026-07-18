@@ -28,4 +28,15 @@ function parseLeadText({ provider, text }) {
   return PROVIDERS[resolveProvider(provider)].parseLeadText({ text });
 }
 
-module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText, PROVIDER_KEYS: Object.keys(PROVIDERS) };
+function extractFormFromDocument({ provider, text, imageBase64, imageMimeType }) {
+  return PROVIDERS[resolveProvider(provider)].extractFormFromDocument({ text, imageBase64, imageMimeType });
+}
+
+module.exports = {
+  isConfigured,
+  generateFormFields,
+  scoreLead,
+  parseLeadText,
+  extractFormFromDocument,
+  PROVIDER_KEYS: Object.keys(PROVIDERS),
+};

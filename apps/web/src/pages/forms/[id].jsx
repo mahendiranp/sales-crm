@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { CheckCircle2, FormInput, Eye, X, ArrowLeft, ArrowRight } from "lucide-react";
+import { CheckCircle2, FormInput, Eye, X, ArrowLeft, ArrowRight, Mail } from "lucide-react";
 import api from "../../api/client";
 import FormFieldInput from "../../components/FormFieldInput";
 import Seo from "../../components/Seo";
@@ -68,10 +68,13 @@ export default function PublicFormPage() {
   const [error, setError] = useState(false);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
+  const [submittedResponse, setSubmittedResponse] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const [step, setStep] = useState(0);
+  const [saveEmail, setSaveEmail] = useState("");
+  const [saveState, setSaveState] = useState("idle"); // idle | sending | sent | error
   // Fields hidden by a "Logic" rule (see FieldEditor's Logic section in the
   // builder) are skipped entirely here — not just visually hidden — so they
   // never block wizard progression or required-field validation.
@@ -102,7 +105,8 @@ export default function PublicFormPage() {
     setSubmitting(true);
     try {
       if (!isPreview) {
-        await api.post(`/forms/${id}/responses`, { answers });
+        const { data } = await api.post(`/forms/${id}/responses`, { answers });
+        setSubmittedResponse(data);
       }
       setSubmitted(true);
     } catch (err) {
@@ -141,6 +145,18 @@ export default function PublicFormPage() {
       await doSubmit();
     } else {
       setStep((s) => s + 1);
+    }
+  };
+
+  const sendSaveLink = async (e) => {
+    e.preventDefault();
+    if (!submittedResponse || !saveEmail.trim()) return;
+    setSaveState("sending");
+    try {
+      await api.post(`/forms/${id}/responses/${submittedResponse.id}/send-link`, { email: saveEmail.trim() });
+      setSaveState("sent");
+    } catch {
+      setSaveState("error");
     }
   };
 
@@ -225,6 +241,45 @@ export default function PublicFormPage() {
             <CheckCircle2 size={32} className="text-primary mx-auto mb-3" />
             <p className="font-display font-semibold text-lg">{form.settings?.confirmationMessage || "Thanks for your submission!"}</p>
             {isPreview && <p className="text-xs text-ink/40 mt-3">(Preview only — nothing was actually submitted.)</p>}
+
+            {!isPreview && submittedResponse && (
+              <>
+                <p className="text-xs text-ink/40 mt-3">
+                  Reference ID <span className="font-mono font-medium text-ink/70">{submittedResponse.referenceId}</span>
+                </p>
+
+                <div className="mt-6 pt-6 border-t border-border text-left">
+                  {saveState === "sent" ? (
+                    <p className="text-sm text-ink/60 text-center">
+                      <Mail size={14} className="inline -mt-0.5 mr-1" />
+                      Check <strong>{saveEmail}</strong> for a link to view this later.
+                    </p>
+                  ) : (
+                    <form onSubmit={sendSaveLink}>
+                      <label className="block text-xs font-medium text-ink/50 mb-1.5 text-center">Want to access this later? Email yourself a link.</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="email"
+                          required
+                          value={saveEmail}
+                          onChange={(e) => setSaveEmail(e.target.value)}
+                          placeholder="you@example.com"
+                          className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                        <button
+                          type="submit"
+                          disabled={saveState === "sending"}
+                          className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
+                        >
+                          {saveState === "sending" ? "Sending…" : "Send"}
+                        </button>
+                      </div>
+                      {saveState === "error" && <p className="text-xs text-danger mt-1.5 text-center">Couldn't send that link — try again.</p>}
+                    </form>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

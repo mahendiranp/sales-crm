@@ -3,7 +3,7 @@
 // routes/forms.js's AI route can call either provider identically — only
 // the request/response shape of the underlying call differs.
 const { GoogleGenAI, Type } = require("@google/genai");
-const { SYSTEM_PROMPT, ALLOWED_TYPES, parseModelResponse } = require("./shared");
+const { SYSTEM_PROMPT, ALLOWED_TYPES, parseModelResponse, IMPORT_SYSTEM_PROMPT, parseImportResponse } = require("./shared");
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // gemini-2.0-flash was deprecated by Google and returns 404 "no longer
@@ -171,4 +171,76 @@ async function generateFormFields({ prompt, currentFields }) {
   }
 }
 
-module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText };
+const IMPORT_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    description: { type: Type.STRING },
+    fields: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          label: { type: Type.STRING },
+          type: { type: Type.STRING, enum: ALLOWED_TYPES },
+          required: { type: Type.BOOLEAN },
+          options: { type: Type.ARRAY, items: { type: Type.STRING } },
+          placeholder: { type: Type.STRING },
+          helpText: { type: Type.STRING },
+        },
+        required: ["label", "type", "required"],
+      },
+    },
+  },
+  required: ["title", "fields"],
+};
+
+// `text` for a PDF/Word doc whose text was already extracted server-side;
+// `imageBase64`/`imageMimeType` for an image (or a scanned PDF page saved
+// as one) — sent as inline image data so Gemini reads the layout directly
+// instead of us needing a separate OCR step.
+async function extractFormFromDocument({ text, imageBase64, imageMimeType }) {
+  if (!isConfigured()) {
+    throw new Error("Gemini isn't configured yet — ask your platform admin to set GEMINI_API_KEY.");
+  }
+  const contents = imageBase64
+    ? [{ inlineData: { mimeType: imageMimeType, data: imageBase64 } }, { text: "Extract this document's form fields." }]
+    : text;
+
+  const call = () =>
+    client.models.generateContent({
+      model: MODEL,
+      contents,
+      config: {
+        systemInstruction: IMPORT_SYSTEM_PROMPT,
+        maxOutputTokens: 2500,
+        responseMimeType: "application/json",
+        responseSchema: IMPORT_RESPONSE_SCHEMA,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+  try {
+    const res = await call();
+    return parseImportResponse(res.text || "");
+  } catch (err) {
+    const message = err.message || String(err);
+    if (/"code":\s*429/.test(message) || /rate-limited|quota/i.test(message)) {
+      throw new Error("Gemini's free tier is rate-limited — you've hit the request quota for now. Wait a minute and try again.");
+    }
+    if (/"code":\s*503/.test(message)) {
+      throw new Error("Gemini is temporarily overloaded on Google's end. Wait a moment and try again.");
+    }
+    if (/wasn't valid JSON|didn't match the expected format/.test(message)) {
+      try {
+        const res = await call();
+        return parseImportResponse(res.text || "");
+      } catch {
+        throw new Error("Gemini's response wasn't usable after a retry — try a clearer scan or a different file.");
+      }
+    }
+    throw new Error(`Gemini request failed: ${message.slice(0, 300)}`);
+  }
+}
+
+module.exports = { isConfigured, generateFormFields, scoreLead, parseLeadText, extractFormFromDocument };

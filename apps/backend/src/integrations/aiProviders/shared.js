@@ -36,4 +36,41 @@ function parseModelResponse(text) {
   return parsed;
 }
 
-module.exports = { ALLOWED_TYPES, SYSTEM_PROMPT, parseModelResponse };
+// Document import (routes/import.js): given a document's raw text (or, for
+// an image, the image itself — see the provider-specific vision path),
+// infer the whole form from scratch rather than editing an existing one,
+// so this needs its own title field the field-edit flow above doesn't.
+const IMPORT_SYSTEM_PROMPT = `You are a form-extraction assistant. You receive the raw content of a document (a scanned or digital form, application, survey, etc.) and reply with ONLY a single JSON object — no markdown fences, no prose outside the JSON — matching exactly this shape:
+
+{
+  "title": "string, a short title for this form",
+  "description": "string, optional one-sentence description",
+  "fields": [ { "label": "string", "type": "one of: ${ALLOWED_TYPES.join(", ")}", "required": boolean, "options": ["only for dropdown/radio/checkbox"], "placeholder": "string, optional", "helpText": "string, optional" } ]
+}
+
+Rules:
+- Identify every distinct question/blank/checkbox/signature line a respondent would need to fill in, in the order they appear.
+- Pick the most specific matching type (email for an email address, phone for a phone number, date for a date, dropdown/radio/checkbox when the document lists fixed choices) rather than defaulting everything to "text".
+- Only use types from the allowed list above.
+- Keep labels concise and professional, matching the document's own wording where possible.
+- If the document doesn't look like a form (no fields to fill in), reply with an empty "fields" array and a "description" explaining that.`;
+
+function parseImportResponse(text) {
+  const jsonText = (text || "").trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error("The AI response wasn't valid JSON — try a clearer scan or a different file.");
+  }
+  if (typeof parsed.title !== "string" || !Array.isArray(parsed.fields)) {
+    throw new Error("The AI response didn't match the expected format.");
+  }
+  return {
+    title: parsed.title.trim() || "Imported Form",
+    description: typeof parsed.description === "string" ? parsed.description.trim() : "",
+    fields: parsed.fields.filter((f) => ALLOWED_TYPES.includes(f.type)),
+  };
+}
+
+module.exports = { ALLOWED_TYPES, SYSTEM_PROMPT, parseModelResponse, IMPORT_SYSTEM_PROMPT, parseImportResponse };
