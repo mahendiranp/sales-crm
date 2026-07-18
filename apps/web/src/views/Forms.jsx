@@ -2336,6 +2336,23 @@ export function AddFormPage() {
 
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef(null);
+  const [googleFormUrl, setGoogleFormUrl] = useState("");
+  const [importingUrl, setImportingUrl] = useState(false);
+
+  const importFromGoogleForm = async (e) => {
+    e.preventDefault();
+    if (!googleFormUrl.trim() || importingUrl) return;
+    setImportingUrl(true);
+    setError("");
+    try {
+      const { data } = await api.post("/import/url", { provider: "google", url: googleFormUrl.trim() });
+      goToBuild(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Couldn't import that Google Form.");
+    } finally {
+      setImportingUrl(false);
+    }
+  };
 
   const importFile = async (e) => {
     const file = e.target.files?.[0];
@@ -2616,33 +2633,51 @@ export function AddFormPage() {
       ) : null}
 
       {genPhase === "idle" && (
-        <div className={`border border-[#E7E9EC] rounded-2xl p-6 flex items-center justify-between gap-6 bg-white mb-14 ${CARD_HOVER}`}>
-          <div className="flex items-center gap-4">
-            <div className={ICON_BOX}>
-              <UploadCloud size={22} className="text-ink/60" />
+        <div className={`border border-[#E7E9EC] rounded-2xl p-6 bg-white mb-14 ${CARD_HOVER}`}>
+          <div className="flex items-center justify-between gap-6 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className={ICON_BOX}>
+                <UploadCloud size={22} className="text-ink/60" />
+              </div>
+              <div>
+                <p className="text-[22px] font-display font-semibold">Import from File</p>
+                <p className="text-[15px] text-secondary mt-1">Upload a PDF, Word doc, or a photo of a paper form — AI rebuilds it as a real Flowora form.</p>
+              </div>
             </div>
-            <div>
-              <p className="text-[22px] font-display font-semibold">Import from File</p>
-              <p className="text-[15px] text-secondary mt-1">Upload a PDF, Word doc, or a photo of a paper form — AI rebuilds it as a real Flowora form.</p>
+            <div className="shrink-0">
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".pdf,.docx,image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={importFile}
+              />
+              <Button
+                variant="secondary"
+                onClick={() => importInputRef.current?.click()}
+                disabled={importing}
+                className="h-12 px-6 rounded-xl text-base whitespace-nowrap"
+              >
+                {importing ? "Importing…" : "Choose File"} {!importing && <ArrowRight size={15} />}
+              </Button>
             </div>
           </div>
-          <div className="shrink-0">
+
+          <div className="h-px bg-border my-5" />
+
+          <form onSubmit={importFromGoogleForm} className="flex items-center gap-3 flex-wrap">
+            <p className="text-sm font-medium text-ink/60 shrink-0">Or paste a Google Form link:</p>
             <input
-              ref={importInputRef}
-              type="file"
-              accept=".pdf,.docx,image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={importFile}
+              type="url"
+              value={googleFormUrl}
+              onChange={(e) => setGoogleFormUrl(e.target.value)}
+              placeholder="https://docs.google.com/forms/d/e/.../viewform"
+              className={`${inputCls} flex-1 min-w-[240px]`}
             />
-            <Button
-              variant="secondary"
-              onClick={() => importInputRef.current?.click()}
-              disabled={importing}
-              className="h-12 px-6 rounded-xl text-base whitespace-nowrap"
-            >
-              {importing ? "Importing…" : "Choose File"} {!importing && <ArrowRight size={15} />}
+            <Button type="submit" variant="secondary" disabled={!googleFormUrl.trim() || importingUrl} className="h-12 px-6 rounded-xl text-base whitespace-nowrap">
+              {importingUrl ? "Importing…" : "Import"} {!importingUrl && <ArrowRight size={15} />}
             </Button>
-          </div>
+          </form>
         </div>
       )}
 
