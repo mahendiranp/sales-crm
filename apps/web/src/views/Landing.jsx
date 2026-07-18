@@ -2,19 +2,19 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Target, Sparkles, ArrowRight, Check, X as XIcon, Mail, ChevronDown,
-  Workflow, Share2, BarChart3, FormInput, Zap,
+  Workflow, Share2, BarChart3, FormInput, Upload, Bot, Clock,
   Building2, HeartPulse, GraduationCap, Factory, Landmark, Truck, Store,
 } from "lucide-react";
 import { APP_NAME } from "../lib/brand";
 import Seo from "../components/Seo";
 
 const FEATURES = [
-  { icon: Sparkles, title: "AI Form Builder", desc: "Describe the form you want — \"employee leave request with dates and reason\" — and AI builds the fields instantly." },
-  { icon: Workflow, title: "Approval Workflows", desc: "Route submissions through Employee → Manager → HR with multi-step approvals and role-based approvers." },
-  { icon: BarChart3, title: "Dashboard & Analytics", desc: "Track submissions, monitor approval status, identify trends, and export responses to CSV or Excel." },
+  { icon: Bot, title: "AI Form Builder", desc: "Describe your form in plain English. Flowora creates the fields, validation, and layout in seconds." },
+  { icon: Upload, title: "Import Existing Forms", desc: "Upload PDFs, Word documents, images, or Google Forms. AI converts them into fully editable Flowora forms." },
+  { icon: Workflow, title: "Approval Workflows", desc: "Automatically route submissions through managers, HR, finance, or any approval chain—without emails or spreadsheets." },
+  { icon: BarChart3, title: "AI Insights", desc: "Summarize responses, identify trends, and uncover actionable insights without reading every submission." },
   { icon: FormInput, title: "Drag-and-drop Builder", desc: "13 field types, branding options, and a live canvas that matches exactly what respondents will see." },
   { icon: Share2, title: "Publish Anywhere", desc: "Share with a public link or embed on your website. Responses are securely stored and available instantly." },
-  { icon: Zap, title: "Smart Automation", desc: "Automate approvals, notifications, and response routing to reduce manual work." },
 ];
 
 // true/false/"limited"/"basic" — a defensible, not-fabricated read of each
@@ -46,12 +46,22 @@ const TESTIMONIALS = [
 ];
 
 const HOW_IT_WORKS = [
-  { n: 1, label: "Describe your form" },
-  { n: 2, label: "AI builds it" },
-  { n: 3, label: "Publish" },
-  { n: 4, label: "Collect responses" },
-  { n: 5, label: "Automate approvals" },
-  { n: 6, label: "Export & analyze" },
+  { emoji: "💬", label: "Tell AI what you need" },
+  { emoji: "✨", label: "AI creates your form" },
+  { emoji: "🎨", label: "Customize if needed" },
+  { emoji: "🚀", label: "Publish anywhere" },
+  { emoji: "📈", label: "Track responses" },
+  { emoji: "⚡", label: "Automate approvals" },
+];
+
+const BEFORE_STEPS = ["Create Form", "Collect Responses", "Download Excel", "Email Manager", "Wait", "Update Spreadsheet"];
+const AFTER_STEPS = ["Describe Form", "AI Builds It", "Share", "Responses", "Approvals", "Done"];
+
+const TIME_SAVED_ROWS = [
+  { without: "Build a form manually", withFlowora: "AI creates it in seconds" },
+  { without: "Recreate old forms", withFlowora: "Import PDF, Word, Image, or Google Forms" },
+  { without: "Chase approvals by email", withFlowora: "Automated approval workflows" },
+  { without: "Analyze spreadsheets", withFlowora: "AI summaries and dashboards" },
 ];
 
 // Trimmed from 16 to the ones that actually affect a signup decision
@@ -78,7 +88,7 @@ const PLANS = [
     price: "₹0",
     period: "forever",
     features: ["Up to 3 forms", "100 responses / month", "3 AI generations / month", "CSV/Excel export", "1 user"],
-    cta: "Start free",
+    cta: "Start Building Free",
     href: "/signup",
   },
   {
@@ -194,7 +204,7 @@ const JSON_LD = {
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   description:
-    "Flowora is an AI form builder with multi-step approval workflows — build forms with AI, automate approvals, and track everything from one dashboard.",
+    "Flowora is an AI form builder with multi-step approval workflows — build forms with AI or import from PDFs, Word, images, and Google Forms, automate approvals, and track everything from one dashboard.",
   offers: PLANS.map((p) => ({
     "@type": "Offer",
     name: p.name,
@@ -251,6 +261,10 @@ export default function Landing() {
           "sales CRM",
           "lead management CRM",
           "free CRM",
+          "import google form",
+          "pdf to form converter",
+          "convert pdf to online form",
+          "AI document import",
         ]}
         path="/"
         jsonLd={[JSON_LD, FAQ_JSON_LD, ORG_JSON_LD]}
@@ -260,23 +274,30 @@ export default function Landing() {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-10 text-center">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/8 text-primary text-xs font-medium mb-6">
-          <Sparkles size={12} /> AI Form Builder with Approval Workflows
+          <Sparkles size={12} /> AI Form Builder — Import PDFs, Word, Images & Google Forms
         </div>
         <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.05] max-w-3xl mx-auto">
-          Forms that don't just collect responses—they move work forward.
+          Create Any Form in 30 Seconds. AI Does the Rest.
         </h1>
         <p className="text-ink/60 text-lg max-w-xl mx-auto mt-5">
-          Build forms with AI, automate approvals, collect responses, and track everything from one dashboard.
+          From PDFs, Word documents, images, or a simple prompt, {APP_NAME} creates beautiful forms with approvals
+          and automation—no manual setup required.
         </p>
         <div className="flex items-center justify-center gap-3 mt-8">
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark">
-            Get started free <ArrowRight size={16} />
+            Start Free <ArrowRight size={16} />
           </Link>
-          <Link href="/login" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg border border-border font-medium hover:bg-base">
-            Log in
+          <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg border border-border font-medium hover:bg-base">
+            Import a Form
           </Link>
         </div>
-        <p className="text-xs text-ink/40 mt-4">No credit card required · Free plan available forever</p>
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-6 text-xs text-ink/50">
+          {["Free forever", "No credit card required", "Import existing forms", "Setup in under 60 seconds"].map((t) => (
+            <span key={t} className="flex items-center gap-1">
+              <Check size={12} className="text-primary" /> {t}
+            </span>
+          ))}
+        </div>
       </section>
 
       {/* Product preview mock — a real product screenshot converts far
@@ -302,34 +323,73 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Problem section */}
-      <section className="max-w-4xl mx-auto px-6 pb-20 text-center">
-        <h2 className="font-display font-bold text-3xl mb-8">Still using Google Forms?</h2>
-        <div className="grid sm:grid-cols-2 gap-3 max-w-lg mx-auto text-left mb-8">
-          {["No approval workflow", "No AI form builder", "Responses stuck inside spreadsheets", "Limited workflow automation"].map((p) => (
-            <div key={p} className="flex items-center gap-2 text-sm text-ink/60">
-              <XIcon size={14} className="text-danger shrink-0" /> {p}
+      {/* Problem → solution */}
+      <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
+        <h2 className="font-display font-bold text-3xl mb-2">Why Teams Are Switching to {APP_NAME}</h2>
+        <p className="text-ink/50 mb-8">Still using Google Forms?</p>
+        <div className="grid sm:grid-cols-2 gap-3 text-left">
+          {[
+            { before: "Rebuilding forms manually", after: "Import existing forms instantly" },
+            { before: "Copying responses into spreadsheets", after: "Real-time dashboards" },
+            { before: "Email approval chains", after: "Automated approval workflows" },
+            { before: "Basic forms", after: "AI-powered forms" },
+          ].map((row) => (
+            <div key={row.before} className="p-4 rounded-card border border-border bg-white shadow-card">
+              <div className="flex items-center gap-2 text-sm text-ink/40 mb-1.5">
+                <XIcon size={14} className="text-danger shrink-0" /> {row.before}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-ink/80 font-medium">
+                <Check size={14} className="text-primary shrink-0" /> {row.after}
+              </div>
             </div>
           ))}
         </div>
-        <p className="font-display font-semibold text-lg text-primary">
-          {APP_NAME} fixes all of it.
-        </p>
       </section>
 
       {/* How it works */}
       <section className="bg-base/40 py-20">
         <div className="max-w-4xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl text-center mb-12">How {APP_NAME} Works</h2>
+          <h2 className="font-display font-bold text-3xl text-center mb-12">From Idea to Live Form in Under a Minute</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {HOW_IT_WORKS.map((s) => (
-              <div key={s.n} className="flex items-center gap-3 bg-white border border-border rounded-card p-4 shadow-card">
-                <span className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-display font-bold text-sm shrink-0">
-                  {s.n}
+              <div key={s.label} className="flex items-center gap-3 bg-white border border-border rounded-card p-4 shadow-card">
+                <span className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-base shrink-0">
+                  {s.emoji}
                 </span>
                 <span className="font-medium text-sm">{s.label}</span>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Before vs After */}
+      <section className="max-w-4xl mx-auto px-6 py-20">
+        <h2 className="font-display font-bold text-3xl text-center mb-12">Before vs. After {APP_NAME}</h2>
+        <div className="grid sm:grid-cols-2 gap-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink/40 mb-4 text-center">Before {APP_NAME}</p>
+            <div className="space-y-2">
+              {BEFORE_STEPS.map((s, i) => (
+                <div key={s}>
+                  <div className="text-sm text-ink/60 bg-white border border-border rounded-lg py-2.5 px-4 text-center">{s}</div>
+                  {i < BEFORE_STEPS.length - 1 && <div className="text-ink/25 text-center py-0.5">↓</div>}
+                </div>
+              ))}
+            </div>
+            <p className="text-center text-xs text-danger font-medium mt-3">~30 minutes</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-4 text-center">With {APP_NAME}</p>
+            <div className="space-y-2">
+              {AFTER_STEPS.map((s, i) => (
+                <div key={s}>
+                  <div className="text-sm font-medium text-ink/80 bg-primary/5 border border-primary/20 rounded-lg py-2.5 px-4 text-center">{s}</div>
+                  {i < AFTER_STEPS.length - 1 && <div className="text-primary/40 text-center py-0.5">↓</div>}
+                </div>
+              ))}
+            </div>
+            <p className="text-center text-xs text-primary font-semibold mt-3">~30 seconds</p>
           </div>
         </div>
       </section>
@@ -430,6 +490,32 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Save hours every week */}
+      <section className="max-w-4xl mx-auto px-6 pb-20">
+        <h2 className="font-display font-bold text-3xl text-center mb-2 flex items-center justify-center gap-2">
+          <Clock size={26} className="text-primary" /> Save Hours Every Week
+        </h2>
+        <p className="text-ink/50 text-center mb-10">This is the part Typeform, Jotform, and Tally don't talk about.</p>
+        <div className="overflow-x-auto border border-border rounded-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-base/50">
+                <th className="text-left font-medium py-3 px-4 text-ink/50">Without {APP_NAME}</th>
+                <th className="text-left font-display font-semibold py-3 px-4 text-primary">With {APP_NAME}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {TIME_SAVED_ROWS.map((r) => (
+                <tr key={r.without} className="border-b border-border last:border-b-0">
+                  <td className="py-3 px-4 text-ink/50">{r.without}</td>
+                  <td className="py-3 px-4 text-ink/80 font-medium">{r.withFlowora}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {/* Pricing */}
       <section id="pricing" className="max-w-6xl mx-auto px-6 py-20">
         <div className="text-center mb-12">
@@ -485,10 +571,13 @@ export default function Landing() {
       {/* Final CTA */}
       <section className="bg-primary text-white py-20 text-center">
         <div className="max-w-2xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl mb-3">Ready to replace Google Forms?</h2>
-          <p className="text-white/70 mb-8">Build your first AI-powered form in less than a minute.</p>
+          <h2 className="font-display font-bold text-3xl mb-3">Stop Building Forms the Hard Way</h2>
+          <p className="text-white/70 mb-8">
+            Create new forms with AI or import your existing ones in seconds. Join teams that are replacing manual
+            form creation with intelligent workflows.
+          </p>
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-6 py-3 rounded-lg bg-white text-primary font-medium hover:bg-white/90">
-            Start Free <ArrowRight size={16} />
+            Start Building Free <ArrowRight size={16} />
           </Link>
           <p className="text-xs text-white/50 mt-4">No credit card • Free forever</p>
         </div>
