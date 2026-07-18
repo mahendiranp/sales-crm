@@ -1,15 +1,16 @@
 describe("Landing page", () => {
   it("renders new hero, problem, comparison, industries, testimonials, pricing, FAQ, final CTA", () => {
     cy.visit("/");
-    cy.contains("Forms that don't just collect responses").should("be.visible");
+    cy.contains("Create Any Form in 30 Seconds. AI Does the Rest.").should("be.visible");
     cy.contains("Still using Google Forms?").should("be.visible");
-    cy.contains("No approval workflow").should("be.visible");
+    cy.contains("Rebuilding forms manually").should("be.visible");
     cy.contains("How Flowora compares").should("be.visible");
     cy.contains("Google Forms").should("be.visible");
     cy.contains("Typeform").should("be.visible");
     cy.contains("Perfect for").should("be.visible");
     cy.contains("Loved by teams").should("be.visible");
     cy.contains("Creating employee onboarding forms now takes 2 minutes instead of 30.").should("be.visible");
+    cy.contains("Save Hours Every Week").scrollIntoView().should("be.visible");
     cy.get("#pricing").within(() => {
       cy.contains("Free").should("be.visible");
       cy.contains("Team").should("be.visible");
@@ -22,7 +23,7 @@ describe("Landing page", () => {
       cy.contains("no credit card required").should("be.visible");
       cy.contains("Can AI build my form?").should("be.visible");
     });
-    cy.contains("Build your first AI-powered form in less than a minute.").should("be.visible");
+    cy.contains("Stop Building Forms the Hard Way").scrollIntoView().should("be.visible");
     cy.screenshot("landing-full", { capture: "fullPage" });
   });
 });
