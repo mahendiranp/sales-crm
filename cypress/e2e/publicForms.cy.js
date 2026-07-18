@@ -95,9 +95,39 @@ describe("Public forms — anonymous submission, magic-link claim, and directory
     cy.contains(/Check.*for a link/i).should("be.visible");
   });
 
-  it("rejects an invalid or expired claim token", () => {
+  it("rejects a token that doesn't exist", () => {
     cy.visit("/claim?token=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd");
     cy.contains("Link invalid or expired").should("be.visible");
+  });
+
+  it("rejects a real claim token once its 24h TTL has actually expired", () => {
+    cy.intercept("POST", "**/api/forms/*/responses/*/send-link").as("sendLink");
+
+    cy.visit(`/forms/${formId}`);
+    cy.contains("button", "Submit").click();
+    cy.contains(/FR-[A-Z2-9]{6}/).should("be.visible");
+
+    const email = `cypress+expiry+${Date.now()}@example.com`;
+    cy.get('input[type="email"]').type(email);
+    cy.contains("button", "Send").click();
+
+    cy.wait("@sendLink").then(({ request, response }) => {
+      expect(response.body.devClaimLink).to.be.a("string");
+      const token = new URL(response.body.devClaimLink).searchParams.get("token");
+      // responseId is the URL segment right before "/send-link".
+      const responseId = request.url.match(/\/responses\/([^/]+)\/send-link/)[1];
+
+      // Confirm the link is genuinely valid *before* backdating it — this
+      // proves the later rejection is really about expiry, not some other
+      // reason the token happened to be invalid.
+      cy.visit(`/claim?token=${token}`);
+      cy.contains(formName).should("be.visible");
+
+      cy.task("expireClaimToken", responseId).then(() => {
+        cy.visit(`/claim?token=${token}`);
+        cy.contains("Link invalid or expired").should("be.visible");
+      });
+    });
   });
 
   it("lists the published form in the account's public forms directory", () => {

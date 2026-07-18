@@ -4,7 +4,8 @@ const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
 const { requireManager, requireFullAccess, PERMISSION_RANK } = require("../middleware/auth");
 const { isConfigured: aiConfigured, scoreLead, parseLeadText } = require("../integrations/aiClient");
-const { getLimitsForAccount, getAiProviderForAccount, getAiUsage, incrementAiUsage } = require("./settings");
+const { getAiProviderForAccount, getLimitsForAccount } = require("./settings");
+const { hasEnoughCredits, deductCredits, CREDIT_COSTS } = require("../utils/aiCredits");
 
 const router = express.Router();
 const leads = (req) => scopedCollection("leads", req.user.accountId);
@@ -93,8 +94,8 @@ router.post("/:id/convert", requireManager, async (req, res) => {
 });
 
 // AI qualification: scores 0-100 how likely this lead is to convert, using
-// whichever provider the account has configured — same plan gate (Growth+)
-// and shared monthly usage counter as the Form Builder's AI Assistant.
+// whichever provider the account has configured — gated by plan tier AND
+// AI credit balance (utils/aiCredits.js), same as the Form Builder's AI Assistant.
 router.post("/:id/ai-score", requireManager, async (req, res) => {
   const lead = await leads(req).find(req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
@@ -102,11 +103,13 @@ router.post("/:id/ai-score", requireManager, async (req, res) => {
   if (!req.user.isMasterAdmin) {
     const limits = await getLimitsForAccount(req.user.accountId);
     if (!limits.aiAssistant) {
-      return res.status(403).json({ error: `AI lead scoring requires the Growth plan or higher. Your account is on ${limits.label}.` });
+      return res.status(403).json({ error: `AI lead scoring requires the Growth plan or higher. Your account is on ${limits.label}.`, code: "plan_required" });
     }
-    const usage = await getAiUsage(req.user.accountId);
-    if (usage.used >= usage.limit) {
-      return res.status(403).json({ error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` });
+    if (!(await hasEnoughCredits(req.user.accountId, "leadScore"))) {
+      return res.status(403).json({
+        error: `You don't have enough AI credits for this (needs ${CREDIT_COSTS.leadScore}). Upgrade your plan for more.`,
+        code: "insufficient_credits",
+      });
     }
   }
 
@@ -130,7 +133,7 @@ router.post("/:id/ai-score", requireManager, async (req, res) => {
         notes: lead.notes || "",
       },
     });
-    if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
+    if (!req.user.isMasterAdmin) await deductCredits(req.user.accountId, req.user.id, "leadScore", { leadId: lead.id });
     const updated = await leads(req).update(lead.id, { leadScore: score, aiScoreReasoning: reasoning });
     res.json(updated);
   } catch (err) {
@@ -140,9 +143,8 @@ router.post("/:id/ai-score", requireManager, async (req, res) => {
 });
 
 // AI paste-to-autofill: extracts lead fields from an arbitrary pasted
-// message (WhatsApp text, email, call note) — same plan gate and shared
-// monthly usage counter as AI lead scoring, since it's the same underlying
-// per-account AI allowance.
+// message (WhatsApp text, email, call note) — gated by AI credit balance,
+// same as AI lead scoring above.
 router.post("/parse-ai", requireManager, async (req, res) => {
   const text = (req.body.text || "").trim();
   if (!text) return res.status(400).json({ error: "Paste some text to extract a lead from first." });
@@ -150,11 +152,13 @@ router.post("/parse-ai", requireManager, async (req, res) => {
   if (!req.user.isMasterAdmin) {
     const limits = await getLimitsForAccount(req.user.accountId);
     if (!limits.aiAssistant) {
-      return res.status(403).json({ error: `AI autofill requires the Growth plan or higher. Your account is on ${limits.label}.` });
+      return res.status(403).json({ error: `AI autofill requires the Growth plan or higher. Your account is on ${limits.label}.`, code: "plan_required" });
     }
-    const usage = await getAiUsage(req.user.accountId);
-    if (usage.used >= usage.limit) {
-      return res.status(403).json({ error: `You've used all ${usage.limit} AI generations included this month. It resets on the 1st.` });
+    if (!(await hasEnoughCredits(req.user.accountId, "leadParse"))) {
+      return res.status(403).json({
+        error: `You don't have enough AI credits for this (needs ${CREDIT_COSTS.leadParse}). Upgrade your plan for more.`,
+        code: "insufficient_credits",
+      });
     }
   }
 
@@ -167,7 +171,7 @@ router.post("/parse-ai", requireManager, async (req, res) => {
 
   try {
     const fields = await parseLeadText({ provider, text });
-    if (!req.user.isMasterAdmin) await incrementAiUsage(req.user.accountId);
+    if (!req.user.isMasterAdmin) await deductCredits(req.user.accountId, req.user.id, "leadParse");
     res.json(fields);
   } catch (err) {
     const status = /rate-limited|quota/i.test(err.message) ? 429 : 502;

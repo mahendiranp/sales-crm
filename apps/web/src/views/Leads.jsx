@@ -10,6 +10,8 @@ import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import useResizableColumns from "../lib/useResizableColumns";
 import ResizableTh from "../components/ResizableTh";
+import UpgradeCreditsDialog from "../components/UpgradeCreditsDialog";
+import { limitsFor } from "../lib/plans";
 
 const LEADS_COLUMNS = [
   { key: "lead", label: "Lead", defaultWidth: 200 },
@@ -247,10 +249,17 @@ function RowActionsMenu({ lead, canManage, onEdit, onAssign, onConvert }) {
 }
 
 export default function Leads() {
-  const { canManage } = useAuth();
+  const { canManage, isMasterAdmin } = useAuth();
   const [leads, setLeads] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [accountPlan, setAccountPlan] = useState(null);
+  // Hidden outright rather than shown-then-erroring — a Starter account
+  // clicking AI Score/Fill-with-AI only to get blocked is worse than never
+  // seeing the option (same pattern as Forms.jsx's AI Assistant/Generate
+  // with AI). Unknown (still loading) treated as allowed so the UI doesn't
+  // flash these away after first paint.
+  const aiAllowed = isMasterAdmin || !accountPlan || limitsFor(accountPlan).aiAssistant;
   const [modal, setModal] = useState(null); // 'add' | 'edit' | 'assign' | 'convert' | 'merge'
   const [activeLead, setActiveLead] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -264,6 +273,21 @@ export default function Leads() {
   const [aiPasteText, setAiPasteText] = useState("");
   const [aiParsing, setAiParsing] = useState(false);
   const [aiParseError, setAiParseError] = useState("");
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
+
+  // Shared by AI lead scoring and AI paste-to-autofill — a 403 with either
+  // of these codes means the fix is "upgrade your plan" (AI not available
+  // on this plan at all, or credits ran out), so both get the same
+  // actionable dialog instead of just an inline error line.
+  const handleAiError = (err, setInlineError, fallback) => {
+    if (["insufficient_credits", "plan_required"].includes(err.response?.data?.code)) {
+      setUpgradeMessage(err.response.data.error);
+      setUpgradeOpen(true);
+      return;
+    }
+    setInlineError(err.response?.data?.error || fallback);
+  };
 
   const load = () => {
     Promise.all([api.get("/leads"), api.get("/users")]).then(([l, u]) => {
@@ -274,6 +298,7 @@ export default function Leads() {
   };
   useEffect(() => {
     load();
+    api.get("/settings").then((r) => setAccountPlan(r.data.subscription?.plan)).catch(() => {});
   }, []);
   useLiveCollection(["leads", "users"], load);
 
@@ -373,7 +398,7 @@ export default function Leads() {
       setShowAiPaste(false);
       setAiPasteText("");
     } catch (err) {
-      setAiParseError(err.response?.data?.error || "Couldn't parse that — try filling the fields in manually.");
+      handleAiError(err, setAiParseError, "Couldn't parse that — try filling the fields in manually.");
     } finally {
       setAiParsing(false);
     }
@@ -398,7 +423,7 @@ export default function Leads() {
       await api.post(`/leads/${lead.id}/ai-score`);
       load();
     } catch (err) {
-      setScoreError(err.response?.data?.error || "Couldn't score this lead right now.");
+      handleAiError(err, setScoreError, "Couldn't score this lead right now.");
     } finally {
       setScoringId(null);
     }
@@ -521,7 +546,7 @@ export default function Leads() {
                   <td className="p-3">
                     <div className="flex items-center gap-1.5" title={lead.aiScoreReasoning || undefined}>
                       <ScoreBadge score={lead.leadScore} />
-                      {canManage && (
+                      {canManage && aiAllowed && (
                         <button
                           title="AI-score this lead"
                           disabled={scoringId === lead.id}
@@ -562,7 +587,7 @@ export default function Leads() {
         subtitle={modal === "add" ? "Capture a new prospect for your sales pipeline. Only name and a mobile or email are required." : undefined}
         wide
       >
-        {modal === "add" && (
+        {modal === "add" && aiAllowed && (
           <div className="mb-4">
             {!showAiPaste ? (
               <button
@@ -758,6 +783,8 @@ export default function Leads() {
           <Button onClick={mergeLeads}>Merge</Button>
         </div>
       </Modal>
+
+      <UpgradeCreditsDialog open={upgradeOpen} onClose={() => setUpgradeOpen(false)} message={upgradeMessage} />
     </div>
   );
 }

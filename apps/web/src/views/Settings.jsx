@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkles, Bell, Plug, LayoutGrid } from "lucide-react";
+import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkles, Bell, Plug, LayoutGrid, AlertTriangle } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Field, inputCls } from "../components/ui";
+import { limitsFor } from "../lib/plans";
 import CoreModulePicker from "../components/CoreModulePicker";
 import FeaturePicker from "../components/FeaturePicker";
 import useLiveCollection from "../lib/useLiveCollection";
@@ -182,6 +183,18 @@ export default function Settings() {
           {active === "subscription" && (
             <div>
               <h3 className="font-display font-semibold mb-4">Subscription</h3>
+
+              {settings.subscription.downgradedFrom && (
+                <div className="flex items-start gap-2 bg-danger/8 border border-danger/20 rounded-lg p-4 mb-4 text-sm text-danger">
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                  <p>
+                    Your {limitsFor(settings.subscription.downgradedFrom).label} plan expired on{" "}
+                    {new Date(settings.subscription.downgradedAt).toLocaleDateString()} and wasn't renewed, so your
+                    account moved back to Starter. Upgrade below to get those features back.
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between bg-base rounded-lg p-4 mb-4">
                 <div>
                   <p className="font-medium capitalize">{settings.subscription.plan}</p>
@@ -193,6 +206,18 @@ export default function Settings() {
                 </div>
                 <ShieldCheck size={20} className="text-primary" />
               </div>
+
+              {settings.aiCredits && (
+                <div className="flex items-center justify-between bg-base rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={16} className="text-primary" />
+                    <div>
+                      <p className="font-medium">{settings.aiCredits.remaining} AI credits left</p>
+                      <p className="text-xs text-ink/40">{settings.aiCredits.used} used so far — paid plans top this up every billing cycle</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {settings.subscription.plan === "starter" && (
                 <div className="border border-primary/20 bg-primary/5 rounded-lg p-4">

@@ -2,6 +2,11 @@ const express = require("express");
 const { collection } = require("../db/store");
 const { requireManager, requireMasterAdmin } = require("../middleware/auth");
 const { limitsFor } = require("../utils/plans");
+const { defaultCredits } = require("../utils/aiCredits");
+const emailClient = require("../integrations/emailClient");
+const { emailLayout } = require("../utils/emailTemplate");
+
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 const router = express.Router();
 const settings = collection("settings");
@@ -13,10 +18,14 @@ function defaults(accountId) {
     accountId,
     companyProfile: { name: "Your Company Pvt Ltd", industry: "Technology", address: "" },
     // "starter" is the free tier every new signup starts on — see
-    // utils/plans.js for what each tier actually unlocks. There's no
-    // payment processor wired up yet, so nothing moves an account off
-    // this without someone (master admin, for now) changing it by hand.
+    // utils/plans.js for what each tier actually unlocks. Self-serve
+    // upgrade to Growth happens via Razorpay checkout (routes/payments.js);
+    // Enterprise is sales-assisted.
     subscription: { plan: "starter", renewsOn: null },
+    // One-time signup grant — every account gets this regardless of plan
+    // (see utils/aiCredits.js). Paid plans additionally top this up each
+    // billing cycle instead of resetting it.
+    aiCredits: defaultCredits(),
     whatsappApi: { provider: "", apiKey: "", connected: false },
     emailSettings: { provider: "SMTP", fromAddress: "", connected: false },
     paymentGateway: { provider: "Razorpay", connected: false },
@@ -115,8 +124,11 @@ router.get("/", async (req, res) => {
     current = defaults(req.user.accountId);
     await settings.insert(current);
   }
-  const aiUsage = await getAiUsage(req.user.accountId);
-  res.json({ ...current, aiUsage });
+  current = (await enforceSubscriptionExpiry(req.user.accountId)) || current;
+  // Fallback for accounts whose settings doc predates aiCredits existing at
+  // all — defaults() above already bakes it in for anything created fresh.
+  const aiCredits = current.aiCredits || defaultCredits();
+  res.json({ ...current, aiCredits });
 });
 
 // Master-admin-only, platform-wide view: every tenant (one row per owner
@@ -192,11 +204,60 @@ router.put("/", requireManager, async (req, res) => {
   res.json(await settings.find(id));
 });
 
+// A paid plan's renewsOn date is set once, at successful payment
+// (routes/payments.js), and never touched again until either another
+// payment renews it or this downgrades it back to Starter — there's no
+// cron/scheduled-job infra in this app (same reasoning as workflow
+// escalations in forms.js), so "the next time anything reads this
+// account's settings" is the trigger instead of a background sweep.
+// Returns the (possibly just-downgraded) settings doc, or null if none
+// exists yet.
+async function enforceSubscriptionExpiry(accountId) {
+  const id = `settings-${accountId}`;
+  const current = await settings.find(id);
+  if (!current?.subscription?.renewsOn) return current;
+  if (current.subscription.plan === "starter") return current;
+  if (new Date(current.subscription.renewsOn) > new Date()) return current;
+
+  const previousPlan = current.subscription.plan;
+  // downgradedFrom/downgradedAt are surfaced by GET / so the frontend can
+  // show a one-time "your plan expired" notice — cleared automatically the
+  // next time a real payment succeeds (routes/payments.js's /verify
+  // replaces `subscription` wholesale with just { plan, renewsOn }).
+  const updated = await settings.update(id, {
+    subscription: { plan: "starter", renewsOn: null, downgradedFrom: previousPlan, downgradedAt: new Date().toISOString() },
+  });
+  await notifyPlanDowngraded(accountId, previousPlan);
+  return updated;
+}
+
+// Best-effort — a transient SMTP failure shouldn't block the downgrade
+// itself, which has already been written by the time this runs.
+async function notifyPlanDowngraded(accountId, previousPlan) {
+  try {
+    const account = await accounts.find(accountId);
+    if (!account?.email) return;
+    const previousLabel = limitsFor(previousPlan).label;
+    await emailClient.sendMail({
+      to: account.email,
+      subject: `Your ${previousLabel} plan has expired`,
+      html: emailLayout({
+        preheader: "Your subscription wasn't renewed — you're back on the Starter plan.",
+        heading: "Your plan expired",
+        bodyHtml: `<p>Hi ${account.name},</p><p>Your <strong>${previousLabel}</strong> plan's billing cycle ended and wasn't renewed, so your account has been moved back to the <strong>Starter</strong> plan. Approval workflows, the WhatsApp bot, and your higher limits are paused until you upgrade again.</p>`,
+        cta: { label: "Upgrade your plan", url: `${FRONTEND_URL}/app/settings` },
+      }),
+    });
+  } catch {
+    // Notification is a nice-to-have — the downgrade itself already happened.
+  }
+}
+
 // Shared by other route files (forms.js, auth.js) that need to check plan
 // limits (max forms, max teammates, feature gates) without duplicating
 // the "find settings, fall back to defaults" dance.
 async function getLimitsForAccount(accountId) {
-  const current = await settings.find(`settings-${accountId}`);
+  const current = await enforceSubscriptionExpiry(accountId);
   return limitsFor((current || defaults(accountId)).subscription?.plan);
 }
 
@@ -208,53 +269,7 @@ async function getAiProviderForAccount(accountId) {
   return current?.aiConfiguration?.provider || "gemini";
 }
 
-// "2026-07" style key — AI generation usage resets every calendar month,
-// not on a rolling 30-day window, to keep the reset date predictable and
-// match how the rest of the plan limits (maxResponsesPerMonth) are framed.
-function currentMonthKey() {
-  return new Date().toISOString().slice(0, 7);
-}
-
-// Rolls the counter over to 0 if the stored month doesn't match the
-// current one — called from both the read path (settings GET, so the UI
-// shows a fresh count on the 1st even before any generation happens) and
-// the increment path below.
-function freshAiUsage(stored) {
-  const monthKey = currentMonthKey();
-  if (!stored || stored.monthKey !== monthKey) return { monthKey, count: 0 };
-  return stored;
-}
-
-// Read-only usage snapshot for the "AI Left: X/Y" indicator — never
-// mutates count, only resets it in-memory if the month has rolled over
-// (the write happens lazily on the next actual increment, not here).
-async function getAiUsage(accountId) {
-  const current = await settings.find(`settings-${accountId}`);
-  const plan = (current || defaults(accountId)).subscription?.plan;
-  const limit = limitsFor(plan).aiMonthlyLimit;
-  const usage = freshAiUsage(current?.aiUsage);
-  return { used: usage.count, limit };
-}
-
-// Called once per successful AI generation (forms.js's /:id/ai/build route)
-// — increments the persisted counter, resetting first if the month rolled
-// over since the last call.
-async function incrementAiUsage(accountId) {
-  const id = `settings-${accountId}`;
-  const current = await settings.find(id);
-  const usage = freshAiUsage(current?.aiUsage);
-  const next = { monthKey: usage.monthKey, count: usage.count + 1 };
-  if (!current) {
-    await settings.insert({ ...defaults(accountId), aiUsage: next });
-  } else {
-    await settings.update(id, { aiUsage: next });
-  }
-  return next;
-}
-
 module.exports = router;
 module.exports.defaults = defaults;
 module.exports.getLimitsForAccount = getLimitsForAccount;
-module.exports.getAiUsage = getAiUsage;
-module.exports.incrementAiUsage = incrementAiUsage;
 module.exports.getAiProviderForAccount = getAiProviderForAccount;

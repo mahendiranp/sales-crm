@@ -57,6 +57,7 @@ export default function Dashboard() {
   const [formStats, setFormStats] = useState(null);
   const [modules, setModules] = useState(null);
   const [appsFlags, setAppsFlags] = useState(null);
+  const [aiCredits, setAiCredits] = useState(null);
 
   const load = () => api.get("/dashboard").then((r) => setData(r.data));
   const loadFormStats = () => api.get("/forms/stats").then((r) => setFormStats(r.data)).catch(() => {});
@@ -64,6 +65,7 @@ export default function Dashboard() {
     api.get("/settings").then((r) => {
       setModules(r.data.modules || {});
       setAppsFlags(r.data.apps || {});
+      setAiCredits(r.data.aiCredits || null);
     });
   useEffect(() => {
     load();
@@ -100,6 +102,12 @@ export default function Dashboard() {
           {showTasks && <StatCard icon={Clock3} label="Follow-ups Due" value={data.followUpsDue} accent="#E8A33D" />}
           {showDeals && <StatCard icon={Trophy} label="Deals Won" value={data.dealsWon} accent="#8B5FBF" />}
           {showDeals && <StatCard icon={Wallet} label="Monthly Revenue" value={formatINR(data.monthlyRevenue)} accent="#C1443C" />}
+        </div>
+      )}
+
+      {!isMasterAdmin && aiCredits && (
+        <div className="flex flex-wrap gap-4 mb-6">
+          <StatCard icon={Sparkles} label="AI Credits Left" value={aiCredits.remaining} accent="#2F5D50" />
         </div>
       )}
 
