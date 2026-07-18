@@ -7,10 +7,21 @@ import { CORE_MODULES } from "../lib/coreModules";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import usePlatformFeatures from "../lib/usePlatformFeatures";
+import useResizableColumns from "../lib/useResizableColumns";
+import ResizableTh from "../components/ResizableTh";
 
 const AI_PROVIDER_LABEL = { anthropic: "Anthropic (Claude)", gemini: "Google Gemini" };
 const MODULE_LABEL = Object.fromEntries(CORE_MODULES.map((m) => [m.key, m.label]));
 const APP_LABEL = Object.fromEntries(APP_CATALOG.map((a) => [a.key, a.label]));
+
+const TENANT_OVERVIEW_COLUMNS = [
+  { key: "company", label: "Company", defaultWidth: 220 },
+  { key: "owner", label: "Owner", defaultWidth: 200 },
+  { key: "joined", label: "Joined", defaultWidth: 140 },
+  { key: "plan", label: "Plan", defaultWidth: 120 },
+  { key: "aiProvider", label: "AI Provider", defaultWidth: 160 },
+  { key: "features", label: "Features opted in", defaultWidth: 260 },
+];
 
 // The actual platform-wide release switch — separate from (and above) the
 // per-account toggles below. A module/app only ever reaches a real
@@ -64,6 +75,7 @@ function ReleaseFeatures() {
 // feature-adoption snapshot without opening each tenant's Settings.
 function TenantOverview() {
   const [rows, setRows] = useState(null);
+  const { widthFor, setWidth, commitWidths } = useResizableColumns("tenant-overview", TENANT_OVERVIEW_COLUMNS);
 
   const load = () => api.get("/settings/accounts").then((r) => setRows(r.data)).catch(() => setRows([]));
   useEffect(() => {
@@ -123,15 +135,20 @@ function TenantOverview() {
         <p className="text-xs text-ink/40">No tenant accounts yet.</p>
       ) : (
         <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-border bg-base text-left">
-                <th className="p-2.5 font-medium text-ink/50 text-xs">Company</th>
-                <th className="p-2.5 font-medium text-ink/50 text-xs">Owner</th>
-                <th className="p-2.5 font-medium text-ink/50 text-xs">Joined</th>
-                <th className="p-2.5 font-medium text-ink/50 text-xs">Plan</th>
-                <th className="p-2.5 font-medium text-ink/50 text-xs">AI Provider</th>
-                <th className="p-2.5 font-medium text-ink/50 text-xs">Features opted in</th>
+                {TENANT_OVERVIEW_COLUMNS.map((c) => (
+                  <ResizableTh
+                    key={c.key}
+                    className="p-2.5 font-medium text-ink/50 text-xs"
+                    width={widthFor(c.key, c.defaultWidth)}
+                    onResize={(w) => setWidth(c.key, w)}
+                    onResizeEnd={commitWidths}
+                  >
+                    {c.label}
+                  </ResizableTh>
+                ))}
               </tr>
             </thead>
             <tbody>

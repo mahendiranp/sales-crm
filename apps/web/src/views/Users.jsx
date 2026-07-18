@@ -4,9 +4,18 @@ import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls } from "../components/ui";
 import useLiveCollection from "../lib/useLiveCollection";
+import useResizableColumns from "../lib/useResizableColumns";
+import ResizableTh from "../components/ResizableTh";
 
 const ROLES = ["Owner", "Admin", "Sales Manager", "Sales Executive", "Support Agent"];
 const emptyForm = { name: "", email: "", phone: "", role: "Sales Executive", avatarColor: "#2F5D50" };
+
+const USERS_COLUMNS = [
+  { key: "name", label: "Name", defaultWidth: 220 },
+  { key: "email", label: "Email", defaultWidth: 240 },
+  { key: "phone", label: "Phone", defaultWidth: 160 },
+  { key: "role", label: "Role", defaultWidth: 160 },
+];
 
 export default function Users() {
   const { canManage } = useAuth();
@@ -14,6 +23,7 @@ export default function Users() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
+  const { widthFor, setWidth, commitWidths } = useResizableColumns("users", USERS_COLUMNS);
 
   const load = () => {
     api.get("/users").then((r) => {
@@ -45,13 +55,20 @@ export default function Users() {
         {loading ? (
           <div className="p-8 text-ink/40 text-sm">Loading…</div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-border text-left text-xs text-ink/40 uppercase tracking-wide">
-                <th className="p-3">Name</th>
-                <th className="p-3">Email</th>
-                <th className="p-3">Phone</th>
-                <th className="p-3">Role</th>
+                {USERS_COLUMNS.map((c) => (
+                  <ResizableTh
+                    key={c.key}
+                    className="p-3"
+                    width={widthFor(c.key, c.defaultWidth)}
+                    onResize={(w) => setWidth(c.key, w)}
+                    onResizeEnd={commitWidths}
+                  >
+                    {c.label}
+                  </ResizableTh>
+                ))}
               </tr>
             </thead>
             <tbody>
