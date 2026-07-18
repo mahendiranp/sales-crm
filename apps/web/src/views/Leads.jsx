@@ -8,6 +8,20 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, SectionHeading, inputCls, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import useResizableColumns from "../lib/useResizableColumns";
+import ResizableTh from "../components/ResizableTh";
+
+const LEADS_COLUMNS = [
+  { key: "lead", label: "Lead", defaultWidth: 200 },
+  { key: "source", label: "Source", defaultWidth: 130 },
+  { key: "product", label: "Product", defaultWidth: 160 },
+  { key: "budget", label: "Budget", defaultWidth: 120 },
+  { key: "score", label: "Score", defaultWidth: 90 },
+  { key: "priority", label: "Priority", defaultWidth: 100 },
+  { key: "status", label: "Status", defaultWidth: 110 },
+  { key: "owner", label: "Owner", defaultWidth: 140 },
+  { key: "created", label: "Created", defaultWidth: 110 },
+];
 
 const SOURCES = ["Website", "Facebook", "WhatsApp", "Referral", "Cold Call", "Google Ads", "Email Campaign"];
 const PRODUCTS = ["ERP Suite", "CRM Pro", "Inventory Manager", "HR Toolkit", "Accounting Module"];
@@ -242,6 +256,7 @@ export default function Leads() {
   const [form, setForm] = useState(emptyForm);
   const [statusFilter, setStatusFilter] = useState("All");
   const [selected, setSelected] = useState([]);
+  const { widthFor, setWidth, commitWidths } = useResizableColumns("leads", LEADS_COLUMNS);
   const [scoringId, setScoringId] = useState(null);
   const [scoreError, setScoreError] = useState("");
   const [triedSave, setTriedSave] = useState(false);
@@ -464,20 +479,22 @@ export default function Leads() {
             action={canManage && <Button onClick={openAdd}><Plus size={15} /> Add Lead</Button>}
           />
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-border text-left text-xs text-ink/40 uppercase tracking-wide">
                 <th className="p-3 w-8"></th>
-                <th className="p-3">Lead</th>
-                <th className="p-3">Source</th>
-                <th className="p-3">Product</th>
-                <th className="p-3">Budget</th>
-                <th className="p-3">Score</th>
-                <th className="p-3">Priority</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Owner</th>
-                <th className="p-3">Created</th>
-                <th className="p-3"></th>
+                {LEADS_COLUMNS.map((c) => (
+                  <ResizableTh
+                    key={c.key}
+                    className="p-3"
+                    width={widthFor(c.key, c.defaultWidth)}
+                    onResize={(w) => setWidth(c.key, w)}
+                    onResizeEnd={commitWidths}
+                  >
+                    {c.label}
+                  </ResizableTh>
+                ))}
+                <th className="p-3 w-10"></th>
               </tr>
             </thead>
             <tbody>

@@ -5,6 +5,16 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import useResizableColumns from "../lib/useResizableColumns";
+import ResizableTh from "../components/ResizableTh";
+
+const EMAIL_COLUMNS = [
+  { key: "to", label: "To", defaultWidth: 220 },
+  { key: "subject", label: "Subject", defaultWidth: 320 },
+  { key: "sent", label: "Sent", defaultWidth: 140 },
+  { key: "opened", label: "Opened", defaultWidth: 100 },
+  { key: "clicked", label: "Clicked", defaultWidth: 100 },
+];
 
 export default function EmailPage() {
   const { canManage } = useAuth();
@@ -13,6 +23,7 @@ export default function EmailPage() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ to: "", subject: "", body: "" });
   const [loading, setLoading] = useState(true);
+  const { widthFor, setWidth, commitWidths } = useResizableColumns("email", EMAIL_COLUMNS);
 
   const load = () => {
     Promise.all([api.get("/emails"), api.get("/emails/stats")]).then(([e, s]) => {
@@ -62,14 +73,20 @@ export default function EmailPage() {
         ) : emails.length === 0 ? (
           <EmptyState icon={Mail} title="No emails sent yet" />
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-border text-left text-xs text-ink/40 uppercase tracking-wide">
-                <th className="p-3">To</th>
-                <th className="p-3">Subject</th>
-                <th className="p-3">Sent</th>
-                <th className="p-3">Opened</th>
-                <th className="p-3">Clicked</th>
+                {EMAIL_COLUMNS.map((c) => (
+                  <ResizableTh
+                    key={c.key}
+                    className="p-3"
+                    width={widthFor(c.key, c.defaultWidth)}
+                    onResize={(w) => setWidth(c.key, w)}
+                    onResizeEnd={commitWidths}
+                  >
+                    {c.label}
+                  </ResizableTh>
+                ))}
               </tr>
             </thead>
             <tbody>

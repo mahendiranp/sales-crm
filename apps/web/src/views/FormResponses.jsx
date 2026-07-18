@@ -6,6 +6,8 @@ import { Card, PageHeader, Button, Badge, Modal, inputCls, EmptyState, ConfirmDi
 import Pagination from "../components/Pagination";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import useResizableColumns from "../lib/useResizableColumns";
+import ResizableTh from "../components/ResizableTh";
 
 const PAGE_SIZE = 25;
 
@@ -193,6 +195,19 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
+  // Field ids are unique per-form, so a "Submitted"/"Approval" column from
+  // one form's response table can't collide with another's — but the
+  // storage key is still scoped per formId so each form's table remembers
+  // its own widths as a separate, not-ever-growing blob.
+  const responseColumns = form
+    ? [
+        { key: "submitted", label: "Submitted", defaultWidth: 140 },
+        ...form.fields.map((f) => ({ key: f.id, label: f.label, defaultWidth: 160 })),
+        { key: "approval", label: "Approval", defaultWidth: 120 },
+      ]
+    : [];
+  const { widthFor, setWidth, commitWidths } = useResizableColumns(`form-responses:${formId}`, responseColumns);
+
   const loadForm = () => api.get(`/forms/${formId}`).then((r) => setForm(r.data));
   const loadResponses = () => {
     const params = new URLSearchParams();
@@ -281,21 +296,43 @@ export default function FormResponses({ formId, headerless, highlightResponseId 
         <EmptyState icon={FormInput} title="No responses" subtitle="Responses will show up here once submitted." />
       ) : (
         <div className="overflow-x-auto border border-border rounded-lg">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-border bg-base text-left">
-                <th className="p-2.5 font-medium text-ink/50 text-xs">Submitted</th>
+                <ResizableTh
+                  className="p-2.5 font-medium text-ink/50 text-xs"
+                  width={widthFor("submitted", 140)}
+                  onResize={(w) => setWidth("submitted", w)}
+                  onResizeEnd={commitWidths}
+                >
+                  Submitted
+                </ResizableTh>
                 {form.fields.map((f) => (
-                  <th key={f.id} className="p-2.5 font-medium text-ink/50 text-xs">{f.label}</th>
+                  <ResizableTh
+                    key={f.id}
+                    className="p-2.5 font-medium text-ink/50 text-xs"
+                    width={widthFor(f.id, 160)}
+                    onResize={(w) => setWidth(f.id, w)}
+                    onResizeEnd={commitWidths}
+                  >
+                    {f.label}
+                  </ResizableTh>
                 ))}
                 {/* Not just form.workflow?.enabled — a booking field gets an
                     implicit approval workflow (see routes/forms.js) even
                     when the owner never explicitly turned the workflow
                     toggle on, so check the actual responses too. */}
                 {(form.workflow?.enabled || responses.some((r) => r.workflow)) && (
-                  <th className="p-2.5 font-medium text-ink/50 text-xs">Approval</th>
+                  <ResizableTh
+                    className="p-2.5 font-medium text-ink/50 text-xs"
+                    width={widthFor("approval", 120)}
+                    onResize={(w) => setWidth("approval", w)}
+                    onResizeEnd={commitWidths}
+                  >
+                    Approval
+                  </ResizableTh>
                 )}
-                <th className="p-2.5" />
+                <th className="p-2.5 w-10" />
               </tr>
             </thead>
             <tbody>
