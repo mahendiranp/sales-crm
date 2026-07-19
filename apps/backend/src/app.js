@@ -25,6 +25,7 @@ const whatsappSurveysRouter = require("./routes/whatsappSurveys");
 const paymentsRouter = require("./routes/payments");
 const feedbackRouter = require("./routes/feedback");
 const platformRouter = require("./routes/platform");
+const recommendationsRouter = require("./routes/recommendations");
 const { requireAuth } = require("./middleware/auth");
 const { ensureConnected } = require("./db/store");
 
@@ -147,5 +148,6 @@ app.use("/api/whatsapp-surveys", whatsappSurveysRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/feedback", feedbackRouter);
 app.use("/api/platform", platformRouter);
+app.use("/api/recommendations", recommendationsRouter);
 
 module.exports = app;
