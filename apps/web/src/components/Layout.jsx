@@ -15,6 +15,7 @@ import {
   BarChart3,
   ClipboardList,
   TrendingUp,
+  Sparkles,
   UserCog,
   Users,
   Settings,
@@ -79,6 +80,7 @@ const NAV_SECTIONS = [
       { to: "/app/analytics", label: "Analytics", icon: BarChart3, module: "analytics" },
       { to: "/app/reports", label: "Sales Reports", icon: ClipboardList, module: "reports" },
       { to: "/app/performance", label: "Performance", icon: TrendingUp, module: "performance" },
+      { to: "/app/ai-center", label: "AI Center", icon: Sparkles },
     ],
   },
   {
