@@ -125,8 +125,15 @@ export default function Team() {
                   <p className="text-sm font-medium truncate">{member.name}</p>
                   <p className="text-xs text-ink/40 truncate">{member.email} · Added {formatDate(member.createdAt)}</p>
                 </div>
+                {/* inputCls includes "w-full" — appending "w-44" alongside it
+                    doesn't reliably win (both are separate Tailwind utility
+                    classes targeting the same property), and w-full was
+                    winning here, stretching the select and squeezing the
+                    name/email column (flex-1 min-w-0, so it can shrink) down
+                    to invisible. Inline style always beats a class. */}
                 <select
-                  className={`${inputCls} w-44`}
+                  className={`${inputCls} shrink-0`}
+                  style={{ width: "11rem" }}
                   value={member.permission}
                   onChange={(e) => changePermission(member.id, e.target.value)}
                 >
