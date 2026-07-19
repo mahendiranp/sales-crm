@@ -2,19 +2,35 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   Target, Sparkles, ArrowRight, Check, X as XIcon, Mail, ChevronDown,
-  Workflow, Share2, BarChart3, FormInput, Upload, Bot, Clock,
+  Workflow, BarChart3, Upload, Bot, Clock, Lock,
   Building2, HeartPulse, GraduationCap, Factory, Landmark, Truck, Store,
+  Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity,
 } from "lucide-react";
 import { APP_NAME } from "../lib/brand";
 import Seo from "../components/Seo";
 
 const FEATURES = [
-  { icon: Bot, title: "AI Form Builder", desc: "Describe your form in plain English. Flowora creates the fields, validation, and layout in seconds." },
-  { icon: Upload, title: "Import Existing Forms", desc: "Upload PDFs, Word documents, images, or Google Forms. AI converts them into fully editable Flowora forms." },
-  { icon: Workflow, title: "Approval Workflows", desc: "Automatically route submissions through managers, HR, finance, or any approval chain—without emails or spreadsheets." },
-  { icon: BarChart3, title: "AI Insights", desc: "Summarize responses, identify trends, and uncover actionable insights without reading every submission." },
-  { icon: FormInput, title: "Drag-and-drop Builder", desc: "13 field types, branding options, and a live canvas that matches exactly what respondents will see." },
-  { icon: Share2, title: "Publish Anywhere", desc: "Share with a public link or embed on your website. Responses are securely stored and available instantly." },
+  { icon: Bot, title: "AI That Actually Saves Time", desc: "Describe what you need or upload an existing document. AI builds the form, validation, and workflow automatically." },
+  { icon: Upload, title: "No More Rebuilding Forms", desc: "Convert PDFs, Word documents, images, and Google Forms into fully editable forms in seconds." },
+  { icon: Workflow, title: "From Submission to Approval—Automatically", desc: "Every response can trigger approvals, notifications, assignments, and next steps without spreadsheets or email chains." },
+  { icon: BarChart3, title: "Know What's Happening Instantly", desc: "Track submissions, pending approvals, completion rates, and AI-generated insights from one dashboard." },
+  { icon: Lock, title: "Built with Security in Mind", desc: "Encrypted data, role-based permissions, audit logs, secure cloud infrastructure, and full ownership of your data." },
+];
+
+const ALL_FEATURES = [
+  "AI Form Builder", "PDF → Form Converter", "Word → Form Converter", "Image → Form Converter",
+  "Google Forms Import", "Approval Workflows", "Conditional Logic", "AI Insights",
+  "Analytics Dashboard", "Team Collaboration", "Audit Logs", "Role-Based Permissions",
+  "Custom Branding", "API & Webhooks", "CSV & Excel Export",
+];
+
+const SECURITY_POINTS = [
+  { icon: Lock, label: "Encrypted in transit and at rest" },
+  { icon: ShieldCheck, label: "Role-based access control" },
+  { icon: History, label: "Complete audit history" },
+  { icon: DatabaseBackup, label: "Automatic backups" },
+  { icon: Globe, label: "Secure cloud infrastructure" },
+  { icon: Activity, label: "24×7 system monitoring" },
 ];
 
 // true/false/"limited"/"basic" — a defensible, not-fabricated read of each
@@ -30,19 +46,16 @@ const COMPARISON_ROWS = [
 ];
 
 const INDUSTRIES = [
-  { icon: Building2, label: "HR", use: "Leave Requests" },
+  { icon: Building2, label: "Human Resources", use: "Leave Requests" },
+  { icon: Landmark, label: "Finance", use: "Expense Approvals" },
   { icon: HeartPulse, label: "Healthcare", use: "Patient Intake" },
   { icon: GraduationCap, label: "Education", use: "Admissions" },
   { icon: Factory, label: "Manufacturing", use: "Inspection Forms" },
-  { icon: Landmark, label: "Finance", use: "Expense Approvals" },
   { icon: Truck, label: "Logistics", use: "Delivery Confirmations" },
   { icon: Store, label: "Retail", use: "Customer Feedback" },
-];
-
-const TESTIMONIALS = [
-  { quote: "Creating employee onboarding forms now takes 2 minutes instead of 30.", author: "HR Team" },
-  { quote: "We replaced three separate tools with one Flowora workflow.", author: "Operations Lead" },
-  { quote: "The AI Assistant turns a 20-field form into a 2-minute job.", author: "Marketing Manager" },
+  { icon: Briefcase, label: "Operations", use: "Process Requests" },
+  { icon: TrendingUp, label: "Sales", use: "Lead Capture" },
+  { icon: ClipboardList, label: "Administration", use: "Internal Requests" },
 ];
 
 const HOW_IT_WORKS = [
@@ -239,7 +252,7 @@ export default function Landing() {
   return (
     <div className="font-body text-ink">
       <Seo
-        description="Build forms with AI, automate approvals, and track everything from one dashboard."
+        description="Build production-ready forms with AI in 30 seconds. Import PDFs, Word documents, images, or Google Forms—then automate approvals and track everything from one dashboard."
         keywords={[
           "flowora",
           "flowora forms",
@@ -321,22 +334,22 @@ export default function Landing() {
           <Sparkles size={12} /> AI Form Builder — Import PDFs, Word, Images & Google Forms
         </div>
         <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.05] max-w-3xl mx-auto">
-          Create Any Form in 30 Seconds. AI Does the Rest.
+          The Fastest Way to Turn Ideas, PDFs, and Documents into Smart Forms
         </h1>
         <p className="text-ink/60 text-lg max-w-xl mx-auto mt-5">
-          From PDFs, Word documents, images, or a simple prompt, {APP_NAME} creates beautiful forms with approvals
-          and automation—no manual setup required.
+          Build production-ready forms with AI in 30 seconds. Import PDFs, Word documents, images, or Google
+          Forms—then automate approvals, collect responses, and track everything from one dashboard.
         </p>
         <div className="flex items-center justify-center gap-3 mt-8">
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark">
-            Start Free <ArrowRight size={16} />
+            🚀 Start Free
           </Link>
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg border border-border font-medium hover:bg-base">
             Import a Form
           </Link>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-6 text-xs text-ink/50">
-          {["Free forever", "No credit card required", "Import existing forms", "Setup in under 60 seconds"].map((t) => (
+          {["Free forever", "No credit card required", "Setup in under 60 seconds", "Cancel anytime"].map((t) => (
             <span key={t} className="flex items-center gap-1">
               <Check size={12} className="text-primary" /> {t}
             </span>
@@ -367,16 +380,28 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Problem → solution */}
+      {/* Social proof */}
       <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
-        <h2 className="font-display font-bold text-3xl mb-2">Why Teams Are Switching to {APP_NAME}</h2>
-        <p className="text-ink/50 mb-8">Still using Google Forms?</p>
+        <p className="text-ink/70 font-medium">
+          Built for teams that want to spend less time managing forms—and more time getting work done.
+        </p>
+        <p className="text-ink/50 mt-3">
+          From HR requests and expense approvals to customer feedback and inspections, {APP_NAME} helps teams
+          replace repetitive manual work with intelligent workflows.
+        </p>
+      </section>
+
+      {/* See the difference */}
+      <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
+        <h2 className="font-display font-bold text-3xl mb-2">See the Difference</h2>
+        <p className="text-ink/50 mb-8">Traditional forms vs. {APP_NAME}</p>
         <div className="grid sm:grid-cols-2 gap-3 text-left">
           {[
-            { before: "Rebuilding forms manually", after: "Import existing forms instantly" },
-            { before: "Copying responses into spreadsheets", after: "Real-time dashboards" },
-            { before: "Email approval chains", after: "Automated approval workflows" },
-            { before: "Basic forms", after: "AI-powered forms" },
+            { before: "Create forms manually", after: "AI builds forms" },
+            { before: "Email people for approvals", after: "Approvals happen automatically" },
+            { before: "Copy data into spreadsheets", after: "Live dashboards update instantly" },
+            { before: "Follow up endlessly", after: "AI summarizes responses" },
+            { before: "Build reports yourself", after: "Everything stays in one place" },
           ].map((row) => (
             <div key={row.before} className="p-4 rounded-card border border-border bg-white shadow-card">
               <div className="flex items-center gap-2 text-sm text-ink/40 mb-1.5">
@@ -441,7 +466,7 @@ export default function Landing() {
       {/* Features */}
       <section id="features" className="max-w-6xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
-          <h2 className="font-display font-bold text-3xl">Everything you need to collect and act on responses</h2>
+          <h2 className="font-display font-bold text-3xl">Why Businesses Switch to {APP_NAME}</h2>
           <p className="text-ink/50 mt-2">Build, publish, and automate—all from one platform.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5">
@@ -454,6 +479,20 @@ export default function Landing() {
               <p className="text-sm text-ink/60 leading-relaxed">{f.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Full feature checklist */}
+      <section className="bg-base/40 py-20">
+        <div className="max-w-4xl mx-auto px-6">
+          <h2 className="font-display font-bold text-3xl text-center mb-10">Everything You Need. Nothing You Don't.</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {ALL_FEATURES.map((f) => (
+              <div key={f} className="flex items-center gap-2 bg-white border border-border rounded-lg py-2.5 px-4 text-sm text-ink/70">
+                <Check size={14} className="text-primary shrink-0" /> {f}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -513,24 +552,6 @@ export default function Landing() {
               </div>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="bg-base/40 py-20">
-        <div className="max-w-5xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl text-center mb-10">Loved by teams that used to juggle spreadsheets</h2>
-          <div className="grid md:grid-cols-3 gap-5">
-            {TESTIMONIALS.map((t) => (
-              <div key={t.author} className="p-5 rounded-card border border-border bg-white shadow-card">
-                <div className="flex gap-0.5 text-accent mb-3">
-                  {Array.from({ length: 5 }).map((_, i) => <Sparkles key={i} size={13} fill="currentColor" />)}
-                </div>
-                <p className="text-sm text-ink/70 mb-3">"{t.quote}"</p>
-                <p className="text-xs font-medium text-ink/40">— {t.author}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -601,6 +622,23 @@ export default function Landing() {
               {p.key === "free" && <p className="text-[11px] text-ink/35 text-center mt-2">No credit card required</p>}
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Security & Reliability */}
+      <section className="bg-primary text-white py-16">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <ShieldCheck size={28} className="mx-auto mb-4 text-accent" />
+          <h2 className="font-display font-bold text-3xl mb-2">Security & Reliability</h2>
+          <p className="text-white/70 mb-10">Your business data deserves enterprise-grade protection.</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-left">
+            {SECURITY_POINTS.map((s) => (
+              <div key={s.label} className="flex items-center gap-3 bg-white/10 rounded-lg py-3 px-4">
+                <s.icon size={18} className="text-accent shrink-0" />
+                <span className="text-sm">{s.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
