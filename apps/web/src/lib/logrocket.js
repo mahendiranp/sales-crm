@@ -4,11 +4,12 @@
 // logged-in usage so a support/engineering issue can be debugged from an
 // actual session instead of a bug report alone).
 //
-// App ID is public by design (embedded in client-side JS anyone can view,
-// same reasoning as GA_MEASUREMENT_ID in Analytics.jsx) — a plain constant
-// is fine rather than requiring an env var, though NEXT_PUBLIC_LOGROCKET_APP_ID
-// still overrides it if ever a different project/environment needs to.
-const LOGROCKET_APP_ID = process.env.NEXT_PUBLIC_LOGROCKET_APP_ID || "ucyggu/flowora";
+// Set in .env.local (and must be set the same way in Vercel's production
+// env vars — that file itself is never deployed, see apps/web/.env.local).
+// Not sensitive (it'd be visible in client-side JS either way, same
+// reasoning as GA_MEASUREMENT_ID in Analytics.jsx being a plain constant),
+// it's just an env var so a different project/environment can use its own.
+const LOGROCKET_APP_ID = process.env.NEXT_PUBLIC_LOGROCKET_APP_ID;
 
 // Field names that must never reach LogRocket in a request/response body —
 // covers every auth endpoint's payload shape (routes/auth.js): password
@@ -50,8 +51,12 @@ function loadLogRocket() {
 
 let initialized = false;
 
+// Production only — Next.js sets NODE_ENV to "production" for a real
+// `next build`/`next start` and "development" for `next dev`, so this is a
+// no-op for every local dev session regardless of the app ID above, and
+// only actually records in a deployed environment.
 export function isLogRocketConfigured() {
-  return !!LOGROCKET_APP_ID;
+  return !!LOGROCKET_APP_ID && process.env.NODE_ENV === "production";
 }
 
 // Call once, client-side only (see pages/_app.jsx) — safe to call more than
