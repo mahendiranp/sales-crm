@@ -74,12 +74,16 @@ async function createAccountFromPending(pending) {
   emailClient
     .sendMail({
       to: account.email,
-      subject: `Welcome to ${APP_NAME}`,
+      subject: `Welcome to ${APP_NAME}, ${account.name.split(" ")[0]}!`,
       html: emailLayout({
-        preheader: "Your account is ready to go.",
-        heading: `Welcome, ${account.name.split(" ")[0]} 👋`,
-        bodyHtml: `<p>Your ${APP_NAME} account is ready. Log in whenever you like to start building forms and managing your pipeline.</p>`,
-        cta: { label: "Log in", url: `${FRONTEND_URL}/login` },
+        preheader: "Your workspace is ready.",
+        heading: `Welcome to ${APP_NAME}, ${account.name.split(" ")[0]}! 🎉`,
+        bodyHtml: `
+          <p>Your workspace is ready.</p>
+          <p>Build AI-powered forms in seconds, convert PDFs, Word documents, images, and Google Forms into editable forms, then automate approvals—all from one platform.</p>
+          <p>Ready to create your first form?</p>
+        `,
+        cta: { label: "🚀 Open Flowora", url: `${FRONTEND_URL}/app/forms/new` },
       }),
     })
     .catch(() => {});
