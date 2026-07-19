@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import api from "../api/client";
-import { reconnectSocket } from "../lib/socket";
+import socket, { reconnectSocket } from "../lib/socket";
 import { identifyLogRocketUser } from "../lib/logrocket";
 
 const AuthContext = createContext(null);
 const STORAGE_KEY = "pipeline_auth_user";
 
 export function AuthProvider({ children }) {
+  const router = useRouter();
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
 
@@ -17,14 +19,35 @@ export function AuthProvider({ children }) {
         const parsed = JSON.parse(stored);
         setUser(parsed);
         // Socket doesn't autoConnect (see lib/socket.js) — a returning,
-        // already-logged-in visitor (page refresh) still needs it dialed.
-        reconnectSocket();
-        identifyLogRocketUser(parsed);
+        // already-logged-in visitor (page refresh) still needs it dialed,
+        // but only inside the actual CRM: AuthProvider wraps every page
+        // including the public marketing site, so without this a browser
+        // that's ever logged in dials the socket on the landing page too.
+        if (router.pathname.startsWith("/app")) {
+          reconnectSocket();
+          identifyLogRocketUser(parsed);
+        }
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
     }
     setReady(true);
+  }, []);
+
+  // Covers client-side navigation between the marketing site and /app
+  // (no full reload, so the mount effect above won't re-run) — dial in on
+  // entering /app, drop the connection on leaving it.
+  useEffect(() => {
+    const handleRouteChange = (url) => {
+      if (url.startsWith("/app")) {
+        reconnectSocket();
+      } else {
+        socket.disconnect();
+      }
+    };
+    router.events.on("routeChangeComplete", handleRouteChange);
+    return () => router.events.off("routeChangeComplete", handleRouteChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The JWT is what actually authenticates every API call (see api/client.js) —
