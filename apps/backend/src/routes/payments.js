@@ -5,6 +5,7 @@ const { requireManager } = require("../middleware/auth");
 const { PLANS } = require("../utils/plans");
 const razorpay = require("../integrations/razorpayClient");
 const { topUpCreditsForPlan } = require("../utils/aiCredits");
+const { recordEvent, EVENT_TYPES, EVENT_SOURCES } = require("../services/eventEngine");
 
 const router = express.Router();
 const settings = collection("settings");
@@ -110,6 +111,16 @@ router.post("/verify", requireManager, async (req, res) => {
       razorpayOrderId: orderId,
       razorpayPaymentId: paymentId,
       createdAt: new Date().toISOString(),
+    });
+    await recordEvent({
+      accountId: req.user.accountId,
+      type: EVENT_TYPES.PAYMENT_SUCCESS,
+      entityType: "payment",
+      entityId: paymentId,
+      actorId: req.user.id,
+      actorName: req.user.email,
+      source: EVENT_SOURCES.PAYMENTS,
+      payload: { plan, amountInPaise: planConfig.priceInPaise, razorpayOrderId: orderId },
     });
 
     res.json({ success: true, plan });

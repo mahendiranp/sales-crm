@@ -16,6 +16,24 @@ const { validateFileAnswer } = require("../utils/fileUploads");
 const { validateSubmission } = require("../utils/formValidation");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
+const { recordEvent, EVENT_TYPES, EVENT_SOURCES, SEVERITY } = require("../services/eventEngine");
+const { evaluateRules } = require("../services/ruleEngine");
+
+// There's no scheduled job running the Rule Engine on a timer (see
+// ruleEngine.js's doc comment) — recommendations are only ever (re)computed
+// when something calls this, so every place an approval-related event is
+// recorded also triggers it, for this account only. Best-effort: a failure
+// here must never turn an otherwise-successful submission/decision into a
+// 500 for the user, so it's caught and logged, never awaited by the caller
+// for its result.
+async function evaluateRulesQuietly(accountId) {
+  try {
+    await evaluateRules(accountId);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`evaluateRules failed for account ${accountId}:`, err);
+  }
+}
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const CLAIM_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -318,6 +336,16 @@ router.post("/", requireManager, async (req, res) => {
     updatedAt: new Date().toISOString(),
   };
   await formsFor(req).insert(form);
+  await recordEvent({
+    accountId: req.user.accountId,
+    type: EVENT_TYPES.FORM_CREATED,
+    entityType: "form",
+    entityId: form.id,
+    actorId: req.user.id,
+    actorName: req.user.email,
+    source: EVENT_SOURCES.FORMS,
+    payload: { name: form.name },
+  });
   res.status(201).json({ ...form, accountId: req.user.accountId });
 });
 
@@ -330,6 +358,16 @@ router.put("/:id", requireManager, async (req, res) => {
   }
   const updated = await formsFor(req).update(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: "Not found" });
+  await recordEvent({
+    accountId: req.user.accountId,
+    type: EVENT_TYPES.FORM_UPDATED,
+    entityType: "form",
+    entityId: updated.id,
+    actorId: req.user.id,
+    actorName: req.user.email,
+    source: EVENT_SOURCES.FORMS,
+    payload: { name: updated.name, status: updated.status },
+  });
   res.json(updated);
 });
 
@@ -339,6 +377,16 @@ router.delete("/:id", requireFullAccess, async (req, res) => {
   const formResponses = await responsesFor(req).query((r) => r.formId === req.params.id);
   await Promise.all(formResponses.map((r) => responsesFor(req).remove(r.id)));
   await formsFor(req).remove(req.params.id);
+  await recordEvent({
+    accountId: req.user.accountId,
+    type: EVENT_TYPES.FORM_DELETED,
+    entityType: "form",
+    entityId: req.params.id,
+    actorId: req.user.id,
+    actorName: req.user.email,
+    source: EVENT_SOURCES.FORMS,
+    payload: { name: form.name },
+  });
   res.status(204).end();
 });
 
@@ -553,6 +601,43 @@ router.post("/:id/responses", async (req, res) => {
     );
   }
   await rawResponses.insert(response);
+  // Everything that happens as a downstream consequence of this one
+  // submission — the approval it may create, the lead it may auto-create —
+  // shares this correlationId, so the AI Observer can reconstruct the whole
+  // "form submitted -> approval pending -> lead created" chain as one
+  // process later instead of seeing three unrelated events.
+  const correlationId = response.id;
+  // Best-effort — a public, unauthenticated route, so these headers are
+  // whatever the respondent's client sent and aren't verified/trusted for
+  // anything beyond descriptive analytics (e.g. spotting a submission spike
+  // from a single IP), never for access control.
+  const submissionMetadata = { ip: req.ip, userAgent: req.get("user-agent") || null };
+  await recordEvent({
+    accountId: form.accountId,
+    type: EVENT_TYPES.RESPONSE_CREATED,
+    entityType: "response",
+    entityId: response.id,
+    source: EVENT_SOURCES.FORMS,
+    correlationId,
+    payload: { formId: form.id, formName: form.name, referenceId: response.referenceId },
+    metadata: submissionMetadata,
+  });
+  // Submitting a response with an unresolved workflow immediately puts it
+  // in someone's approval queue — worth its own event (distinct from the
+  // response.created above) so the AI Observer can track approval latency
+  // without having to infer "pending" from the response payload's shape.
+  if (response.workflow && response.workflow.status === "pending") {
+    await recordEvent({
+      accountId: form.accountId,
+      type: EVENT_TYPES.APPROVAL_PENDING,
+      entityType: "response",
+      entityId: response.id,
+      source: EVENT_SOURCES.FORMS,
+      correlationId,
+      payload: { formId: form.id, formName: form.name },
+    });
+    await evaluateRulesQuietly(form.accountId);
+  }
 
   // Optional per-form toggle (Settings tab) — turns a form into a lead-gen
   // source. Best-effort field mapping since a form's fields are whatever
@@ -563,7 +648,7 @@ router.post("/:id/responses", async (req, res) => {
     const emailField = form.fields.find((f) => f.type === "email");
     const phoneField = form.fields.find((f) => f.type === "phone");
     const nameField = form.fields.find((f) => f.type === "text" || f.type === "longtext");
-    await rawLeads.insert({
+    const lead = {
       id: uuid(),
       name: (nameField && rawAnswers[nameField.id]) || "Website Visitor",
       email: (emailField && rawAnswers[emailField.id]) || "",
@@ -576,6 +661,16 @@ router.post("/:id/responses", async (req, res) => {
       status: "New",
       createdAt: new Date().toISOString(),
       accountId: form.accountId,
+    };
+    await rawLeads.insert(lead);
+    await recordEvent({
+      accountId: form.accountId,
+      type: EVENT_TYPES.LEAD_CREATED,
+      entityType: "lead",
+      entityId: lead.id,
+      source: EVENT_SOURCES.FORMS,
+      correlationId,
+      payload: { formId: form.id, formName: form.name, name: lead.name, email: lead.email },
     });
   }
 
@@ -679,6 +774,24 @@ router.post("/:id/responses/:responseId/workflow/decide", async (req, res) => {
   }
   await responsesFor(req).update(req.params.responseId, { workflow });
 
+  if (workflow.status === "approved" || workflow.status === "rejected") {
+    await recordEvent({
+      accountId: req.user.accountId,
+      type: workflow.status === "approved" ? EVENT_TYPES.APPROVAL_APPROVED : EVENT_TYPES.APPROVAL_REJECTED,
+      entityType: "response",
+      entityId: req.params.responseId,
+      actorId: req.user.id,
+      actorName: req.user.email,
+      source: EVENT_SOURCES.FORMS,
+      severity: workflow.status === "rejected" ? SEVERITY.WARNING : SEVERITY.INFO,
+      payload: { formId: req.params.id, comment },
+    });
+    // Also gives approvalPending48h.js its chance to auto-resolve the
+    // "Approval overdue" recommendation this same decision just settled —
+    // see evaluateRulesQuietly's doc comment above.
+    await evaluateRulesQuietly(req.user.accountId);
+  }
+
   if (workflow.status === "approved") {
     const form = await formsFor(req).find(req.params.id);
     if (form) await notifyApprovalIfEmailAvailable(form, response);
@@ -690,6 +803,16 @@ router.post("/:id/responses/:responseId/workflow/decide", async (req, res) => {
 router.delete("/:id/responses/:responseId", requireFullAccess, async (req, res) => {
   const removed = await responsesFor(req).remove(req.params.responseId);
   if (!removed) return res.status(404).json({ error: "Not found" });
+  await recordEvent({
+    accountId: req.user.accountId,
+    type: EVENT_TYPES.RESPONSE_DELETED,
+    entityType: "response",
+    entityId: req.params.responseId,
+    actorId: req.user.id,
+    actorName: req.user.email,
+    source: EVENT_SOURCES.FORMS,
+    payload: { formId: req.params.id },
+  });
   res.status(204).end();
 });
 
