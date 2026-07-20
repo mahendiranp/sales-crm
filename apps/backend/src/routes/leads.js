@@ -6,11 +6,35 @@ const { requireManager, requireFullAccess, PERMISSION_RANK } = require("../middl
 const { isConfigured: aiConfigured, scoreLead, parseLeadText } = require("../integrations/aiClient");
 const { getAiProviderForAccount, getLimitsForAccount } = require("./settings");
 const { hasEnoughCredits, deductCredits, CREDIT_COSTS } = require("../utils/aiCredits");
+const { recordEvent, EVENT_TYPES } = require("../services/eventEngine");
+const emailClient = require("../integrations/emailClient");
+const { emailLayout } = require("../utils/emailTemplate");
 
 const router = express.Router();
 const leads = (req) => scopedCollection("leads", req.user.accountId);
 const contacts = (req) => scopedCollection("contacts", req.user.accountId);
 const companies = (req) => scopedCollection("companies", req.user.accountId);
+const salespeople = (req) => scopedCollection("users", req.user.accountId);
+
+// Best-effort — the lead really is assigned either way; a missing/invalid
+// email on the directory record just means nobody gets pinged about it,
+// same reasoning as tasks.js's notifyAssignee.
+async function notifyAssignee(req, lead, assignee) {
+  if (!assignee?.email) return;
+  try {
+    await emailClient.sendMail({
+      to: assignee.email,
+      subject: `You've been assigned a lead: ${lead.name}`,
+      html: emailLayout({
+        preheader: "A lead has been assigned to you.",
+        heading: "You have been assigned",
+        bodyHtml: `<p>Lead</p><p><strong>${lead.name}</strong>${lead.company ? ` — ${lead.company}` : ""}</p>`,
+      }),
+    });
+  } catch {
+    // Notification is a nice-to-have — the assignment already succeeded.
+  }
+}
 
 // Backstop for the form's own required-field rules (Lead Name, plus a
 // Mobile Number or Email) — the UI already blocks this, but the API
@@ -34,11 +58,37 @@ function requireLeadContactInfo(req, res, next) {
 // mount base CRUD first, then add extra action routes
 router.use("/", requireLeadContactInfo, crudRouter("leads"));
 
-// Assign a salesperson to a lead
+// Assign a salesperson to a lead. userId refers to the /api/users
+// directory (the same "Users" list Users.jsx manages) — not a login
+// account, so there's no active/inactive concept to check beyond "does
+// this row still exist" (a deleted row is already just absent from the
+// list, nothing extra to enforce there).
 router.post("/:id/assign", requireManager, async (req, res) => {
+  const existing = await leads(req).find(req.params.id);
+  if (!existing) return res.status(404).json({ error: "Lead not found" });
+
   const { userId } = req.body;
-  const updated = await leads(req).update(req.params.id, { assignedTo: userId });
-  if (!updated) return res.status(404).json({ error: "Lead not found" });
+  let assignee = null;
+  if (userId) {
+    assignee = await salespeople(req).find(userId);
+    if (!assignee) return res.status(400).json({ error: "That team member no longer exists." });
+  }
+
+  const updated = await leads(req).update(req.params.id, { assignedTo: userId || null });
+
+  if (assignee && assignee.id !== existing.assignedTo) {
+    await recordEvent({
+      accountId: req.user.accountId,
+      type: EVENT_TYPES.LEAD_ASSIGNED,
+      entityType: "lead",
+      entityId: updated.id,
+      actorId: req.user.id,
+      actorName: req.user.email,
+      payload: { name: updated.name, assigneeName: assignee.name },
+    });
+    await notifyAssignee(req, updated, assignee);
+  }
+
   res.json(updated);
 });
 

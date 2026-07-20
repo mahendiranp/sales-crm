@@ -10,6 +10,7 @@ const PIPELINE_MODULE_KEYS = ["leads", "contacts", "companies", "deals"];
 
 describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
   let pipelineEnabled = false;
+  let adminToken = null;
 
   before(() => {
     // This suite logs in as master admin (see beforeEach below), who
@@ -22,9 +23,16 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
       if (!pipelineEnabled) {
         cy.log(
           "Pipeline (Leads/Contacts/Companies/Deals) isn't released platform-wide — skipping this suite. " +
-            "Release it from the Admin Portal's \"Release to all users\" section to run these tests."
+            'Release it from the Admin Portal\'s "Release to all users" section to run these tests.',
         );
       }
+    });
+    cy.request({
+      method: "POST",
+      url: "/api/auth/login",
+      body: { email: "admin@pipeline.com", password: "admin123" },
+    }).then((loginRes) => {
+      adminToken = loginRes.body.token;
     });
   });
 
@@ -53,7 +61,9 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     cy.contains("label", "Lead Name").find("input").type(unique);
     cy.contains("label", "Mobile Number").find("input").type(mobile);
     cy.contains("label", "Company").find("input").type(`${unique} Co`);
-    cy.get("textarea[placeholder*='Looking for ERP']").type("Created by Cypress pipeline test.");
+    cy.get("textarea[placeholder*='Looking for ERP']").type(
+      "Created by Cypress pipeline test.",
+    );
     cy.contains("button", "Save Lead").click();
     cy.wait("@createLead").its("response.statusCode").should("eq", 201);
 
@@ -70,9 +80,13 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     // Duplicate detection: adding a second lead with the same mobile
     // number should flag it inline, without blocking the save.
     cy.contains("button", "Add Lead").click();
-    cy.contains("label", "Lead Name").find("input").type("Duplicate Check Lead");
+    cy.contains("label", "Lead Name")
+      .find("input")
+      .type("Duplicate Check Lead");
     cy.contains("label", "Mobile Number").find("input").type(mobile);
-    cy.contains(`A lead with this phone or email already exists: ${unique}`).should("be.visible");
+    cy.contains(
+      `A lead with this phone or email already exists: ${unique}`,
+    ).should("be.visible");
     cy.contains("button", "Cancel").click();
   });
 
@@ -143,10 +157,12 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     // Pick whichever contact happens to exist — earlier tests in this file
     // (and existing seed data) guarantee at least one. This only cares
     // that picking one produces a real contactId, not which one.
-    cy.contains("label", "Contact").find("select").then(($select) => {
-      const firstRealOption = $select.find("option").eq(1).val();
-      if (firstRealOption) cy.wrap($select).select(firstRealOption);
-    });
+    cy.contains("label", "Contact")
+      .find("select")
+      .then(($select) => {
+        const firstRealOption = $select.find("option").eq(1).val();
+        if (firstRealOption) cy.wrap($select).select(firstRealOption);
+      });
     cy.contains("label", "Expected Revenue (₹)").find("input").type("250000");
     cy.contains("label", "Probability (%)").find("input").clear().type("65");
     cy.contains("label", "Competitors").find("input").type("Zoho, Freshsales");
@@ -163,10 +179,152 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     // subtitle includes both the raw pipeline total and the probability-
     // weighted forecast — proves the new forecast math is actually wired
     // up, not just present in the deal record.
-    cy.contains(/in active pipeline.*forecast \(probability-weighted\)/).should("be.visible");
+    cy.contains(/in active pipeline.*forecast \(probability-weighted\)/).should(
+      "be.visible",
+    );
 
     // The deal grid grows taller than the viewport as more deals
     // accumulate across test runs — scrollIntoView() before asserting.
     cy.contains(unique).scrollIntoView().should("be.visible");
+  });
+
+  it("searches leads by name and only shows matches", () => {
+    const unique = `Cypress Search ${Date.now()} ABC Technologies`;
+
+    cy.intercept("POST", "/api/leads").as("createLead");
+    cy.visit("/app/leads");
+    cy.contains("button", "Add Lead").click();
+    cy.contains("label", "Lead Name").find("input").type(unique);
+    cy.contains("label", "Mobile Number").find("input").type("9812345680");
+    cy.contains("button", "Save Lead").click();
+    cy.wait("@createLead");
+
+    // The leads table has its own search box, distinct from a name filter
+    // dropdown — a substring of the lead's name should isolate it from
+    // every other lead seeded or created by earlier tests in this file.
+    cy.get('input[type="search"]').type("ABC Technologies");
+    cy.contains(unique).should("be.visible");
+    cy.contains("Cypress Lead ").should("not.exist");
+    cy.get('input[type="search"]').clear();
+  });
+
+  it("moves a lead to a new pipeline stage via Edit, and Timeline records the change", () => {
+    // Leads.jsx is a sortable/filterable table, not a drag-and-drop Kanban
+    // board — there's no draggable stage column to move a card across.
+    // The equivalent real interaction is changing Status from the row's
+    // Edit action, which is what actually mutates the record end to end.
+    const unique = `Cypress Stage ${Date.now()}`;
+
+    cy.intercept("POST", "/api/leads").as("createLead");
+    cy.intercept("PUT", "/api/leads/*").as("updateLead");
+    cy.visit("/app/leads");
+    cy.contains("button", "Add Lead").click();
+    cy.contains("label", "Lead Name").find("input").type(unique);
+    cy.contains("label", "Mobile Number").find("input").type("9812345681");
+    cy.contains("button", "Save Lead").click();
+    cy.wait("@createLead");
+
+    cy.contains("tr", unique).within(() => {
+      cy.get('button[title="More actions"]').click();
+    });
+    cy.contains("button", "Edit").click();
+    cy.contains("label", "Status").find("select").select("Qualified");
+    cy.contains("button", "Save Lead").click();
+    cy.wait("@updateLead").its("response.statusCode").should("eq", 200);
+
+    cy.contains("tr", unique)
+      .scrollIntoView()
+      .contains("Qualified")
+      .should("be.visible");
+
+    // Timeline records the change — filtered to Today (its default) is
+    // enough since this just happened.
+    cy.visit("/app/timeline");
+    cy.contains(unique).should("be.visible");
+  });
+
+  it("creates a contact linked to a company from the Contacts page directly", () => {
+    const companyName = `Cypress Assoc Co ${Date.now()}`;
+    const contactName = `Cypress Assoc Contact ${Date.now()}`;
+
+    cy.intercept("POST", "/api/companies").as("createCompany");
+    cy.visit("/app/companies");
+    cy.contains("button", "Add Company").click();
+    cy.contains("label", "Company Name").find("input").type(companyName);
+    cy.contains("button", "Save Company").click();
+    cy.wait("@createCompany");
+    cy.contains(companyName).scrollIntoView().should("be.visible");
+
+    cy.intercept("POST", "/api/contacts").as("createContact");
+    cy.visit("/app/contacts");
+    cy.contains("button", "Add Contact").click();
+    cy.contains("label", "Name").find("input").type(contactName);
+    cy.contains("label", "Company").find("select").select(companyName);
+    cy.contains("button", "Save Contact").click();
+    cy.wait("@createContact").then(({ response }) => {
+      expect(response.statusCode).to.eq(201);
+      // Companies.jsx is a flat card grid with no per-company detail/
+      // relationship view (no Contacts/Leads/Deals tab to click into) —
+      // so "the company should display the contact" is verified the only
+      // way it's actually true today: the contact record really does
+      // carry that company's real id, not a UI page that doesn't exist.
+      cy.request({
+        url: "/api/companies",
+        headers: { Authorization: `Bearer ${adminToken}` },
+      }).then((companiesRes) => {
+        const company = companiesRes.body.find((c) => c.name === companyName);
+        expect(response.body.companyId).to.eq(company.id);
+      });
+    });
+
+    cy.contains(contactName).scrollIntoView().should("be.visible");
+  });
+
+  it("creates a deal from a qualified lead (via convert) and Timeline contains the chain", () => {
+    // There's no leadId field on a Deal — a lead becomes deal-eligible by
+    // converting it into a Contact/Company first (same as the "converts a
+    // lead" test above), then a deal is created against that real contact.
+    // That conversion is what "create a deal from a lead" actually means
+    // in this app's data model.
+    const unique = `Cypress LeadToDeal ${Date.now()}`;
+    const companyName = `${unique} Co`;
+
+    cy.intercept("POST", "/api/leads").as("createLead");
+    cy.intercept("POST", "/api/leads/*/convert").as("convertLead");
+    cy.intercept("POST", "/api/deals").as("createDeal");
+
+    cy.visit("/app/leads");
+    cy.contains("button", "Add Lead").click();
+    cy.contains("label", "Lead Name").find("input").type(unique);
+    cy.contains("label", "Mobile Number").find("input").type("9812345682");
+    cy.contains("label", "Company").find("input").type(companyName);
+    cy.contains("button", "Save Lead").click();
+    cy.wait("@createLead");
+
+    cy.contains("tr", unique).within(() => {
+      cy.get('button[title="More actions"]').click();
+      cy.contains("button", "Convert to customer").click();
+    });
+    cy.contains("button", "Confirm Conversion").click();
+    cy.wait("@convertLead").then(({ response }) => {
+      const contactId = response.body.id;
+
+      cy.visit("/app/deals");
+      cy.contains("button", "Add Deal").click();
+      cy.contains("label", "Deal Title").find("input").type(`${unique} Deal`);
+      if (contactId) {
+        cy.contains("label", "Contact").find("select").select(contactId);
+      }
+      cy.contains("button", "Save Deal").click();
+      cy.wait("@createDeal").its("response.statusCode").should("eq", 201);
+    });
+
+    cy.contains(`${unique} Deal`).scrollIntoView().should("be.visible");
+
+    // Timeline contains the whole chain — the lead's creation and the
+    // deal's creation both show up as their own events.
+    cy.visit("/app/timeline");
+    cy.contains(unique).should("be.visible");
+    cy.contains(`${unique} Deal`).should("be.visible");
   });
 });

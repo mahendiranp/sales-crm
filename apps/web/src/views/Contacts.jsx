@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { Plus, FileText, MapPin, ShoppingBag, Cake, CalendarClock, Phone, Mail, Users, Clock } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -16,6 +17,7 @@ const LOG_TYPES = [
 ];
 
 export default function Contacts() {
+  const router = useRouter();
   const { user, canManage } = useAuth();
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -42,6 +44,15 @@ export default function Contacts() {
   useLiveCollection(["contacts", "activities", "companies"], load);
 
   const openAdd = () => { setForm(emptyForm); setModal(true); };
+
+  // Landed here from the global "+ Create" menu (Layout.jsx).
+  useEffect(() => {
+    if (router.isReady && router.query.create === "1" && canManage) {
+      openAdd();
+      router.replace("/app/contacts", undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query.create, canManage]);
 
   const saveContact = async () => {
     if (!form.name.trim()) return;

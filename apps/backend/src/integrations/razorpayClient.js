@@ -28,11 +28,15 @@ function getClient() {
   return client;
 }
 
-// `amountInPaise` — Razorpay's API works in the smallest currency unit
-// (paise for INR), same convention used in utils/plans.js's priceInPaise.
-async function createOrder({ amountInPaise, currency = "INR", receipt, notes }) {
+// `amountInMinorUnits` — Razorpay's API works in the smallest currency
+// unit (cents for USD, paise for INR), same convention used in
+// utils/plans.js's priceInMinorUnits. `currency` must match what the
+// connected Razorpay account is actually approved to charge in — see the
+// note on utils/plans.js's Growth plan about USD requiring international
+// payments to be enabled on that account.
+async function createOrder({ amountInMinorUnits, currency = "USD", receipt, notes }) {
   return getClient().orders.create({
-    amount: amountInPaise,
+    amount: amountInMinorUnits,
     currency,
     receipt,
     notes,

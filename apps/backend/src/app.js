@@ -25,6 +25,11 @@ const whatsappSurveysRouter = require("./routes/whatsappSurveys");
 const paymentsRouter = require("./routes/payments");
 const feedbackRouter = require("./routes/feedback");
 const platformRouter = require("./routes/platform");
+const recommendationsRouter = require("./routes/recommendations");
+const tasksRouter = require("./routes/tasks");
+const eventsRouter = require("./routes/events");
+const meetingsRouter = require("./routes/meetings");
+const searchRouter = require("./routes/search");
 const { requireAuth } = require("./middleware/auth");
 const { ensureConnected } = require("./db/store");
 
@@ -133,7 +138,11 @@ app.use((req, res, next) => {
 
 app.use("/api/leads", leadsRouter);
 app.use("/api/deals", dealsRouter);
-app.use("/api", simpleModulesRouter); // contacts, companies, activities, tasks, templates, users, teams, invoices, expenses, documents
+app.use("/api", simpleModulesRouter); // contacts, companies, activities, templates, users, teams, invoices, expenses, documents
+app.use("/api/tasks", tasksRouter);
+app.use("/api/events", eventsRouter);
+app.use("/api/meetings", meetingsRouter);
+app.use("/api/search", searchRouter);
 app.use("/api/whatsapp", whatsappRouter);
 app.use("/api/emails", emailRouter);
 app.use("/api/dashboard", dashboardRouter);
@@ -147,5 +156,6 @@ app.use("/api/whatsapp-surveys", whatsappSurveysRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/feedback", feedbackRouter);
 app.use("/api/platform", platformRouter);
+app.use("/api/recommendations", recommendationsRouter);
 
 module.exports = app;

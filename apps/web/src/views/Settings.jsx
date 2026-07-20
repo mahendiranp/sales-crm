@@ -13,8 +13,8 @@ import { loadRazorpayScript } from "../lib/razorpay";
 // Growth is currently the only self-serve-purchasable plan — Starter is
 // free by default and Enterprise is sales-assisted ("Talk to sales" on the
 // landing page), matching utils/plans.js on the backend (only Growth has
-// a priceInPaise).
-const GROWTH_PRICE_LABEL = "₹999/month";
+// a priceInMinorUnits).
+const GROWTH_PRICE_LABEL = "$19/month";
 
 // WhatsApp API / Email Settings / Payment Gateway / Notifications /
 // Integrations aren't wired to anything real yet — the actual WhatsApp/

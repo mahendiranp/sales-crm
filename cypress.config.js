@@ -31,6 +31,24 @@ module.exports = defineConfig({
           }
           return null;
         },
+        // Backdates a real event's createdAt so a test can push it past a
+        // rule's time threshold (e.g. approvalPending48h's 48h) without
+        // waiting on real time — the same reasoning as expireClaimToken
+        // above, since the check runs in the backend process, not the
+        // browser under test.
+        async backdateEvent({ type, entityId, hoursAgo }) {
+          const client = new MongoClient(MONGODB_URI);
+          try {
+            await client.connect();
+            await client
+              .db()
+              .collection("events")
+              .updateOne({ type, entityId }, { $set: { createdAt: new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString() } });
+          } finally {
+            await client.close();
+          }
+          return null;
+        },
       });
     },
   },

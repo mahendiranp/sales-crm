@@ -6,7 +6,9 @@ const router = express.Router();
 router.use("/contacts", crudRouter("contacts"));
 router.use("/companies", crudRouter("companies"));
 router.use("/activities", crudRouter("activities"));
-router.use("/tasks", crudRouter("tasks"));
+// Tasks has its own dedicated router now (routes/tasks.js, mounted
+// directly in app.js) — a real schema (assignee, priority, status,
+// soft delete) instead of crudFactory's arbitrary-shape CRUD.
 router.use("/templates", crudRouter("templates"));
 router.use("/users", crudRouter("users"));
 router.use("/teams", crudRouter("teams"));

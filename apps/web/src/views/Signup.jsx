@@ -281,7 +281,7 @@ export default function Signup() {
               </div>
               <p className="text-[16px] mb-6" style={{ color: "#6B7280" }}>
                 {selectedPlan === "growth"
-                  ? "Signing up for Growth (₹999/month) — you'll pay after verifying your email."
+                  ? "Signing up for Growth ($19/month) — you'll pay after verifying your email."
                   : "Start building AI-powered forms for free. No credit card required."}
               </p>
 
@@ -458,7 +458,7 @@ export default function Signup() {
               <div className="border border-primary/20 bg-primary/5 rounded-lg p-4 mb-4">
                 <div className="flex items-center justify-between">
                   <p className="font-medium">Growth plan</p>
-                  <p className="font-display font-semibold text-lg">₹999/month</p>
+                  <p className="font-display font-semibold text-lg">$19/month</p>
                 </div>
               </div>
 

@@ -41,6 +41,15 @@ export default {
       boxShadow: {
         card: "0 1px 2px rgba(20, 23, 43, 0.04), 0 1px 8px rgba(20, 23, 43, 0.04)",
       },
+      // Used by Landing.jsx's hero mock (animate-[fadeIn_0.4s_ease-out_forwards])
+      // to stagger the "Creating fields / Adding validation / ..." checklist
+      // items in without a JS-driven per-item state machine.
+      keyframes: {
+        fadeIn: {
+          "0%": { opacity: "0", transform: "translateY(2px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+      },
     },
   },
   plugins: [],
