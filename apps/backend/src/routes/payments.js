@@ -33,7 +33,7 @@ router.post("/create-order", requireManager, async (req, res) => {
   }
   const { plan } = req.body;
   const planConfig = PLANS[plan];
-  if (!planConfig || !planConfig.priceInPaise) {
+  if (!planConfig || !planConfig.priceInMinorUnits) {
     return res.status(400).json({ error: "That plan isn't available for self-serve purchase." });
   }
 
@@ -44,7 +44,8 @@ router.post("/create-order", requireManager, async (req, res) => {
   const receipt = `${plan}_${Date.now().toString(36)}_${uuid().slice(0, 8)}`;
   try {
     const order = await razorpay.createOrder({
-      amountInPaise: planConfig.priceInPaise,
+      amountInMinorUnits: planConfig.priceInMinorUnits,
+      currency: planConfig.currency,
       receipt,
       notes: { accountId: req.user.accountId, plan, requestedBy: req.user.id },
     });
@@ -81,7 +82,7 @@ router.post("/verify", requireManager, async (req, res) => {
     return res.status(400).json({ error: "Missing payment confirmation details." });
   }
   const planConfig = PLANS[plan];
-  if (!planConfig || !planConfig.priceInPaise) {
+  if (!planConfig || !planConfig.priceInMinorUnits) {
     return res.status(400).json({ error: "That plan isn't available for self-serve purchase." });
   }
 
@@ -107,7 +108,8 @@ router.post("/verify", requireManager, async (req, res) => {
       id: uuid(),
       accountId: req.user.accountId,
       plan,
-      amountInPaise: planConfig.priceInPaise,
+      amountInMinorUnits: planConfig.priceInMinorUnits,
+      currency: planConfig.currency,
       razorpayOrderId: orderId,
       razorpayPaymentId: paymentId,
       createdAt: new Date().toISOString(),
@@ -120,7 +122,7 @@ router.post("/verify", requireManager, async (req, res) => {
       actorId: req.user.id,
       actorName: req.user.email,
       source: EVENT_SOURCES.PAYMENTS,
-      payload: { plan, amountInPaise: planConfig.priceInPaise, razorpayOrderId: orderId },
+      payload: { plan, amountInMinorUnits: planConfig.priceInMinorUnits, currency: planConfig.currency, razorpayOrderId: orderId },
     });
 
     res.json({ success: true, plan });

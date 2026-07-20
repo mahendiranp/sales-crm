@@ -13,6 +13,14 @@ function singularize(name) {
   return name;
 }
 
+// Best-effort human label for an event's payload — a generic Activity
+// Timeline showing "Lead created" with nothing but a UUID isn't useful;
+// every record this factory manages has one of these fields as its
+// natural display name.
+function displayName(record) {
+  return record.name || record.title || record.email || null;
+}
+
 function crudRouter(collectionName) {
   const router = express.Router();
   const entityType = singularize(collectionName);
@@ -57,6 +65,7 @@ function crudRouter(collectionName) {
       actorId: req.user.id,
       actorName: req.user.email,
       source: collectionName,
+      payload: { name: displayName(record) },
     });
     res.status(201).json({ ...record, accountId: req.user.accountId });
   });
@@ -72,11 +81,15 @@ function crudRouter(collectionName) {
       actorId: req.user.id,
       actorName: req.user.email,
       source: collectionName,
+      payload: { name: displayName(updated) },
     });
     res.json(updated);
   });
 
   router.delete("/:id", requireFullAccess, async (req, res) => {
+    // remove() only returns a boolean — fetch first so the delete event's
+    // payload can still name what was deleted, not just its id.
+    const existing = await col(req).find(req.params.id);
     const removed = await col(req).remove(req.params.id);
     if (!removed) return res.status(404).json({ error: "Not found" });
     await recordEvent({
@@ -87,6 +100,7 @@ function crudRouter(collectionName) {
       actorId: req.user.id,
       actorName: req.user.email,
       source: collectionName,
+      payload: { name: existing ? displayName(existing) : null },
     });
     res.status(204).end();
   });

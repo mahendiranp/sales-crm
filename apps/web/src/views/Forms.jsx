@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import {
   Plus, FormInput, Copy, Trash2, GripVertical, Pencil, Share2, Check, ExternalLink, Eye, ClipboardCheck,
-  LayoutGrid, Inbox, BarChart3, Plug, Settings as SettingsIcon, Sparkles, Send, X as XIcon,
+  LayoutGrid, Inbox, BarChart3, Settings as SettingsIcon, Sparkles, Send, X as XIcon,
   Type, AlignLeft, Mail, Phone, Hash, Calendar, Clock, ChevronDownSquare, CircleDot, CheckSquare,
   Paperclip, Star, ToggleLeft, CalendarClock, Search, UserPlus, Briefcase, ShoppingBag, Users,
   LifeBuoy, Bug, Plane, UserCheck, LogOut, HeartPulse, Receipt, Home, RotateCcw, GraduationCap,
   TrendingUp, FileText, Palette, Columns3, Navigation as NavigationIcon, Image as FormImageIcon, Target,
-  ArrowRight, ChevronDown, ArrowLeft, UploadCloud,
+  ArrowRight, ChevronDown, ArrowLeft, UploadCloud, MoreVertical, GitBranch,
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -58,14 +58,6 @@ const BASIC_FIELD_TYPES = ["text", "longtext", "email", "phone", "number", "date
 const FIELD_CATEGORIES = [
   { key: "basic", label: "Basic Fields", types: FIELD_TYPES.filter((f) => BASIC_FIELD_TYPES.includes(f.type)) },
   { key: "advanced", label: "Advanced Fields", types: FIELD_TYPES.filter((f) => !BASIC_FIELD_TYPES.includes(f.type)) },
-];
-
-const STUDIO_NAV = [
-  { key: "builder", label: "Build", icon: LayoutGrid },
-  { key: "whatsapp", label: "Workflow", icon: Plug },
-  { key: "settings", label: "Settings", icon: SettingsIcon },
-  { key: "responses", label: "Responses", icon: Inbox },
-  { key: "analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 const OPTION_TYPES = ["dropdown", "radio", "checkbox"];
@@ -154,12 +146,157 @@ function newField(type) {
   };
 }
 
-function StatCard({ label, value }) {
+function StatCard({ label, value, delta }) {
   return (
     <Card className="p-4">
       <p className="text-xs font-medium text-ink/50">{label}</p>
-      <p className="text-2xl font-display font-bold mt-1.5">{value}</p>
+      <div className="flex items-baseline gap-2 mt-1.5">
+        <p className="text-2xl font-display font-bold">{value}</p>
+        {delta && <span className="text-xs font-medium text-primary">{delta}</span>}
+      </div>
     </Card>
+  );
+}
+
+const STATUS_META = {
+  Published: { dot: "bg-emerald-500", cls: "bg-emerald-50 text-emerald-700" },
+  Draft: { dot: "bg-amber-500", cls: "bg-amber-50 text-amber-700" },
+};
+
+function StatusBadge({ status }) {
+  const meta = STATUS_META[status] || { dot: "bg-ink/30", cls: "bg-base text-ink/50" };
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${meta.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} /> {status}
+    </span>
+  );
+}
+
+// Every option here funnels to the same /app/forms/new page — it already
+// surfaces Generate-with-AI, Browse Templates/Blank, and Import (one file
+// picker handles PDF/Word/image, plus a Google Form URL field) all
+// together, so there's no separate PDF-only or Word-only screen to deep
+// link into yet. Kept as distinct menu items anyway (matching the spec)
+// since it still cuts straight to "I want to create a form" without an
+// extra click through the page's own three-card chooser — except
+// Duplicate Existing, which is a real, separate flow (there was no way to
+// start "new form" by copying one before this).
+function NewFormMenu({ disabled, onClickDisabled, onDuplicateExisting }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!open) return;
+    const closeIfOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeIfOutside);
+    return () => document.removeEventListener("mousedown", closeIfOutside);
+  }, [open]);
+
+  const items = [
+    { label: "Create Blank Form", icon: Pencil, action: () => router.push("/app/forms/new") },
+    { label: "Create with AI", icon: Sparkles, action: () => router.push("/app/forms/new") },
+    { label: "Import PDF", icon: UploadCloud, action: () => router.push("/app/forms/new") },
+    { label: "Import Word", icon: UploadCloud, action: () => router.push("/app/forms/new") },
+    { label: "Import Google Form", icon: UploadCloud, action: () => router.push("/app/forms/new") },
+    { label: "Duplicate Existing", icon: Copy, action: onDuplicateExisting },
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        onClick={() => (disabled ? onClickDisabled() : setOpen((o) => !o))}
+        className="flex items-center gap-1.5"
+      >
+        <Plus size={15} /> New Form <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-border rounded-lg shadow-card p-1 z-30">
+          {items.map((item) => (
+            <button
+              key={item.label}
+              onClick={() => {
+                setOpen(false);
+                item.action();
+              }}
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left text-ink/70 hover:bg-base rounded-md"
+            >
+              <item.icon size={14} /> {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Per-card overflow menu — Preview stays available read-only; everything
+// that mutates the form is grouped here instead of sitting in a long
+// button row (Workflow/Settings/Publish/Duplicate/Delete used to all be
+// separate always-visible buttons).
+function FormMoreMenu({ form, canManage, onEdit, onWorkflow, onSettings, onDuplicate, onTogglePublish, onDelete, busy }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeIfOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeIfOutside);
+    return () => document.removeEventListener("mousedown", closeIfOutside);
+  }, [open]);
+
+  const itemCls = "flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left text-ink/70 hover:bg-base rounded-md";
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        title="More actions"
+        onClick={() => setOpen((o) => !o)}
+        className="p-1.5 text-ink/40 hover:text-ink hover:bg-base rounded-lg border border-border"
+      >
+        <MoreVertical size={14} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-border rounded-lg shadow-card p-1 z-20">
+          <button
+            onClick={() => {
+              setOpen(false);
+              window.open(`/forms/${form.id}?preview=1`, "_blank");
+            }}
+            className={itemCls}
+          >
+            <Eye size={14} /> Preview
+          </button>
+          {canManage && (
+            <>
+              <button onClick={() => { setOpen(false); onEdit(); }} className={itemCls}>
+                <Pencil size={14} /> Edit
+              </button>
+              <button onClick={() => { setOpen(false); onWorkflow(); }} className={itemCls}>
+                <GitBranch size={14} /> Workflow
+              </button>
+              <button onClick={() => { setOpen(false); onSettings(); }} className={itemCls}>
+                <SettingsIcon size={14} /> Settings
+              </button>
+              <button onClick={() => { setOpen(false); onDuplicate(); }} disabled={busy} className={itemCls}>
+                <Copy size={14} /> Duplicate
+              </button>
+              <button onClick={() => { setOpen(false); onTogglePublish(); }} disabled={busy} className={itemCls}>
+                {form.status === "Published" ? <XIcon size={14} /> : <Check size={14} />} {form.status === "Published" ? "Unpublish" : "Publish"}
+              </button>
+              <div className="h-px bg-border my-1" />
+              <button onClick={() => { setOpen(false); onDelete(); }} disabled={busy} className={`${itemCls} text-danger hover:bg-danger/5`}>
+                <Trash2 size={14} /> Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2841,7 +2978,7 @@ function FormAnalyticsPanel({ form, recentResponses }) {
 }
 
 export default function Forms() {
-  const { canManage, isMasterAdmin } = useAuth();
+  const { user, canManage, isMasterAdmin } = useAuth();
   const router = useRouter();
   const [forms, setForms] = useState([]);
   const [stats, setStats] = useState(null);
@@ -2855,6 +2992,7 @@ export default function Forms() {
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [approvalsCount, setApprovalsCount] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
   // Disables Publish/Duplicate/Delete while any one of them is in flight,
   // so a double-click can't fire the same mutation twice.
   const [actionBusy, setActionBusy] = useState(false);
@@ -2864,6 +3002,11 @@ export default function Forms() {
   // null while loading — treated as "no limit" so buttons aren't briefly
   // disabled before the real plan is known.
   const [planLimits, setPlanLimits] = useState(null);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState(""); // "" | "me"
+  const [sort, setSort] = useState("updated"); // updated | name | responses
 
   const load = () => {
     Promise.all([api.get("/forms"), api.get("/forms/stats")]).then(([f, s]) => {
@@ -2902,6 +3045,39 @@ export default function Forms() {
       setActionBusy(false);
     }
   };
+
+  // Distinct from the per-card Duplicate above — reached from the "New
+  // Form" menu's "Duplicate Existing" entry, so the intent is starting a
+  // new form (drop straight into the builder), not just cloning one
+  // that's already in the list (stay put, list reloads).
+  const duplicateAndBuild = async (form) => {
+    setDuplicateOpen(false);
+    setActionBusy(true);
+    try {
+      const { data } = await api.post(`/forms/${form.id}/duplicate`);
+      router.push(`/app/forms/${data.id}/build`);
+    } catch (err) {
+      setSaveError(err.response?.data?.error || "Couldn't duplicate that form.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const filteredForms = useMemo(() => {
+    let list = forms;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((f) => f.name.toLowerCase().includes(q) || (f.description || "").toLowerCase().includes(q));
+    }
+    if (statusFilter) list = list.filter((f) => f.status === statusFilter);
+    if (ownerFilter === "me") list = list.filter((f) => f.createdBy === user?.id);
+    const sorters = {
+      updated: (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
+      name: (a, b) => a.name.localeCompare(b.name),
+      responses: (a, b) => b.responseCount - a.responseCount,
+    };
+    return [...list].sort(sorters[sort] || sorters.updated);
+  }, [forms, search, statusFilter, ownerFilter, sort, user]);
 
   const deleteForm = async () => {
     const form = deleteTarget;
@@ -2953,28 +3129,24 @@ export default function Forms() {
     }
   };
 
+  const blockedByLimit = () => setSaveError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.`);
+
   return (
     <div>
       <PageHeader
         title="Forms"
-        subtitle="Build custom forms and collect responses."
+        subtitle="Build forms with AI and automate approvals."
         action={
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={() => setApprovalsOpen(true)}>
               <ClipboardCheck size={15} /> My Approvals{approvalsCount > 0 ? ` (${approvalsCount})` : ""}
             </Button>
             {canManage && (
-              <Button
-                onClick={() => {
-                  if (atFormLimit) {
-                    setSaveError(`Your plan (${planLimits.label}) allows up to ${planLimits.maxForms} forms. Upgrade to create more.`);
-                  } else {
-                    router.push("/app/forms/new");
-                  }
-                }}
-              >
-                <Plus size={15} /> New Form
-              </Button>
+              <NewFormMenu
+                disabled={atFormLimit}
+                onClickDisabled={blockedByLimit}
+                onDuplicateExisting={() => setDuplicateOpen(true)}
+              />
             )}
           </div>
         }
@@ -2983,75 +3155,113 @@ export default function Forms() {
       <ApprovalsModal open={approvalsOpen} onClose={() => setApprovalsOpen(false)} onDecided={loadApprovalsCount} />
 
       {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <StatCard label="Total Forms" value={stats.totalForms} />
-          <StatCard label="Total Responses" value={stats.totalResponses} />
-          <Card className="p-4">
-            <p className="text-xs font-medium text-ink/50 mb-1.5">Recent Responses</p>
-            {stats.recentResponses.length === 0 ? (
-              <p className="text-xs text-ink/40">None yet</p>
-            ) : (
-              <div className="space-y-1">
-                {stats.recentResponses.map((r) => (
-                  <div key={r.id} className="flex justify-between text-xs">
-                    <span className="text-ink/70 truncate">{r.formName}</span>
-                    <span className="text-ink/40 shrink-0 ml-2">{timeAgo(r.submittedAt)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <StatCard label="Forms" value={stats.totalForms} delta={stats.newFormsThisWeek > 0 ? `+${stats.newFormsThisWeek} this week` : null} />
+          <StatCard label="Responses" value={stats.totalResponses} delta={stats.responsesToday > 0 ? `+${stats.responsesToday} today` : null} />
+          <StatCard label="Published" value={stats.publishedCount} delta="Active" />
+          <StatCard label="Pending Approval" value={stats.pendingApprovalCount} delta={stats.pendingApprovalCount > 0 ? "Waiting" : null} />
+        </div>
+      )}
+
+      {forms.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-2 bg-base rounded-lg px-3 py-2 flex-1 min-w-[180px]">
+            <Search size={15} className="text-ink/40" />
+            <input
+              placeholder="Search forms…"
+              className="bg-transparent outline-none text-sm w-full"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <select className={inputCls} style={{ width: "auto" }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">All Statuses</option>
+            <option value="Published">Published</option>
+            <option value="Draft">Draft</option>
+          </select>
+          <select className={inputCls} style={{ width: "auto" }} value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}>
+            <option value="">All Owners</option>
+            <option value="me">Created by me</option>
+          </select>
+          <select className={inputCls} style={{ width: "auto" }} value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="updated">Sort: Recently Updated</option>
+            <option value="name">Sort: Name</option>
+            <option value="responses">Sort: Most Responses</option>
+          </select>
         </div>
       )}
 
       {loading ? (
         <div className="text-ink/40 text-sm">Loading…</div>
       ) : forms.length === 0 ? (
-        <Card><EmptyState icon={FormInput} title="No forms yet" subtitle="Create your first form to start collecting responses." /></Card>
+        <Card>
+          <EmptyState
+            icon={FormInput}
+            title="No forms yet"
+            subtitle="Create your first form to start collecting responses."
+            primaryAction={canManage && <Button onClick={() => router.push("/app/forms/new")}><Sparkles size={15} /> Create with AI</Button>}
+            secondaryAction={canManage && <Button variant="secondary" onClick={() => router.push("/app/forms/new")}>Start Blank</Button>}
+          />
+        </Card>
+      ) : filteredForms.length === 0 ? (
+        <Card><EmptyState icon={Search} title="No forms match your filters" subtitle="Try a different search term or clear the filters." /></Card>
       ) : (
         <Card className="divide-y divide-border">
-          {forms.map((f) => (
+          {filteredForms.map((f) => (
             <div key={f.id} className="px-5">
-              <div className="py-4 flex items-center justify-between gap-4">
-                {/* Left column: name + description */}
+              <div className="py-4 flex items-center justify-between gap-4 flex-wrap">
+                {/* Left column: name, badges, and the meta line */}
                 <div className="min-w-0 flex-1">
-                  <Link href={`/app/forms/${f.id}/build`} className="font-display font-semibold text-heading hover:text-primary truncate block">
-                    {f.name}
-                  </Link>
-                  <p className="text-xs text-secondary truncate mt-0.5">
-                    {f.description || "No description"} · {f.responseCount} response{f.responseCount === 1 ? "" : "s"}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link href={`/app/forms/${f.id}/build`} className="font-display font-semibold text-heading hover:text-primary truncate">
+                      {f.name}
+                    </Link>
+                    <StatusBadge status={f.status} />
+                    {f.workflow?.enabled && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary" title="This form has an approval workflow">
+                        <GitBranch size={11} /> Approval Workflow
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-secondary mt-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
+                    <span>{f.responseCount} response{f.responseCount === 1 ? "" : "s"}</span>
+                    <span>Last response: {f.lastResponseAt ? timeAgo(f.lastResponseAt) : "none yet"}</span>
+                    <span>Updated {timeAgo(f.updatedAt)}</span>
+                    {f.createdBy === user?.id && <span>Created by you</span>}
                   </p>
                 </div>
 
-                {/* Right column: status, quick links, actions */}
+                {/* Right column: the two most-used actions, everything else in More */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <Badge>{f.status}</Badge>
-                  {STUDIO_NAV.filter((item) => item.key !== "builder").map((item) => (
-                    <button
-                      key={item.key}
-                      onClick={() => (item.key === "responses" ? router.push(`/app/forms/${f.id}/responses`) : togglePanel(f, item.key))}
-                      title={item.label}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                        active?.id === f.id && tab === item.key
-                          ? "border-primary bg-primary/5 text-primary"
-                          : "border-border text-secondary hover:text-heading hover:border-primary/30"
-                      }`}
-                    >
-                      <item.icon size={13} /> {item.label}
-                    </button>
-                  ))}
-                  <Button variant="secondary" onClick={() => window.open(`/forms/${f.id}?preview=1`, "_blank")} title="Preview">
-                    <Eye size={14} />
-                  </Button>
-                  {canManage && (
-                    <>
-                      <Button variant="secondary" onClick={() => togglePublish(f)} disabled={actionBusy} title={f.status === "Published" ? "Unpublish" : "Publish"}>
-                        {f.status === "Published" ? "Unpublish" : "Publish"}
-                      </Button>
-                      <Button variant="secondary" onClick={() => duplicateForm(f)} disabled={actionBusy} title="Duplicate"><Copy size={14} /></Button>
-                      <Button variant="danger" onClick={() => setDeleteTarget(f)} disabled={actionBusy} title="Delete"><Trash2 size={14} /></Button>
-                    </>
-                  )}
+                  <button
+                    onClick={() => router.push(`/app/forms/${f.id}/responses`)}
+                    title="Responses"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-secondary hover:text-heading hover:border-primary/30"
+                  >
+                    <Inbox size={13} /> Responses
+                  </button>
+                  <button
+                    onClick={() => togglePanel(f, "analytics")}
+                    title="Analytics"
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                      active?.id === f.id && tab === "analytics"
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-secondary hover:text-heading hover:border-primary/30"
+                    }`}
+                  >
+                    <BarChart3 size={13} /> Analytics
+                  </button>
+                  <FormMoreMenu
+                    form={f}
+                    canManage={canManage}
+                    busy={actionBusy}
+                    onEdit={() => router.push(`/app/forms/${f.id}/build`)}
+                    onWorkflow={() => togglePanel(f, "whatsapp")}
+                    onSettings={() => togglePanel(f, "settings")}
+                    onDuplicate={() => duplicateForm(f)}
+                    onTogglePublish={() => togglePublish(f)}
+                    onDelete={() => setDeleteTarget(f)}
+                  />
                 </div>
               </div>
 
@@ -3071,6 +3281,23 @@ export default function Forms() {
           ))}
         </Card>
       )}
+
+      <Modal open={duplicateOpen} onClose={() => setDuplicateOpen(false)} title="Duplicate an Existing Form">
+        <div className="space-y-1 max-h-80 overflow-y-auto">
+          {forms.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => duplicateAndBuild(f)}
+              disabled={actionBusy}
+              className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-base text-left text-sm disabled:opacity-50"
+            >
+              <span className="truncate">{f.name}</span>
+              <span className="text-xs text-ink/40 shrink-0 ml-2">{f.responseCount} response{f.responseCount === 1 ? "" : "s"}</span>
+            </button>
+          ))}
+          {forms.length === 0 && <p className="text-sm text-ink/40 text-center py-6">No forms to duplicate yet.</p>}
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={!!deleteTarget}

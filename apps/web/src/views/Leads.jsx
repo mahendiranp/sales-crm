@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/router";
 import {
   Plus, UserCheck, ArrowRightCircle, Merge, Pencil, Phone, MessageCircle, Mail, Sparkles, MoreVertical,
-  Globe, Share2, Link2, PhoneCall, Megaphone,
+  Globe, Share2, Link2, PhoneCall, Megaphone, Search, UserPlus,
 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -252,6 +254,7 @@ function RowActionsMenu({ lead, canManage, onEdit, onAssign, onConvert }) {
 }
 
 export default function Leads() {
+  const router = useRouter();
   const { canManage, isMasterAdmin } = useAuth();
   const [leads, setLeads] = useState([]);
   const [users, setUsers] = useState([]);
@@ -265,8 +268,11 @@ export default function Leads() {
   const aiAllowed = isMasterAdmin || !accountPlan || limitsFor(accountPlan).aiAssistant;
   const [modal, setModal] = useState(null); // 'add' | 'edit' | 'assign' | 'convert' | 'merge'
   const [activeLead, setActiveLead] = useState(null);
+  const [assignSearch, setAssignSearch] = useState("");
+  const [assignSelection, setAssignSelection] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [leadSearch, setLeadSearch] = useState("");
   const [selected, setSelected] = useState([]);
   const { widthFor, setWidth, commitWidths } = useResizableColumns("leads", LEADS_COLUMNS);
   const [scoringId, setScoringId] = useState(null);
@@ -307,7 +313,13 @@ export default function Leads() {
 
   const userById = (id) => users.find((u) => u.id === id) || null;
 
-  const filtered = statusFilter === "All" ? leads : leads.filter((l) => l.status === statusFilter);
+  const filtered = leads.filter((l) => {
+    const matchesStatus = statusFilter === "All" ? true : l.status === statusFilter;
+    if (!matchesStatus) return false;
+    if (!leadSearch.trim()) return true;
+    const q = leadSearch.trim().toLowerCase();
+    return [l.name, l.mobile, l.email, l.company, l.interestedProduct, l.notes].some((v) => (v || "").toLowerCase().includes(q));
+  });
 
   // Quick-scan summary — computed straight from what's already loaded, no
   // extra request. Gives a sense of the pipeline before scrolling the list.
@@ -321,6 +333,17 @@ export default function Leads() {
 
   const openAdd = () => { setForm(emptyForm); setShowAiPaste(false); setAiPasteText(""); setAiParseError(""); setTriedSave(false); setModal("add"); };
   const openEdit = (lead) => { setActiveLead(lead); setForm(lead); setTriedSave(false); setModal("edit"); };
+
+  // Landed here from the global "+ Create" menu (Layout.jsx) — open
+  // straight to the form. router.isReady guards against reading query
+  // before Next has hydrated it from the URL.
+  useEffect(() => {
+    if (router.isReady && router.query.create === "1" && canManage) {
+      openAdd();
+      router.replace("/app/leads", undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query.create, canManage]);
 
   // Simple duplicate detection: same phone or email as an existing lead.
   // Flags it inline while adding rather than silently letting duplicates
@@ -407,8 +430,8 @@ export default function Leads() {
     }
   };
 
-  const assignLead = async (userId) => {
-    await api.post(`/leads/${activeLead.id}/assign`, { userId });
+  const confirmAssign = async () => {
+    await api.post(`/leads/${activeLead.id}/assign`, { userId: assignSelection || null });
     setModal(null);
     load();
   };
@@ -483,18 +506,30 @@ export default function Leads() {
         </Card>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {["All", ...STATUSES].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
-              statusFilter === s ? "bg-primary text-white border-primary" : "bg-white border-border text-ink/60 hover:border-ink/20"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="relative max-w-xs flex-1 min-w-[220px]">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink/30" />
+          <input
+            type="search"
+            placeholder="Search leads…"
+            value={leadSearch}
+            onChange={(e) => setLeadSearch(e.target.value)}
+            className={`${inputCls} pl-8`}
+          />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {["All", ...STATUSES].map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+                statusFilter === s ? "bg-primary text-white border-primary" : "bg-white border-border text-ink/60 hover:border-ink/20"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
 
       <Card>
@@ -531,9 +566,9 @@ export default function Leads() {
                   <td className="p-3">
                     {canManage && <input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelect(lead.id)} />}
                   </td>
-                  <td className="p-3">
-                    <div className="font-medium">{lead.name}</div>
-                    <div className="text-xs text-ink/40">{lead.mobile} · {lead.email}</div>
+                  <td className="p-3 max-w-0">
+                    <div className="font-medium truncate" title={lead.name}>{lead.name}</div>
+                    <div className="text-xs text-ink/40 truncate">{lead.mobile}{lead.mobile && lead.email ? " · " : ""}{lead.email}</div>
                   </td>
                   <td className="p-3 text-ink/70">
                     <span className="inline-flex items-center gap-1.5">
@@ -571,7 +606,7 @@ export default function Leads() {
                       lead={lead}
                       canManage={canManage}
                       onEdit={() => openEdit(lead)}
-                      onAssign={() => { setActiveLead(lead); setModal("assign"); }}
+                      onAssign={() => { setActiveLead(lead); setAssignSelection(lead.assignedTo || null); setAssignSearch(""); setModal("assign"); }}
                       onConvert={() => { setActiveLead(lead); setModal("convert"); }}
                     />
                   </td>
@@ -729,26 +764,65 @@ export default function Leads() {
 
       {/* Assign modal */}
       <Modal open={modal === "assign"} onClose={() => setModal(null)} title="Assign Salesperson">
-        <div className="space-y-1.5">
-          {users.length === 0 && (
-            <p className="text-sm text-ink/40 text-center py-6">No team members yet — add one from Settings → Users.</p>
-          )}
-          {users.map((u) => (
-            <button
-              key={u.id}
-              onClick={() => assignLead(u.id)}
-              className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-base text-left"
-            >
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold" style={{ background: u.avatarColor }}>
-                {u.name.split(" ").map((n) => n[0]).join("")}
-              </div>
-              <div>
-                <div className="text-sm font-medium">{u.name}</div>
-                <div className="text-xs text-ink/40">{u.role}</div>
-              </div>
-            </button>
-          ))}
-        </div>
+        {users.length === 0 ? (
+          <div className="text-center py-6 px-2">
+            <p className="text-sm font-medium text-ink/70">No users are available</p>
+            <p className="text-xs text-ink/40 mt-1 max-w-xs mx-auto">
+              Add a user from Users before assigning this lead.
+            </p>
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <Link href="/app/users?add=1">
+                <Button><UserPlus size={14} /> Go to Users</Button>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink/30" />
+              <input
+                type="search"
+                placeholder="Search…"
+                value={assignSearch}
+                onChange={(e) => setAssignSearch(e.target.value)}
+                className={`${inputCls} pl-8`}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1 max-h-72 overflow-y-auto">
+              {users
+                .filter((u) => {
+                  const q = assignSearch.trim().toLowerCase();
+                  return !q || u.name.toLowerCase().includes(q) || (u.role || "").toLowerCase().includes(q);
+                })
+                .map((u) => {
+                  const selected = assignSelection === u.id;
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => setAssignSelection(u.id)}
+                      className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left border ${
+                        selected ? "border-primary bg-primary/5" : "border-transparent hover:bg-base"
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0" style={{ background: u.avatarColor }}>
+                        {u.name.split(" ").map((n) => n[0]).join("")}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">{u.name}</div>
+                        <div className="text-xs text-ink/40">{u.role}</div>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${selected ? "border-primary bg-primary" : "border-border"}`} />
+                    </button>
+                  );
+                })}
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
+              <Button onClick={confirmAssign} disabled={!assignSelection}>Assign</Button>
+            </div>
+          </>
+        )}
       </Modal>
 
       {/* Convert modal */}

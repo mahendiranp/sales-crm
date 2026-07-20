@@ -8,7 +8,7 @@
     "dev": "node src/index.js",
     "dev:cypress": "NODE_ENV=test node src/index.js",
     "build": "echo 'backend has no build step'",
-    "test": "NODE_ENV=test node test/auth.test.js && NODE_ENV=test node test/eventEngine.test.js && NODE_ENV=test node test/ruleEngine.test.js && NODE_ENV=test node test/recommendations.test.js && NODE_ENV=test node test/e2eLeaveRequest.test.js"
+    "test": "NODE_ENV=test node test/auth.test.js && NODE_ENV=test node test/eventEngine.test.js && NODE_ENV=test node test/ruleEngine.test.js && NODE_ENV=test node test/recommendations.test.js && NODE_ENV=test node test/e2eLeaveRequest.test.js && NODE_ENV=test node test/tasks.test.js && NODE_ENV=test node test/events.test.js && NODE_ENV=test node test/meetings.test.js && NODE_ENV=test node test/search.test.js"
   },
   "keywords": [],
   "author": "",

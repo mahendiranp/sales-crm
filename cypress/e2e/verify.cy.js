@@ -1,13 +1,16 @@
 describe("Landing page", () => {
   it("renders new hero, social proof, comparison, features, industries, security, pricing, FAQ, final CTA", () => {
     cy.visit("/");
-    cy.contains("The Fastest Way to Turn Ideas, PDFs, and Documents into Smart Forms").should("be.visible");
+    cy.contains("Build AI Forms. Automate Everything After Submission.").should("be.visible");
+    cy.contains("Forms are just the beginning.").should("be.visible");
     cy.contains("Built for teams that want to spend less time managing forms").should("be.visible");
     cy.contains("See the Difference").should("be.visible");
-    cy.contains("Create forms manually").should("be.visible");
+    cy.contains("Create manually").should("be.visible");
     cy.contains("Why Businesses Switch to Flowora").should("be.visible");
-    cy.contains("Everything You Need. Nothing You Don't.").should("be.visible");
+    cy.contains("One Platform.").should("be.visible");
+    cy.contains("Everything Your Team Needs").should("be.visible");
     cy.contains("How Flowora compares").should("be.visible");
+    cy.contains("After someone submits a form…").should("be.visible");
     cy.contains("Google Forms").should("be.visible");
     cy.contains("Typeform").should("be.visible");
     cy.contains("Perfect for").should("be.visible");
@@ -27,8 +30,44 @@ describe("Landing page", () => {
       cy.contains("no credit card required").should("be.visible");
       cy.contains("Can AI build my form?").should("be.visible");
     });
-    cy.contains("Stop Building Forms the Hard Way").scrollIntoView().should("be.visible");
+    cy.contains("Stop Managing Work Across Five Different Tools").scrollIntoView().should("be.visible");
     cy.screenshot("landing-full", { capture: "fullPage" });
+  });
+
+  // The hero mock and the "How it works" chip row (Landing.jsx) share one
+  // timer (useSyncedStep) cycling Describe → Generate → Publish →
+  // Response → Approval → Done every 1.7s, looping continuously. Rather
+  // than assert exact timing (flaky against real browser/CI speed), just
+  // confirm every step's distinctive content shows up somewhere within
+  // one full loop (6 × 1.7s = 10.2s) — proves the animation actually
+  // cycles through the real story instead of being stuck on one frame.
+  it("hero mock cycles through Describe → Generate → Publish → Response → Approval → Done", () => {
+    cy.visit("/");
+    cy.contains("See Flowora build an approval-ready form in seconds").should("be.visible");
+
+    // Chip row — all six renamed labels present (not the old
+    // "AI Builds"/"Collect"/"Automate" set).
+    cy.contains("Describe").should("be.visible");
+    cy.contains("Generate").should("be.visible");
+    cy.contains("Publish").should("be.visible");
+    cy.contains("Response").should("be.visible");
+    cy.contains("Approval").should("be.visible");
+    cy.contains("Done").should("be.visible");
+
+    // Prompt panel — always visible regardless of step.
+    cy.contains("Create an Employee Leave Request Form").should("be.visible");
+
+    // Generated Form panel — the field checklist appears once the loop
+    // reaches "Generate" and stays visible through every later step.
+    cy.contains("Employee Leave Request", { timeout: 12000 }).should("be.visible");
+    cy.contains("Leave Type").should("be.visible");
+
+    // Right-hand status panel — each step's distinctive content, in
+    // order, within one full loop.
+    cy.contains("flowora.app/f/leave-request", { timeout: 12000 }).should("be.visible");
+    cy.contains("Priya Sharma", { timeout: 12000 }).should("be.visible");
+    cy.contains("Approved", { timeout: 12000 }).should("be.visible");
+    cy.contains("Workflow Finished", { timeout: 12000 }).should("be.visible");
   });
 });
 
@@ -79,7 +118,11 @@ describe("Forms — Add Form page", () => {
 
   it("opens the Add Form page with AI card, search, category filter, popular section", () => {
     cy.visit("/app/forms");
+    // "New Form" is a grouped dropdown now (Forms.jsx's NewFormMenu), not
+    // a direct link — every Forms-group entry lands on /app/forms/new
+    // either way, so "Create Blank Form" gets there same as before.
     cy.contains("button", "New Form").click();
+    cy.contains("button", "Create Blank Form").click();
     cy.url({ timeout: 15000 }).should("include", "/app/forms/new");
 
     cy.contains("h1", "Add Form").should("be.visible");
@@ -214,8 +257,11 @@ describe("Forms — Add Form page", () => {
     // another form's Delete button.
     cy.visit("/app/forms");
     cy.contains("a", uniqueName).should("be.visible");
+    // Delete now lives inside the row's "⋯ More" menu (Forms.jsx's
+    // FormMoreMenu) instead of being its own always-visible button.
     cy.contains("a", uniqueName).closest("div.px-5").within(() => {
-      cy.get('[title="Delete"]').click();
+      cy.get('[title="More actions"]').click();
+      cy.contains("button", "Delete").click();
     });
     cy.contains(`Delete "${uniqueName}"?`).should("be.visible");
     cy.contains("button", "Delete").click();

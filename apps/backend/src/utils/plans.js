@@ -1,7 +1,14 @@
 // Plan limits matching the pricing table on the public landing page
 // (apps/web/src/views/Landing.jsx). Razorpay is wired up (see
 // routes/payments.js) for Growth's self-serve checkout; Enterprise stays
-// sales-assisted (no priceInPaise, no checkout button).
+// sales-assisted (no priceInMinorUnits, no checkout button).
+//
+// Growth is priced in USD ($19/month = 1900 cents) — note this only
+// actually charges in USD if the connected Razorpay account has
+// international payments enabled. That's a business-side approval
+// (KYC/FEMA compliance for an Indian merchant account), not something
+// togglable from here — an account without it will get a real error back
+// from Razorpay's API on checkout despite this code being "correct."
 //
 // AI features need both `aiAssistant: true` on the plan AND a positive AI
 // credit balance (utils/aiCredits.js) — Starter (and any account currently
@@ -21,7 +28,8 @@ const PLANS = {
     aiAssistant: false,
     monthlyAiCredits: 0,
     // Free — never purchasable through checkout, it's just the default.
-    priceInPaise: null,
+    currency: null,
+    priceInMinorUnits: null,
   },
   growth: {
     label: "Growth",
@@ -32,8 +40,9 @@ const PLANS = {
     whatsappBot: true,
     aiAssistant: true,
     monthlyAiCredits: 500,
-    // ₹999/month flat (matches the landing page's "/month" display copy).
-    priceInPaise: 99900,
+    // $19/month flat (matches the landing page's "/month" display copy).
+    currency: "USD",
+    priceInMinorUnits: 1900,
   },
   enterprise: {
     label: "Enterprise",
@@ -45,7 +54,8 @@ const PLANS = {
     aiAssistant: true,
     monthlyAiCredits: 2000,
     // "Custom" pricing — sales-assisted, not self-serve checkout.
-    priceInPaise: null,
+    currency: null,
+    priceInMinorUnits: null,
   },
 };
 

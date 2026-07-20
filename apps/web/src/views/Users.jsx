@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { Plus } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -19,6 +20,7 @@ const USERS_COLUMNS = [
 
 export default function Users() {
   const { canManage } = useAuth();
+  const router = useRouter();
   const [users, setUsers] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -35,6 +37,18 @@ export default function Users() {
     load();
   }, []);
   useLiveCollection(["users"], load);
+
+  // Landed here from the Assign Salesperson dialog's "Add Team Member" CTA
+  // (Leads.jsx) — open straight to the form instead of making them find
+  // the Add User button themselves. router.isReady guards against reading
+  // query before Next has hydrated it from the URL.
+  useEffect(() => {
+    if (router.isReady && router.query.add === "1" && canManage) {
+      setModal(true);
+      router.replace("/app/users", undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query.add, canManage]);
 
   const save = async () => {
     await api.post("/users", form);

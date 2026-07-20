@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { Plus } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -16,6 +17,7 @@ const emptyForm = {
 };
 
 export default function Deals() {
+  const router = useRouter();
   const { canManage } = useAuth();
   const [deals, setDeals] = useState([]);
   const [users, setUsers] = useState([]);
@@ -23,6 +25,15 @@ export default function Deals() {
   const [companies, setCompanies] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
+
+  // Landed here from the global "+ Create" menu (Layout.jsx).
+  useEffect(() => {
+    if (router.isReady && router.query.create === "1" && canManage) {
+      setModal(true);
+      router.replace("/app/deals", undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query.create, canManage]);
   const [activeStage, setActiveStage] = useState(null);
   const [loading, setLoading] = useState(true);
 

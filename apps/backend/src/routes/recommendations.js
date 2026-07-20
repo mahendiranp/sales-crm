@@ -247,7 +247,16 @@ async function notifyApprover(req, recommendation) {
 
   if (approvers.length === 0) return { ok: false, message: "No approver with an email address was found for this step." };
 
-  await Promise.all(
+  // Deliberately not awaited — everything above this point is fast (a
+  // few in-memory DB reads), but actually delivering mail is a real
+  // network call to an external SMTP server with no bound on latency.
+  // The user clicked a button to fire off a reminder, not to babysit an
+  // email server's response time; the confirmation below only promises
+  // the reminder was *queued*, which is true the instant this returns.
+  // Same best-effort reasoning as every other notify* helper in this
+  // codebase (tasks.js/meetings.js) — failures are logged, never surfaced
+  // as if the button click itself failed.
+  Promise.all(
     approvers.map((approver) =>
       emailClient.sendMail({
         to: approver.email,
@@ -259,7 +268,10 @@ async function notifyApprover(req, recommendation) {
         }),
       })
     )
-  );
+  ).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error(`notify-approver: failed to send reminder email(s) for recommendation ${recommendation.id}:`, err);
+  });
   return { ok: true, message: `Notified ${approvers.length} approver(s).` };
 }
 

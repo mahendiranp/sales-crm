@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { Plus, Globe, Building2, MapPin } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -9,12 +10,23 @@ import useLiveCollection from "../lib/useLiveCollection";
 const emptyForm = { name: "", industry: "", employees: "1-10", gst: "", website: "", accountManager: "", address: "", annualRevenue: "" };
 
 export default function Companies() {
+  const router = useRouter();
   const { canManage } = useAuth();
   const [companies, setCompanies] = useState([]);
   const [users, setUsers] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
+
+  // Landed here from the global "+ Create" menu (Layout.jsx).
+  useEffect(() => {
+    if (router.isReady && router.query.create === "1" && canManage) {
+      setForm(emptyForm);
+      setModal(true);
+      router.replace("/app/companies", undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query.create, canManage]);
 
   const load = () => {
     Promise.all([api.get("/companies"), api.get("/users")]).then(([c, u]) => {

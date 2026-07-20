@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PartyPopper, X, ChevronDown } from "lucide-react";
 import api from "../api/client";
 import { Card, PageHeader, inputCls } from "../components/ui";
@@ -372,7 +372,13 @@ function RecommendationCard({ recommendation, onChanged, onViewDetails, selectab
         } else {
           setFeedback({ type: "success", message: res.data?.message || "Done." });
         }
-        onChanged();
+        // Same delay as resolve/dismiss above, for the same reason:
+        // onChanged() (reloadAll) sets the parent's listLoading true,
+        // which swaps the whole card grid for a loading placeholder —
+        // unmounting this card and wiping the feedback message just set
+        // above before it was ever actually visible, if reloaded
+        // immediately.
+        setTimeout(onChanged, 700);
       }
     } catch (err) {
       setFeedback({ type: "warning", message: err.response?.data?.error || "That action couldn't be completed." });
@@ -547,15 +553,31 @@ export default function AiCenter() {
 
   const loadHealth = () => api.get("/recommendations/health").then((r) => setHealth(r.data));
   const loadOpenItems = () => api.get("/recommendations?status=OPEN&limit=100").then((r) => setOpenItems(r.data.items));
+  // Fires on every keystroke in the search box (via the `search` state
+  // dependency below) plus every bulk action / live db:change event, with
+  // several requests routinely in flight at once — nothing here cancels
+  // an earlier one when a newer one starts. Without a staleness guard, an
+  // old, slow request (e.g. an early partial search string that still
+  // happens to match) can resolve *after* a newer one and silently
+  // overwrite the current, correct list with stale data — e.g. a bulk
+  // resolve's fresh (now-empty) result getting clobbered by an in-flight
+  // leftover keystroke request that still shows the item as open. Only
+  // ever apply the response if it's still the most recently issued call.
+  const loadListRequestId = useRef(0);
   const loadList = () => {
+    const requestId = ++loadListRequestId.current;
     setListLoading(true);
     const params = new URLSearchParams({ status, page, limit: PAGE_SIZE, sort });
     if (priority !== "ALL") params.set("priority", priority);
     if (search.trim()) params.set("search", search.trim());
     return api
       .get(`/recommendations?${params.toString()}`)
-      .then((r) => setList(r.data))
-      .finally(() => setListLoading(false));
+      .then((r) => {
+        if (requestId === loadListRequestId.current) setList(r.data);
+      })
+      .finally(() => {
+        if (requestId === loadListRequestId.current) setListLoading(false);
+      });
   };
   const loadTabCounts = () =>
     Promise.all(STATUS_TABS.map((tab) => api.get(`/recommendations?status=${tab}&limit=1`).then((r) => [tab, r.data.total]))).then((entries) =>

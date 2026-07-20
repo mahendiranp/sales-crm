@@ -1,27 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Target, Sparkles, ArrowRight, Check, X as XIcon, Mail, ChevronDown,
-  Workflow, BarChart3, Upload, Bot, Clock, Lock,
+  Workflow, BarChart3, Bot, Clock, Lock,
   Building2, HeartPulse, GraduationCap, Factory, Landmark, Truck, Store,
-  Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity,
+  Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity, Eye,
 } from "lucide-react";
 import { APP_NAME } from "../lib/brand";
 import Seo from "../components/Seo";
 
 const FEATURES = [
-  { icon: Bot, title: "AI That Actually Saves Time", desc: "Describe what you need or upload an existing document. AI builds the form, validation, and workflow automatically." },
-  { icon: Upload, title: "No More Rebuilding Forms", desc: "Convert PDFs, Word documents, images, and Google Forms into fully editable forms in seconds." },
-  { icon: Workflow, title: "From Submission to Approval—Automatically", desc: "Every response can trigger approvals, notifications, assignments, and next steps without spreadsheets or email chains." },
-  { icon: BarChart3, title: "Know What's Happening Instantly", desc: "Track submissions, pending approvals, completion rates, and AI-generated insights from one dashboard." },
-  { icon: Lock, title: "Built with Security in Mind", desc: "Encrypted data, role-based permissions, audit logs, secure cloud infrastructure, and full ownership of your data." },
+  { icon: Bot, title: "AI Forms", desc: "Build forms in seconds—describe what you need or import a PDF, Word doc, image, or Google Form." },
+  { icon: Building2, title: "CRM", desc: "Convert responses into leads and deals, automatically." },
+  { icon: ClipboardList, title: "Work", desc: "Assign tasks and schedule meetings straight from a submission." },
+  { icon: Sparkles, title: "AI", desc: "Receive recommendations and AI-generated summaries as work moves." },
+  { icon: BarChart3, title: "Analytics", desc: "Track every submission, approval, and outcome from one dashboard." },
 ];
 
-const ALL_FEATURES = [
-  "AI Form Builder", "PDF → Form Converter", "Word → Form Converter", "Image → Form Converter",
-  "Google Forms Import", "Approval Workflows", "Conditional Logic", "AI Insights",
-  "Analytics Dashboard", "Team Collaboration", "Audit Logs", "Role-Based Permissions",
-  "Custom Branding", "API & Webhooks", "CSV & Excel Export",
+// Grouped by the same Forms/CRM/Work/AI structure as the rest of the
+// page's "forms are the entry point, everything after is the platform"
+// positioning, instead of one flat undifferentiated checklist.
+const FEATURE_CATEGORIES = [
+  { label: "Forms", items: ["AI Builder", "PDF Import", "Word Import", "Image Import", "Google Forms Import", "Conditional Logic"] },
+  { label: "CRM", items: ["Leads", "Contacts", "Companies", "Deals"] },
+  { label: "Work", items: ["Tasks", "Meetings", "Timeline", "Approval Workflows"] },
+  { label: "AI", items: ["AI Center", "Insights", "Recommendations"] },
 ];
 
 const SECURITY_POINTS = [
@@ -56,6 +59,20 @@ const INDUSTRIES = [
   { icon: Briefcase, label: "Operations", use: "Process Requests" },
   { icon: TrendingUp, label: "Sales", use: "Lead Capture" },
   { icon: ClipboardList, label: "Administration", use: "Internal Requests" },
+];
+
+// A focused subset of INDUSTRIES above, shown as an explicit
+// Form → Workflow → Result chain — the "Perfect for" grid says *who
+// it's for*, this says *what actually happens* for a handful of the most
+// common ones, reusing the same underlying data.
+const USE_CASE_CHAINS = [
+  { label: "HR", form: "Leave Request Form", workflow: "Manager Approval", result: "Leave Approved & Logged" },
+  { label: "Finance", form: "Expense Form", workflow: "Finance Approval", result: "Reimbursement Processed" },
+  { label: "Sales", form: "Lead Capture Form", workflow: "Auto-create Lead", result: "Deal in Pipeline" },
+  { label: "Operations", form: "Process Request Form", workflow: "Task Assigned", result: "Request Completed" },
+  { label: "Customer Support", form: "Support Ticket Form", workflow: "Task + Notify Agent", result: "Ticket Resolved" },
+  { label: "Education", form: "Admission Form", workflow: "Review Approval", result: "Applicant Enrolled" },
+  { label: "Healthcare", form: "Patient Intake Form", workflow: "Front-Desk Review", result: "Appointment Scheduled" },
 ];
 
 const HOW_IT_WORKS = [
@@ -98,7 +115,7 @@ const PLANS = [
     key: "free",
     name: "Free",
     tagline: "For individuals",
-    price: "₹0",
+    price: "$0",
     period: "forever",
     features: ["Up to 3 forms", "100 responses / month", "Upgrade to unlock AI features", "CSV/Excel export", "1 user"],
     cta: "Start Building Free",
@@ -108,7 +125,7 @@ const PLANS = [
     key: "team",
     name: "Team",
     tagline: "For growing businesses",
-    price: "₹999",
+    price: "$19",
     period: "/month",
     features: ["Unlimited forms", "2,000 responses / month", "+500 AI credits / month", "Approval workflows", "Import PDFs, Word, Images & Google Forms", "Team collaboration", "Up to 20 users"],
     cta: "Start free trial",
@@ -197,6 +214,179 @@ function ComparisonCell({ value }) {
   return <span className="text-xs text-ink/50">{value === "limited" ? "Limited" : "Basic"}</span>;
 }
 
+// Single shared timeline driving BOTH the hero mock and the "How it
+// works" chip row below it — one interval, owned by Landing() and passed
+// down as a prop, so the two animations move on the exact same clock
+// instead of two independent setInterval loops that drift apart from
+// each other over time even at the same nominal duration.
+const SYNCED_STEPS = ["Describe", "Generate", "Publish", "Response", "Approval", "Done"];
+const SYNCED_STEP_MS = 1700;
+
+function useSyncedStep() {
+  const [stepIndex, setStepIndex] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setStepIndex((i) => (i + 1) % SYNCED_STEPS.length), SYNCED_STEP_MS);
+    return () => clearInterval(id);
+  }, []);
+  return stepIndex;
+}
+
+const LEAVE_FORM_FIELDS = ["Name", "Leave Type", "Start Date", "End Date"];
+
+// Three always-visible columns (Prompt / Generated Form / right-hand
+// status panel, stacked on mobile). The right panel tells the actual
+// story in order — waiting → published → response received → approval →
+// done — rather than jumping straight to the approval chain, so it
+// matches what a user really sees after publishing a form.
+function HeroMock({ stepIndex }) {
+  const step = SYNCED_STEPS[stepIndex];
+  const at = (s) => stepIndex >= SYNCED_STEPS.indexOf(s);
+
+  return (
+    <div className="rounded-2xl border border-border shadow-card bg-white p-3">
+      <div className="rounded-xl bg-base border border-border p-5 sm:p-6">
+        <div className="grid sm:grid-cols-3 gap-4 text-left items-start">
+          {/* Prompt */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Prompt</p>
+            <div className="bg-white rounded-lg border border-border px-3 py-2.5 text-sm text-ink/70 min-h-[52px]">
+              &quot;Create an Employee Leave Request Form&quot;
+              {step === "Describe" && <span className="inline-block w-[2px] h-3.5 bg-primary ml-0.5 align-middle animate-pulse" />}
+            </div>
+          </div>
+
+          {/* Generated Form — built once at "Generate" and stays visible
+              (as the source of truth) through every later step. */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Generated Form</p>
+            {!at("Generate") ? (
+              <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
+                <p className="text-xs text-ink/30">Waiting for prompt…</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg border border-border p-3.5">
+                <p className="text-sm font-display font-semibold mb-2.5">Employee Leave Request</p>
+                <div className="space-y-1.5">
+                  {LEAVE_FORM_FIELDS.map((f, i) => (
+                    <div
+                      key={f}
+                      className={`flex items-center gap-1.5 text-xs text-ink/70 ${step === "Generate" ? "opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]" : ""}`}
+                      style={step === "Generate" ? { animationDelay: `${i * 0.3}s` } : undefined}
+                    >
+                      <Check size={12} className="text-primary shrink-0" /> {f}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Status panel — completely swaps content per step: waiting →
+              published (with a real-looking public link + Preview) →
+              a response arriving → the approval chain → a final summary. */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">
+              {step === "Publish" ? "Public Form" : step === "Response" ? "Responses" : step === "Approval" ? "Approval Workflow" : step === "Done" ? "Summary" : "Status"}
+            </p>
+
+            {!at("Generate") && (
+              <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
+                <p className="text-xs text-ink/30">Not yet configured</p>
+              </div>
+            )}
+
+            {step === "Generate" && (
+              <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
+                <p className="text-xs text-ink/30">Waiting for publish…</p>
+              </div>
+            )}
+
+            {step === "Publish" && (
+              <div className="bg-white rounded-lg border border-border p-3.5">
+                <p className="flex items-center gap-1.5 text-xs text-ink/50 mb-2">
+                  <Globe size={12} className="text-primary shrink-0" /> flowora.app/f/leave-request
+                </p>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 mb-3">
+                  <Check size={13} /> Published
+                </p>
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-lg px-2.5 py-1.5">
+                  <Eye size={12} /> Preview Form
+                </span>
+              </div>
+            )}
+
+            {step === "Response" && (
+              <div className="bg-white rounded-lg border border-border p-3.5">
+                <p className="text-sm font-medium text-ink/80">Priya Sharma</p>
+                <p className="text-xs text-ink/50 mt-0.5">Vacation · Jul 22</p>
+                <p className="text-[10px] text-ink/35 mt-2">Submitted just now</p>
+              </div>
+            )}
+
+            {step === "Approval" && (
+              <div className="bg-white rounded-lg border border-border p-3.5">
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <span className="flex items-center gap-1 bg-blue-100 text-blue-700 rounded-full px-2.5 py-1">👨 Manager</span>
+                </div>
+                <div className="text-ink/25 pl-3 py-0.5">↓</div>
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <span className="flex items-center gap-1 bg-purple-100 text-purple-700 rounded-full px-2.5 py-1">👩 HR</span>
+                </div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 mt-3 pt-3 border-t border-border">
+                  <Check size={13} /> Approved
+                </p>
+              </div>
+            )}
+
+            {step === "Done" && (
+              <div className="bg-white rounded-lg border border-border p-3.5 space-y-1.5">
+                {["Form Published", "Response Received", "Approval Completed", "Workflow Finished"].map((t) => (
+                  <div key={t} className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                    <Check size={12} className="shrink-0" /> {t}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Animated chip row — Option 1 from feedback: only the current step is
+// highlighted (solid green), completed steps get a checkmark + light
+// green, upcoming steps stay white/gray. Driven by the same stepIndex as
+// HeroMock (see useSyncedStep above) so both animations move in lockstep
+// instead of two independently-drifting timers.
+function WorkflowChips({ stepIndex }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3 text-sm font-medium">
+      {SYNCED_STEPS.map((s, i) => {
+        const isDone = s === "Done";
+        const completed = i < stepIndex || (isDone && stepIndex === SYNCED_STEPS.length - 1);
+        const active = i === stepIndex;
+        return (
+          <span key={s} className="flex items-center gap-2">
+            <span
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-colors ${
+                active
+                  ? "bg-primary text-white border-primary"
+                  : completed
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "bg-white border-border text-ink/60"
+              }`}
+            >
+              {completed && !active && <Check size={12} />} {s}
+            </span>
+            {i < SYNCED_STEPS.length - 1 && <ArrowRight size={13} className={i < stepIndex ? "text-primary/40" : "text-ink/25"} />}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function FaqItem({ q, a }) {
   const [open, setOpen] = useState(false);
   return (
@@ -222,7 +412,7 @@ const JSON_LD = {
     "@type": "Offer",
     name: p.name,
     price: p.price === "Custom" ? undefined : p.price.replace(/[^\d]/g, "") || "0",
-    priceCurrency: p.price.startsWith("₹") ? "INR" : undefined,
+    priceCurrency: p.price === "Custom" ? undefined : "USD",
   })),
 };
 
@@ -249,6 +439,7 @@ const ORG_JSON_LD = {
 };
 
 export default function Landing() {
+  const heroStep = useSyncedStep();
   return (
     <div className="font-body text-ink">
       <Seo
@@ -329,18 +520,18 @@ export default function Landing() {
       <NavBar />
 
       {/* Hero */}
-      <section className="max-w-6xl mx-auto px-6 pt-20 pb-10 text-center">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/8 text-primary text-xs font-medium mb-6">
+      <section className="max-w-6xl mx-auto px-6 pt-14 pb-8 text-center">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/8 text-primary text-xs font-medium mb-5">
           <Sparkles size={12} /> AI Form Builder — Import PDFs, Word, Images & Google Forms
         </div>
         <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.05] max-w-3xl mx-auto">
-          The Fastest Way to Turn Ideas, PDFs, and Documents into Smart Forms
+          Build AI Forms. Automate Everything After Submission.
         </h1>
-        <p className="text-ink/60 text-lg max-w-xl mx-auto mt-5">
-          Build production-ready forms with AI in 30 seconds. Import PDFs, Word documents, images, or Google
-          Forms—then automate approvals, collect responses, and track everything from one dashboard.
+        <p className="text-ink/60 text-lg max-w-2xl mx-auto mt-4">
+          Create AI forms from prompts, PDFs, Word documents, images, or Google Forms. Every submission can trigger
+          approvals, tasks, meetings, CRM updates, and AI insights automatically.
         </p>
-        <div className="flex items-center justify-center gap-3 mt-8">
+        <div className="flex items-center justify-center gap-3 mt-7">
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark">
             🚀 Start Free
           </Link>
@@ -348,70 +539,138 @@ export default function Landing() {
             Import a Form
           </Link>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-6 text-xs text-ink/50">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-5 text-xs text-ink/50">
           {["Free forever", "No credit card required", "Setup in under 60 seconds", "Cancel anytime"].map((t) => (
             <span key={t} className="flex items-center gap-1">
               <Check size={12} className="text-primary" /> {t}
             </span>
           ))}
         </div>
+        {/* Trust indicators — factual, not fabricated metrics (no customer
+            count or response volume to show honestly yet); swap/supplement
+            with real numbers once there's data to back them. */}
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-8 pt-6 border-t border-border/60 text-sm text-ink/60">
+          {["AI Form Builder", "Google Forms Import", "Approval Workflows", "CRM Integration"].map((t) => (
+            <span key={t} className="flex items-center gap-1.5">
+              <Check size={14} className="text-primary" /> {t}
+            </span>
+          ))}
+        </div>
+        {/* Early relevance signal — a fuller "Built for" strip with more
+            context already exists further down (Social proof section);
+            this is just the one-line version right at the top so a
+            visitor knows within seconds whether it's for them. */}
+        <p className="text-xs text-ink/40 mt-4">
+          Perfect for <span className="text-ink/60 font-medium">HR · Finance · Operations · Sales · Education</span>
+        </p>
       </section>
 
-      {/* Product preview mock — a real product screenshot converts far
-          better than a hand-drawn mock; swap this block for an actual
-          <img> of the dashboard once one is captured. */}
-      <section className="max-w-5xl mx-auto px-6 mb-20">
-        <div className="rounded-2xl border border-border shadow-card bg-white p-3">
-          <div className="rounded-xl bg-base border border-border p-6">
-            <div className="bg-white rounded-lg border border-border p-4">
-              <p className="text-[10px] font-medium text-ink/40 mb-2">Recent Form Responses</p>
-              {[
-                { name: "Employee Leave Request", when: "2m ago" },
-                { name: "Customer Feedback", when: "18m ago" },
-                { name: "Event Registration", when: "1h ago" },
-              ].map((r) => (
-                <div key={r.name} className="flex items-center justify-between text-sm py-1.5 border-t border-border first:border-t-0">
-                  <span className="text-ink/70">{r.name}</span>
-                  <span className="text-xs text-ink/40">{r.when}</span>
-                </div>
-              ))}
+      {/* Product preview mock — a small looping animation (prompt →
+          generating → fields appear → approval chain → published) instead
+          of a static list, so a visitor understands what Flowora does
+          within a few seconds without needing a real demo video. A real
+          product screenshot/GIF still converts better than a hand-built
+          mock like this — swap this block for one once captured. */}
+      <section className="max-w-5xl mx-auto px-6 mb-16">
+        <p className="text-center text-sm font-medium text-ink/50 mb-4">
+          See {APP_NAME} build an approval-ready form in seconds
+        </p>
+        <HeroMock stepIndex={heroStep} />
+      </section>
+
+      {/* How it works — simplified to the scannable main chain; the fan-out
+          of everything a submission can trigger moved into its own
+          highlighted "Forms are just the beginning" section below instead
+          of being crammed under these chips too. */}
+      <section className="max-w-3xl mx-auto px-6 mb-20">
+        <WorkflowChips stepIndex={heroStep} />
+      </section>
+
+      {/* Imports — the concrete differentiator, as visual cards instead of
+          just a text mention. */}
+      <section className="max-w-4xl mx-auto px-6 pb-20">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { from: "PDF", to: "Form" },
+            { from: "Word", to: "Form" },
+            { from: "Image", to: "Form" },
+            { from: "Google Forms", to: "Flowora" },
+          ].map((c) => (
+            <div key={c.from} className="p-4 rounded-card border border-border bg-white shadow-card text-center">
+              <p className="text-sm font-semibold text-ink/80">{c.from}</p>
+              <ArrowRight size={13} className="text-primary/50 mx-auto my-1.5 rotate-90" />
+              <p className="text-sm font-medium text-primary">{c.to}</p>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* More Than Forms — the differentiator competitors don't have,
+          called out as a highlighted badge + checklist rather than another
+          chain diagram (there's already two of those on this page). */}
+      <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
+        <h2 className="font-display font-bold text-3xl mb-6">Forms are just the beginning.</h2>
+        <div className="inline-block rounded-2xl border border-primary/25 bg-primary/5 p-6 text-left">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-primary mb-4">
+            <Sparkles size={14} /> Every submission can automatically:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2">
+            {["Create a CRM Lead", "Assign a Task", "Start an Approval", "Schedule a Meeting", "Update Timeline", "Generate AI Insights"].map((t) => (
+              <div key={t} className="flex items-center gap-2 text-sm text-ink/80">
+                <Check size={14} className="text-primary shrink-0" /> {t}
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Social proof */}
+      {/* Social proof — no fabricated customer count, star rating, or
+          "trusted by" claim here (there's no real data to back one yet);
+          swap this for real numbers (companies using Flowora, forms
+          created, responses processed) once there's something honest to
+          show. */}
       <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
         <p className="text-ink/70 font-medium">
           Built for teams that want to spend less time managing forms—and more time getting work done.
         </p>
-        <p className="text-ink/50 mt-3">
+        <p className="text-ink/50 mt-3 mb-6">
           From HR requests and expense approvals to customer feedback and inspections, {APP_NAME} helps teams
           replace repetitive manual work with intelligent workflows.
         </p>
+        <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-medium text-ink/50">
+          {["HR", "Finance", "Operations", "Education", "Healthcare", "Sales"].map((t) => (
+            <span key={t} className="bg-base border border-border rounded-full px-3 py-1.5">{t}</span>
+          ))}
+        </div>
       </section>
 
       {/* See the difference */}
-      <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
+      <section className="max-w-2xl mx-auto px-6 pb-20 text-center">
         <h2 className="font-display font-bold text-3xl mb-2">See the Difference</h2>
         <p className="text-ink/50 mb-8">Traditional forms vs. {APP_NAME}</p>
-        <div className="grid sm:grid-cols-2 gap-3 text-left">
-          {[
-            { before: "Create forms manually", after: "AI builds forms" },
-            { before: "Email people for approvals", after: "Approvals happen automatically" },
-            { before: "Copy data into spreadsheets", after: "Live dashboards update instantly" },
-            { before: "Follow up endlessly", after: "AI summarizes responses" },
-            { before: "Build reports yourself", after: "Everything stays in one place" },
-          ].map((row) => (
-            <div key={row.before} className="p-4 rounded-card border border-border bg-white shadow-card">
-              <div className="flex items-center gap-2 text-sm text-ink/40 mb-1.5">
-                <XIcon size={14} className="text-danger shrink-0" /> {row.before}
-              </div>
-              <div className="flex items-center gap-2 text-sm text-ink/80 font-medium">
-                <Check size={14} className="text-primary shrink-0" /> {row.after}
-              </div>
-            </div>
-          ))}
+        <div className="overflow-hidden border border-border rounded-card text-left">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-base/50">
+                <th className="text-left font-medium py-3 px-4 text-ink/50">Traditional</th>
+                <th className="text-left font-display font-semibold py-3 px-4 text-primary">{APP_NAME}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { before: "Create manually", after: "AI generates instantly" },
+                { before: "Email approvals", after: "Approval workflow" },
+                { before: "Download Excel", after: "Live dashboard" },
+                { before: "Update CRM manually", after: "CRM updates automatically" },
+                { before: "Create tasks manually", after: "Tasks created automatically" },
+              ].map((row) => (
+                <tr key={row.before} className="border-b border-border last:border-b-0">
+                  <td className="py-3 px-4 text-ink/50">{row.before}</td>
+                  <td className="py-3 px-4 text-ink/80 font-medium">{row.after}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -467,7 +726,7 @@ export default function Landing() {
       <section id="features" className="max-w-6xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
           <h2 className="font-display font-bold text-3xl">Why Businesses Switch to {APP_NAME}</h2>
-          <p className="text-ink/50 mt-2">Build, publish, and automate—all from one platform.</p>
+          <p className="text-ink/50 mt-2">Capture. Manage. Automate. Collaborate.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5">
           {FEATURES.map((f) => (
@@ -482,14 +741,66 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* One Platform. Everything Connected. */}
+      <section className="bg-base/40 py-20">
+        <div className="max-w-2xl mx-auto px-6 text-center">
+          <Workflow size={28} className="mx-auto mb-4 text-primary" />
+          <h2 className="font-display font-bold text-3xl mb-2">One Platform.</h2>
+          <h2 className="font-display font-bold text-3xl mb-10">Everything Connected.</h2>
+          <div className="space-y-1.5">
+            {["Form", "Response", "Approval", "Lead", "Task", "Meeting", "Timeline", "AI Center"].map((s, i, arr) => (
+              <div key={s}>
+                <div className="text-sm font-medium text-ink/80 bg-white border border-border rounded-lg py-2.5 px-4 max-w-xs mx-auto">{s}</div>
+                {i < arr.length - 1 && <div className="text-primary/40 text-center py-0.5">↓</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Illustrative mini previews, not real screenshots — the hero
+              mock already shows Forms in detail; this is just enough of
+              each module's own look to signal "this is a broader
+              platform," not a claim of what the real UI pixel-for-pixel
+              looks like. */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-14 text-left">
+            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">CRM</p>
+              <p className="text-xs font-medium text-ink/70 truncate">Priya Sharma</p>
+              <span className="inline-block mt-1 text-[10px] font-medium text-blue-700 bg-blue-100 rounded-full px-1.5 py-0.5">Qualified</span>
+            </div>
+            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">Tasks</p>
+              <p className="text-xs font-medium text-ink/70 truncate">Send proposal</p>
+              <span className="inline-block mt-1 text-[10px] font-medium text-amber-700 bg-amber-100 rounded-full px-1.5 py-0.5">Due today</span>
+            </div>
+            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">Meetings</p>
+              <p className="text-xs font-medium text-ink/70 truncate">Demo call</p>
+              <span className="inline-block mt-1 text-[10px] font-medium text-emerald-700 bg-emerald-100 rounded-full px-1.5 py-0.5">3:00 PM</span>
+            </div>
+            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">Timeline</p>
+              <p className="text-xs font-medium text-ink/70 truncate">Form submitted</p>
+              <span className="inline-block mt-1 text-[10px] text-ink/40">2m ago</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Full feature checklist */}
       <section className="bg-base/40 py-20">
         <div className="max-w-4xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl text-center mb-10">Everything You Need. Nothing You Don't.</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {ALL_FEATURES.map((f) => (
-              <div key={f} className="flex items-center gap-2 bg-white border border-border rounded-lg py-2.5 px-4 text-sm text-ink/70">
-                <Check size={14} className="text-primary shrink-0" /> {f}
+          <h2 className="font-display font-bold text-3xl text-center mb-10">Everything Your Team Needs</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {FEATURE_CATEGORIES.map((cat) => (
+              <div key={cat.label}>
+                <p className="text-xs font-semibold uppercase tracking-wider text-ink/40 mb-3">{cat.label}</p>
+                <div className="space-y-2">
+                  {cat.items.map((f) => (
+                    <div key={f} className="flex items-center gap-2 bg-white border border-border rounded-lg py-2 px-3 text-sm text-ink/70">
+                      <Check size={13} className="text-primary shrink-0" /> {f}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -501,10 +812,58 @@ export default function Landing() {
         <div className="max-w-3xl mx-auto px-6 text-center">
           <Sparkles size={28} className="mx-auto mb-4 text-accent" />
           <h2 className="font-display font-bold text-3xl mb-3">Your AI form-building copilot</h2>
-          <p className="text-white/70 max-w-xl mx-auto">
+          <p className="text-white/70 max-w-xl mx-auto mb-8">
             Describe the form you need—"Create an employee leave request form"—and Flowora
             generates the form structure, fields, and validation in seconds.
           </p>
+          {/* "Detect trends" left out deliberately — there's no response-
+              analytics-over-time feature to back that claim yet. Spotting
+              patterns within one batch of responses (via AI Insights) is
+              real; trend detection across time isn't built. */}
+          <div className="grid sm:grid-cols-2 gap-3 max-w-xl mx-auto text-left">
+            {["AI builds forms", "AI summarizes responses", "AI spots patterns in responses", "AI recommends actions"].map((t) => (
+              <div key={t} className="flex items-center gap-2 bg-white/10 rounded-lg py-2.5 px-3.5 text-sm">
+                <Sparkles size={13} className="text-accent shrink-0" /> {t}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Industries — moved before the comparison table: "who this is for"
+          before "how it stacks up," not after. */}
+      <section className="max-w-5xl mx-auto px-6 pb-20">
+        <h2 className="font-display font-bold text-3xl text-center mb-10">Perfect for</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {INDUSTRIES.map((i) => (
+            <div key={i.label} className="flex items-center gap-3 px-4 py-3.5 rounded-card border border-border bg-white shadow-card">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <i.icon size={17} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{i.label}</p>
+                <p className="text-xs text-ink/40 truncate">{i.use}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-14">
+          <p className="text-sm font-semibold text-ink/60 text-center mb-6">Common use cases</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {USE_CASE_CHAINS.map((u) => (
+              <div key={u.label} className="p-4 rounded-card border border-border bg-white shadow-card">
+                <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">{u.label}</p>
+                <div className="flex items-center gap-1.5 text-xs text-ink/60 flex-wrap">
+                  <span className="bg-base rounded-full px-2 py-1">{u.form}</span>
+                  <ArrowRight size={11} className="text-ink/30 shrink-0" />
+                  <span className="bg-base rounded-full px-2 py-1">{u.workflow}</span>
+                  <ArrowRight size={11} className="text-ink/30 shrink-0" />
+                  <span className="bg-primary/10 text-primary rounded-full px-2 py-1 font-medium">{u.result}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -535,23 +894,34 @@ export default function Landing() {
             </tbody>
           </table>
         </div>
-      </section>
 
-      {/* Industries */}
-      <section className="max-w-5xl mx-auto px-6 pb-20">
-        <h2 className="font-display font-bold text-3xl text-center mb-10">Perfect for</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {INDUSTRIES.map((i) => (
-            <div key={i.label} className="flex items-center gap-3 px-4 py-3.5 rounded-card border border-border bg-white shadow-card">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <i.icon size={17} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold truncate">{i.label}</p>
-                <p className="text-xs text-ink/40 truncate">{i.use}</p>
-              </div>
+        {/* Not claiming parity with a full CRM suite — just showing what
+            actually happens the moment after someone hits Submit, which is
+            where Google Forms and Typeform stop and Flowora keeps going. */}
+        <div className="mt-10 text-center">
+          <p className="text-sm font-semibold text-ink/60 mb-6">After someone submits a form…</p>
+          <div className="grid sm:grid-cols-2 gap-5 max-w-2xl mx-auto">
+            <div className="p-5 rounded-card border border-border bg-white">
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink/40 mb-3">Google Forms</p>
+              <ul className="space-y-2 text-left">
+                {["Collect response", "Download spreadsheet"].map((s) => (
+                  <li key={s} className="flex items-center gap-2 text-sm text-ink/50">
+                    <XIcon size={13} className="text-ink/25 shrink-0" /> {s}
+                  </li>
+                ))}
+              </ul>
             </div>
-          ))}
+            <div className="p-5 rounded-card border border-primary/30 bg-primary/5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">{APP_NAME}</p>
+              <ul className="space-y-2 text-left">
+                {["Create Lead", "Assign Task", "Approval", "Meeting", "Timeline", "AI Insight"].map((s) => (
+                  <li key={s} className="flex items-center gap-2 text-sm text-ink/80 font-medium">
+                    <Check size={13} className="text-primary shrink-0" /> {s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -560,7 +930,14 @@ export default function Landing() {
         <h2 className="font-display font-bold text-3xl text-center mb-2 flex items-center justify-center gap-2">
           <Clock size={26} className="text-primary" /> Save Hours Every Week
         </h2>
-        <p className="text-ink/50 text-center mb-10">This is the part Typeform, Jotform, and Tally don't talk about.</p>
+        <p className="text-ink/50 text-center mb-6">This is the part Typeform, Jotform, and Tally don't talk about.</p>
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
+          {["Save hours every week", "Reduce manual work", "Eliminate spreadsheet handoffs", "Speed up approvals", "Keep everything in one place"].map((t) => (
+            <span key={t} className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/8 rounded-full px-3 py-1.5">
+              <Check size={12} /> {t}
+            </span>
+          ))}
+        </div>
         <div className="overflow-x-auto border border-border rounded-card">
           <table className="w-full text-sm">
             <thead>
@@ -653,15 +1030,15 @@ export default function Landing() {
       {/* Final CTA */}
       <section className="bg-primary text-white py-20 text-center">
         <div className="max-w-2xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl mb-3">Stop Building Forms the Hard Way</h2>
+          <h2 className="font-display font-bold text-3xl mb-3">Stop Managing Work Across Five Different Tools</h2>
           <p className="text-white/70 mb-8">
-            Create new forms with AI or import your existing ones in seconds. Join teams that are replacing manual
-            form creation with intelligent workflows.
+            Build forms, automate approvals, manage leads, assign tasks, schedule meetings, and track everything in
+            one platform.
           </p>
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-6 py-3 rounded-lg bg-white text-primary font-medium hover:bg-white/90">
-            Start Building Free <ArrowRight size={16} />
+            Start Free <ArrowRight size={16} />
           </Link>
-          <p className="text-xs text-white/50 mt-4">No credit card • Free forever</p>
+          <p className="text-xs text-white/50 mt-4">No credit card required</p>
         </div>
       </section>
 
@@ -675,7 +1052,7 @@ export default function Landing() {
               </div>
               <span className="font-display font-semibold">{APP_NAME}</span>
             </div>
-            <p className="text-xs text-ink/40">Forms that route themselves.</p>
+            <p className="text-xs text-ink/40">AI Forms that Move Work Forward.</p>
           </div>
           {FOOTER_COLUMNS.map((col) => (
             <div key={col.title}>

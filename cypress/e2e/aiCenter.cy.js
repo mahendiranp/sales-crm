@@ -19,7 +19,7 @@ describe("AI Center — employee leave request scenario", () => {
   let responseId;
   const formName = `Cypress Leave Request ${Date.now()}`;
 
-  before(() => {
+  const login = () =>
     cy.session("admin-ai-center", () => {
       cy.visit("/login");
       cy.get('input[type="email"]').first().type("admin@pipeline.com");
@@ -28,6 +28,17 @@ describe("AI Center — employee leave request scenario", () => {
       cy.url({ timeout: 15000 }).should("include", "/app");
     });
 
+  // cy.session caches the session, but it only *restores* it for whatever
+  // test actually calls cy.session() — Cypress resets browser storage
+  // between tests by default (test isolation), so calling this only once
+  // in before() (not beforeEach()) meant every test after the first one
+  // silently lost its session and got redirected to /login. Same pattern
+  // pipeline.cy.js already uses correctly; before() still needs its own
+  // call too since before() runs ahead of the first beforeEach().
+  beforeEach(login);
+
+  before(() => {
+    login();
     cy.visit("/app");
     cy.window()
       .then((win) => JSON.parse(win.localStorage.getItem("pipeline_auth_user")))
@@ -97,12 +108,18 @@ describe("AI Center — employee leave request scenario", () => {
     // in the DOM.
     const overdueTitle = `Approval overdue — ${formName}`;
     cy.visit("/app/ai-center");
+    // The list is server-side paginated (20/page, sorted by score) — on a
+    // dev/CI account that's accumulated 20+ open recommendations across
+    // earlier runs, this card can land past page 1 and never render at
+    // all, not just scroll out of view. Search narrows the query itself
+    // (see routes/recommendations.js) rather than relying on this card
+    // happening to sort onto the first page.
+    cy.get('input[type="search"]').type(formName);
     // AI Center's list sits inside <main>'s own overflow-y-auto scroll
     // container (see Layout.jsx), not the window — Cypress's default
     // auto-scroll doesn't reliably resolve a nested scrollable ancestor,
     // so scroll explicitly before asserting visibility rather than relying
-    // on it, especially since the target card can be buried under leftover
-    // cards from previous runs.
+    // on it.
     cy.contains(overdueTitle).scrollIntoView().should("be.visible");
     cy.contains("HIGH").should("be.visible");
 
@@ -168,6 +185,13 @@ describe("AI Center — employee leave request scenario", () => {
     });
 
     cy.visit("/app/ai-center");
+    // Same reasoning as the first test: the list is server-side paginated
+    // (20/page, sorted by score) — on an account with 20+ open
+    // recommendations from earlier runs, this card can land past page 1
+    // and never render, breaking every assertion below before they even
+    // get to test what they're actually meant to test. Narrow the query
+    // itself via search up front, same as the first test does.
+    cy.get('input[type="search"]').type(formName);
 
     // Priority filter row is its own scope — the status tabs above it also
     // have an "All" button with the exact same text, so an unscoped
@@ -184,8 +208,10 @@ describe("AI Center — employee leave request scenario", () => {
     priorityRow().contains("button", "All").click();
 
     // Search: a term that doesn't match this form hides it; the form's own
-    // name finds it again.
-    cy.get('input[type="search"]').type("no-such-form-exists");
+    // name finds it again. Clear first — the box already has formName
+    // typed into it from the pagination guard above, and .type() appends
+    // rather than replaces.
+    cy.get('input[type="search"]').clear().type("no-such-form-exists");
     cy.contains(secondTitle).should("not.exist");
     cy.get('input[type="search"]').clear().type(formName);
     cy.contains(secondTitle).scrollIntoView().should("be.visible");

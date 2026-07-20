@@ -33,9 +33,18 @@ const EVENT_TYPES = Object.freeze({
   APPROVAL_REJECTED: "approval.rejected",
   TASK_CREATED: "task.created",
   TASK_UPDATED: "task.updated",
+  TASK_STATUS_CHANGED: "task.status_changed",
   TASK_DELETED: "task.deleted",
+  COMMENT_CREATED: "comment.created",
   LEAD_CREATED: "lead.created",
+  LEAD_ASSIGNED: "lead.assigned",
   PAYMENT_SUCCESS: "payment.success",
+  MEETING_CREATED: "meeting.created",
+  MEETING_UPDATED: "meeting.updated",
+  MEETING_STATUS_CHANGED: "meeting.status_changed",
+  MEETING_DELETED: "meeting.deleted",
+  MEETING_PARTICIPANT_RESPONDED: "meeting.participant_responded",
+  MEETING_NOTE_ADDED: "meeting.note_added",
 });
 
 // The subsystem an event originated from — lets the AI Observer filter its
@@ -56,6 +65,7 @@ const EVENT_SOURCES = Object.freeze({
   EXPENSES: "expenses",
   DOCUMENTS: "documents",
   PAYMENTS: "payments",
+  MEETINGS: "meetings",
   API: "api",
 });
 
