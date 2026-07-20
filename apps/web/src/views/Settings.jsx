@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Building2, CreditCard, ShieldCheck, MessageCircle, Mail, Wallet, Sparkles, Bell, Plug, LayoutGrid, AlertTriangle } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, Button, Field, inputCls } from "../components/ui";
 import { limitsFor } from "../lib/plans";
 import CoreModulePicker from "../components/CoreModulePicker";
@@ -43,6 +44,7 @@ function baseSections(isOwner) {
 
 export default function Settings() {
   const { user, canManage, isOwner } = useAuth();
+  const toast = useToast();
   const [settings, setSettings] = useState(null);
   const [active, setActive] = useState("companyProfile");
   const [saved, setSaved] = useState(false);
@@ -67,9 +69,13 @@ export default function Settings() {
     // sending the unchanged value back here should never look like an
     // attempted plan change (backend/routes/settings.js also guards this).
     const { apps, modules, subscription, ...editable } = settings;
-    await api.put("/settings", editable);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+    try {
+      await api.put("/settings", editable);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save your settings.");
+    }
   };
 
   const update = (section, patch) => setSettings((s) => ({ ...s, [section]: { ...s[section], ...patch } }));
@@ -77,9 +83,13 @@ export default function Settings() {
   const toggleModule = (key, next) => setSettings((s) => ({ ...s, modules: { ...s.modules, [key]: next ?? !s.modules[key] } }));
   const toggleApp = (key) => setSettings((s) => ({ ...s, apps: { ...s.apps, [key]: !s.apps[key] } }));
   const savePlan = async () => {
-    await api.put("/settings", { modules: settings.modules, apps: settings.apps });
-    setPlanSaved(true);
-    setTimeout(() => setPlanSaved(false), 1800);
+    try {
+      await api.put("/settings", { modules: settings.modules, apps: settings.apps });
+      setPlanSaved(true);
+      setTimeout(() => setPlanSaved(false), 1800);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save your sidebar setup.");
+    }
   };
 
   const upgradeToGrowth = async () => {

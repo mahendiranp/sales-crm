@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import {
@@ -6,6 +6,7 @@ import {
   Globe, Share2, Link2, PhoneCall, Megaphone, Search, UserPlus,
 } from "lucide-react";
 import api from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, SectionHeading, inputCls, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
@@ -255,6 +256,7 @@ function RowActionsMenu({ lead, canManage, onEdit, onAssign, onConvert }) {
 
 export default function Leads() {
   const router = useRouter();
+  const toast = useToast();
   const { canManage, isMasterAdmin } = useAuth();
   const [leads, setLeads] = useState([]);
   const [users, setUsers] = useState([]);
@@ -313,13 +315,17 @@ export default function Leads() {
 
   const userById = (id) => users.find((u) => u.id === id) || null;
 
-  const filtered = leads.filter((l) => {
-    const matchesStatus = statusFilter === "All" ? true : l.status === statusFilter;
-    if (!matchesStatus) return false;
-    if (!leadSearch.trim()) return true;
-    const q = leadSearch.trim().toLowerCase();
-    return [l.name, l.mobile, l.email, l.company, l.interestedProduct, l.notes].some((v) => (v || "").toLowerCase().includes(q));
-  });
+  const filtered = useMemo(
+    () =>
+      leads.filter((l) => {
+        const matchesStatus = statusFilter === "All" ? true : l.status === statusFilter;
+        if (!matchesStatus) return false;
+        if (!leadSearch.trim()) return true;
+        const q = leadSearch.trim().toLowerCase();
+        return [l.name, l.mobile, l.email, l.company, l.interestedProduct, l.notes].some((v) => (v || "").toLowerCase().includes(q));
+      }),
+    [leads, statusFilter, leadSearch]
+  );
 
   // Quick-scan summary — computed straight from what's already loaded, no
   // extra request. Gives a sense of the pipeline before scrolling the list.
@@ -380,21 +386,25 @@ export default function Leads() {
       return;
     }
     const payload = { ...form, budget: Number(form.budget) || 0 };
-    if (modal === "add") {
-      const { data: created } = await api.post("/leads", payload);
-      aiScoreLead(created);
-      if (addAnother) {
-        setForm(emptyForm);
-        setShowAiPaste(false);
-        setAiPasteText("");
+    try {
+      if (modal === "add") {
+        const { data: created } = await api.post("/leads", payload);
+        aiScoreLead(created);
+        if (addAnother) {
+          setForm(emptyForm);
+          setShowAiPaste(false);
+          setAiPasteText("");
+        } else {
+          setModal(null);
+        }
       } else {
+        await api.put(`/leads/${activeLead.id}`, payload);
         setModal(null);
       }
-    } else {
-      await api.put(`/leads/${activeLead.id}`, payload);
-      setModal(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save this lead.");
     }
-    load();
   };
 
   const openExisting = () => {
@@ -431,15 +441,23 @@ export default function Leads() {
   };
 
   const confirmAssign = async () => {
-    await api.post(`/leads/${activeLead.id}/assign`, { userId: assignSelection || null });
-    setModal(null);
-    load();
+    try {
+      await api.post(`/leads/${activeLead.id}/assign`, { userId: assignSelection || null });
+      setModal(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't assign this lead.");
+    }
   };
 
   const convertLead = async () => {
-    await api.post(`/leads/${activeLead.id}/convert`, {});
-    setModal(null);
-    load();
+    try {
+      await api.post(`/leads/${activeLead.id}/convert`, {});
+      setModal(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't convert this lead.");
+    }
   };
 
   const aiScoreLead = async (lead) => {
@@ -458,10 +476,14 @@ export default function Leads() {
   const mergeLeads = async () => {
     if (selected.length < 2) return;
     const [primaryId, ...duplicateIds] = selected;
-    await api.post("/leads/merge", { primaryId, duplicateIds });
-    setSelected([]);
-    setModal(null);
-    load();
+    try {
+      await api.post("/leads/merge", { primaryId, duplicateIds });
+      setSelected([]);
+      setModal(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't merge these leads.");
+    }
   };
 
   const toggleSelect = (id) => {

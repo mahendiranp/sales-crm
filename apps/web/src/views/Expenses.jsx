@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatINR, formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import { useToast } from "../components/ui/Toast";
 
 const CATEGORIES = ["Travel", "Client Meals", "Software", "Office Supplies", "Marketing", "Other"];
 
@@ -12,6 +13,7 @@ const emptyForm = { title: "", category: CATEGORIES[0], amount: "", date: new Da
 
 export default function Expenses() {
   const { canManage, user } = useAuth();
+  const toast = useToast();
   const [expenses, setExpenses] = useState([]);
   const [users, setUsers] = useState([]);
   const [modal, setModal] = useState(false);
@@ -35,23 +37,31 @@ export default function Expenses() {
   const filtered = filter === "All" ? expenses : expenses.filter((e) => e.status === filter);
 
   const setStatus = async (exp, status) => {
-    await api.put(`/expenses/${exp.id}`, { status });
-    load();
+    try {
+      await api.put(`/expenses/${exp.id}`, { status });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || `Couldn't ${status.toLowerCase()} that expense.`);
+    }
   };
 
   const save = async () => {
-    await api.post("/expenses", {
-      title: form.title,
-      category: form.category,
-      amount: Number(form.amount) || 0,
-      date: form.date,
-      submittedBy: user?.id || users[0]?.id,
-      status: "Pending",
-      note: form.note,
-    });
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/expenses", {
+        title: form.title,
+        category: form.category,
+        amount: Number(form.amount) || 0,
+        date: form.date,
+        submittedBy: user?.id || users[0]?.id,
+        status: "Pending",
+        note: form.note,
+      });
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't submit that expense.");
+    }
   };
 
   return (

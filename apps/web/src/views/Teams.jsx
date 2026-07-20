@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Users as UsersIcon } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, Button, Modal, Field, inputCls } from "../components/ui";
 import useLiveCollection from "../lib/useLiveCollection";
 
@@ -9,6 +10,7 @@ const emptyForm = { name: "", region: "", memberIds: [] };
 
 export default function Teams() {
   const { canManage } = useAuth();
+  const toast = useToast();
   const [teams, setTeams] = useState([]);
   const [users, setUsers] = useState([]);
   const [modal, setModal] = useState(false);
@@ -37,10 +39,14 @@ export default function Teams() {
   };
 
   const save = async () => {
-    await api.post("/teams", form);
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/teams", form);
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't create that team.");
+    }
   };
 
   return (

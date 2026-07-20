@@ -19,35 +19,39 @@ const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { recordEvent, EVENT_TYPES, EVENT_SOURCES } = require("../services/eventEngine");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
+const { tenantAccountsFor } = require("../utils/tenantAccounts");
 
 const router = express.Router();
 const tasksFor = (req) => scopedCollection("tasks", req.user.accountId);
 const commentsFor = (req) => scopedCollection("task_comments", req.user.accountId);
 const rawEvents = collection("events");
-const accounts = collection("accounts");
 
 const STATUSES = ["Todo", "In Progress", "Blocked", "Completed"];
 const PRIORITIES = ["Low", "Medium", "High", "Critical"];
 
 // Best-effort — a missing/invalid assignee shouldn't block creating the
-// task, same reasoning as forms.js's notifyApprovalIfEmailAvailable.
+// task, same reasoning as forms.js's notifyApprovalIfEmailAvailable. The
+// send itself is fire-and-forget (see recommendations.js's notifyApprover
+// for the same pattern) so the response doesn't wait on SMTP latency.
 async function notifyAssignee(req, task) {
   try {
     if (!task.assigneeId || task.assigneeId === req.user.id) return; // no self-notification
-    const tenantAccounts = (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId);
+    const tenantAccounts = await tenantAccountsFor(req.user.accountId);
     const assignee = tenantAccounts.find((a) => a.id === task.assigneeId);
     if (!assignee?.email) return;
-    await emailClient.sendMail({
-      to: assignee.email,
-      subject: `New task assigned to you: ${task.title}`,
-      html: emailLayout({
-        preheader: "A task has been assigned to you.",
-        heading: "New task assigned",
-        bodyHtml: `<p><strong>${task.title}</strong>${task.dueDate ? ` — due ${new Date(task.dueDate).toLocaleDateString()}` : ""}</p>${
-          task.description ? `<p>${task.description}</p>` : ""
-        }`,
-      }),
-    });
+    emailClient
+      .sendMail({
+        to: assignee.email,
+        subject: `New task assigned to you: ${task.title}`,
+        html: emailLayout({
+          preheader: "A task has been assigned to you.",
+          heading: "New task assigned",
+          bodyHtml: `<p><strong>${task.title}</strong>${task.dueDate ? ` — due ${new Date(task.dueDate).toLocaleDateString()}` : ""}</p>${
+            task.description ? `<p>${task.description}</p>` : ""
+          }`,
+        }),
+      })
+      .catch((err) => console.error(`notifyAssignee: failed to send task-assignment email for task ${task.id}:`, err));
   } catch {
     // Notification is a nice-to-have — task creation already succeeded.
   }
@@ -338,7 +342,7 @@ router.post("/:taskId/comments", async (req, res) => {
     if (!parent || parent.taskId !== req.params.taskId) return res.status(400).json({ error: "parentCommentId must be a comment on the same task." });
   }
 
-  const tenantAccounts = (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId);
+  const tenantAccounts = await tenantAccountsFor(req.user.accountId);
   const mentions = resolveMentions(comment, tenantAccounts);
 
   const record = {

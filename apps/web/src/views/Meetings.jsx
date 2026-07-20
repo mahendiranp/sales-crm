@@ -4,6 +4,7 @@ import { Plus, X, List as ListIcon, CalendarRange, ChevronLeft, ChevronRight, Ma
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
+import { useToast } from "../components/ui/Toast";
 import { formatDate, timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
@@ -498,6 +499,7 @@ function CalendarView({ meetings, onOpen }) {
 export default function Meetings() {
   const router = useRouter();
   const { canManage } = useAuth();
+  const toast = useToast();
   const [meetings, setMeetings] = useState([]);
   const [users, setUsers] = useState([]);
   const [relatedRecords, setRelatedRecords] = useState({ lead: [], deal: [], contact: [], company: [], task: [] });
@@ -597,10 +599,15 @@ export default function Meetings() {
       linkedEntityType: form.linkedEntityType && form.linkedEntityId ? form.linkedEntityType : null,
       linkedEntityId: form.linkedEntityType && form.linkedEntityId ? form.linkedEntityId : null,
     };
-    await api.post("/meetings", payload);
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/meetings", payload);
+      toast.success("Meeting scheduled.");
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't schedule that meeting.");
+    }
   };
 
   const toggleParticipant = (userId) => {

@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { Plus } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls } from "../components/ui";
 import useLiveCollection from "../lib/useLiveCollection";
 import useResizableColumns from "../lib/useResizableColumns";
@@ -21,6 +22,7 @@ const USERS_COLUMNS = [
 export default function Users() {
   const { canManage } = useAuth();
   const router = useRouter();
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -51,10 +53,14 @@ export default function Users() {
   }, [router.isReady, router.query.add, canManage]);
 
   const save = async () => {
-    await api.post("/users", form);
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/users", form);
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't create that user.");
+    }
   };
 
   return (

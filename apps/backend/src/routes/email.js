@@ -27,21 +27,21 @@ router.post("/send", requireManager, async (req, res) => {
 router.post("/campaign", requireManager, async (req, res) => {
   const { recipients, subject, body } = req.body; // recipients: [{leadId, to}]
   const emails = scopedCollection("emails", req.user.accountId);
-  const sent = [];
-  for (const r of recipients || []) {
-    const record = {
-      id: uuid(),
-      leadId: r.leadId,
-      to: r.to,
-      subject,
-      body,
-      opened: false,
-      clicked: false,
-      sentAt: new Date().toISOString(),
-    };
-    await emails.insert(record);
-    sent.push(record);
-  }
+  const sent = await Promise.all(
+    (recipients || []).map((r) => {
+      const record = {
+        id: uuid(),
+        leadId: r.leadId,
+        to: r.to,
+        subject,
+        body,
+        opened: false,
+        clicked: false,
+        sentAt: new Date().toISOString(),
+      };
+      return emails.insert(record).then(() => record);
+    })
+  );
   res.status(201).json({ sentCount: sent.length, messages: sent });
 });
 

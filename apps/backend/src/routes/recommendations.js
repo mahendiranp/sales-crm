@@ -9,6 +9,7 @@ const { resolveRecommendation, dismissRecommendation, getLastScan, STATUS, PRIOR
 const { currentApprovers } = require("../utils/workflowEngine");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
+const { tenantAccountsFor } = require("../utils/tenantAccounts");
 
 const router = express.Router();
 const recommendationsFor = (req) => scopedCollection("recommendations", req.user.accountId);
@@ -241,7 +242,7 @@ async function notifyApprover(req, recommendation) {
   if (!response) return { ok: false, message: "This response has been deleted." };
   if (!response.workflow) return { ok: false, message: "This response no longer has an active approval workflow." };
   const form = await rawForms.find(recommendation.payload?.formId || response.formId);
-  const tenantAccounts = (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId);
+  const tenantAccounts = await tenantAccountsFor(req.user.accountId);
   const approverIds = currentApprovers(response.workflow, tenantAccounts);
   const approvers = tenantAccounts.filter((a) => approverIds.includes(a.id) && a.email);
 

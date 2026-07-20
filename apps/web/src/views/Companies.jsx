@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { Plus, Globe, Building2, MapPin } from "lucide-react";
 import api from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatINR } from "../lib/format";
@@ -11,6 +12,7 @@ const emptyForm = { name: "", industry: "", employees: "1-10", gst: "", website:
 
 export default function Companies() {
   const router = useRouter();
+  const toast = useToast();
   const { canManage } = useAuth();
   const [companies, setCompanies] = useState([]);
   const [users, setUsers] = useState([]);
@@ -43,10 +45,14 @@ export default function Companies() {
   const userName = (id) => users.find((u) => u.id === id)?.name || "Unassigned";
 
   const save = async () => {
-    await api.post("/companies", { ...form, annualRevenue: Number(form.annualRevenue) || 0 });
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/companies", { ...form, annualRevenue: Number(form.annualRevenue) || 0 });
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save that company.");
+    }
   };
 
   return (

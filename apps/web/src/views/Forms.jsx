@@ -11,6 +11,7 @@ import {
   ArrowRight, ChevronDown, ArrowLeft, UploadCloud, MoreVertical, GitBranch,
 } from "lucide-react";
 import api from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState, ConfirmDialog, ErrorModal } from "../components/ui";
 import { timeAgo } from "../lib/format";
@@ -2454,6 +2455,7 @@ export function AddFormPage() {
   const [upgradeMessage, setUpgradeMessage] = useState("");
   const gridRef = useRef(null);
   const { isMasterAdmin } = useAuth();
+  const toast = useToast();
 
   const loadAiCredits = () =>
     api
@@ -2588,8 +2590,12 @@ export function AddFormPage() {
 
   const generate = async () => {
     if (!prompt.trim() || genPhase === "generating") return;
-    const { data: form } = await api.post("/forms/from-template", { templateKey: "blank", name: prompt.slice(0, 60) });
-    runGeneration(form.id);
+    try {
+      const { data: form } = await api.post("/forms/from-template", { templateKey: "blank", name: prompt.slice(0, 60) });
+      runGeneration(form.id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't start generating that form.");
+    }
   };
 
   const regenerate = () => {

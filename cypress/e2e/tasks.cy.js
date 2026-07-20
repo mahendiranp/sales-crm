@@ -18,10 +18,15 @@ describe("Tasks", () => {
         body: { email: "premium1@flowora.test", password: "password123" },
       }).then((loginRes) => {
         authToken = loginRes.body.token;
-        cy.request({ url: "/api/settings", headers: { Authorization: `Bearer ${authToken}` } }).then((settingsRes) => {
+        cy.request({
+          url: "/api/settings",
+          headers: { Authorization: `Bearer ${authToken}` },
+        }).then((settingsRes) => {
           tasksEnabled = settingsRes.body.modules?.tasks !== false;
           if (!tasksEnabled) {
-            cy.log("premium1@flowora.test doesn't have the tasks/Work module enabled — skipping this suite.");
+            cy.log(
+              "premium1@flowora.test doesn't have the tasks/Work module enabled — skipping this suite.",
+            );
           }
         });
       });
@@ -41,15 +46,35 @@ describe("Tasks", () => {
 
   afterEach(function () {
     if (!authToken) return;
-    cy.request({ url: "/api/tasks", headers: { Authorization: `Bearer ${authToken}` } }).then((res) => {
+    cy.request({
+      url: "/api/tasks",
+      headers: { Authorization: `Bearer ${authToken}` },
+    }).then((res) => {
       res.body
         .filter((t) => t.title.startsWith("Cypress "))
-        .forEach((t) => cy.request({ method: "DELETE", url: `/api/tasks/${t.id}`, headers: { Authorization: `Bearer ${authToken}` }, failOnStatusCode: false }));
+        .forEach((t) =>
+          cy.request({
+            method: "DELETE",
+            url: `/api/tasks/${t.id}`,
+            headers: { Authorization: `Bearer ${authToken}` },
+            failOnStatusCode: false,
+          }),
+        );
     });
-    cy.request({ url: "/api/leads", headers: { Authorization: `Bearer ${authToken}` } }).then((res) => {
+    cy.request({
+      url: "/api/leads",
+      headers: { Authorization: `Bearer ${authToken}` },
+    }).then((res) => {
       (res.body || [])
         .filter((l) => l.name.startsWith("Cypress Task Lead"))
-        .forEach((l) => cy.request({ method: "DELETE", url: `/api/leads/${l.id}`, headers: { Authorization: `Bearer ${authToken}` }, failOnStatusCode: false }));
+        .forEach((l) =>
+          cy.request({
+            method: "DELETE",
+            url: `/api/leads/${l.id}`,
+            headers: { Authorization: `Bearer ${authToken}` },
+            failOnStatusCode: false,
+          }),
+        );
     });
   });
 
@@ -69,7 +94,9 @@ describe("Tasks", () => {
       cy.visit("/app/tasks");
       cy.contains("button", "Add Task").click();
       cy.contains("label", "Task").find("input").type(taskTitle);
-      cy.contains("label", "Related Lead (optional)").find("select").select(leadName);
+      cy.contains("label", "Related Lead (optional)")
+        .find("select")
+        .select(leadName);
       cy.contains("button", "Save Task").click();
       cy.wait("@createTask").then(({ response }) => {
         expect(response.statusCode).to.eq(201);
@@ -82,7 +109,10 @@ describe("Tasks", () => {
       // the task" maps to in this app (there's no lead detail page with
       // its own task list to check the other direction from).
       cy.contains(taskTitle).scrollIntoView().should("be.visible");
-      cy.contains(taskTitle).parents().contains(`Lead: ${leadName}`).should("be.visible");
+      cy.contains(taskTitle)
+        .parents()
+        .contains(`Lead: ${leadName}`)
+        .should("be.visible");
     });
   });
 
@@ -114,8 +144,13 @@ describe("Tasks", () => {
       // routes/tasks.js) — the Timeline can only render the generic
       // "Task status changed" label for it. Verified precisely via the
       // API: the right event, for the right task, really was recorded.
-      cy.request({ url: "/api/events?type=task.status_changed", headers: { Authorization: `Bearer ${authToken}` } }).then((eventsRes) => {
-        const event = eventsRes.body.items.find((e) => e.entityId === taskRes.body.id);
+      cy.request({
+        url: "/api/events?type=task.status_changed",
+        headers: { Authorization: `Bearer ${authToken}` },
+      }).then((eventsRes) => {
+        const event = eventsRes.body.items.find(
+          (e) => e.entityId === taskRes.body.id,
+        );
         expect(event).to.exist;
         expect(event.payload.to).to.eq("Completed");
       });

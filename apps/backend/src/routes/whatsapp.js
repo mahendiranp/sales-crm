@@ -31,21 +31,21 @@ router.post("/send-bulk", requireManager, async (req, res) => {
   const templates = scopedCollection("templates", req.user.accountId);
   const template = templateId ? await templates.find(templateId) : null;
   const body = customMessage || template?.body || "";
-  const sent = [];
-  for (const leadId of leadIds || []) {
-    const record = {
-      id: uuid(),
-      leadId,
-      contactName: req.body.contactNames?.[leadId] || "",
-      direction: "outbound",
-      message: body,
-      aiSuggested: false,
-      status: "sent",
-      timestamp: new Date().toISOString(),
-    };
-    await messages.insert(record);
-    sent.push(record);
-  }
+  const sent = await Promise.all(
+    (leadIds || []).map((leadId) => {
+      const record = {
+        id: uuid(),
+        leadId,
+        contactName: req.body.contactNames?.[leadId] || "",
+        direction: "outbound",
+        message: body,
+        aiSuggested: false,
+        status: "sent",
+        timestamp: new Date().toISOString(),
+      };
+      return messages.insert(record).then(() => record);
+    })
+  );
   res.status(201).json({ sentCount: sent.length, messages: sent });
 });
 
