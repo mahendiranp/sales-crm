@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { Plus, FileText, MapPin, ShoppingBag, Cake, CalendarClock, Phone, Mail, Users, Clock } from "lucide-react";
+import { Plus, FileText, MapPin, ShoppingBag, Cake, CalendarClock, Phone, Mail, Users, Clock, ArrowLeft } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, EmptyState, Button, Modal, Field, inputCls } from "../components/ui";
@@ -16,6 +16,8 @@ const LOG_TYPES = [
   { type: "Meeting", icon: Users, color: "#E8A33D" },
 ];
 
+const DETAIL_TABS = ["Overview", "Timeline", "Notes", "Documents"];
+
 export default function Contacts() {
   const router = useRouter();
   const { user, canManage } = useAuth();
@@ -28,6 +30,12 @@ export default function Contacts() {
   const [logSummary, setLogSummary] = useState("");
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  // Mobile only — list and detail are two separate screens there (tapping
+  // a card navigates in, "Back" navigates out) instead of the permanent
+  // side-by-side split desktop keeps, which wastes ~35% of a phone's width
+  // on a list that's only useful before you've picked someone.
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState("Overview");
 
   const load = () => {
     Promise.all([api.get("/contacts"), api.get("/activities"), api.get("/companies")]).then(([c, a, co]) => {
@@ -67,6 +75,20 @@ export default function Contacts() {
         .filter((a) => a.contactId === active.id)
         .sort((x, y) => new Date(y.timestamp) - new Date(x.timestamp))
     : [];
+
+  const companyName = (id) => companies.find((c) => c.id === id)?.name || "";
+  const lastActivityFor = (contactId) => {
+    const latest = activities
+      .filter((a) => a.contactId === contactId)
+      .sort((x, y) => new Date(y.timestamp) - new Date(x.timestamp))[0];
+    return latest ? timeAgo(latest.timestamp) : null;
+  };
+
+  const openContact = (c) => {
+    setActive(c);
+    setDetailTab("Overview");
+    setMobileDetailOpen(true);
+  };
 
   const openLog = (type) => {
     setLogType(type);
@@ -114,23 +136,55 @@ export default function Contacts() {
           />
         </Card>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="p-2 h-fit max-h-[70vh] overflow-y-auto">
-            {contacts.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setActive(c)}
-                className={`w-full text-left p-3 rounded-lg mb-1 ${active?.id === c.id ? "bg-primary/8" : "hover:bg-base"}`}
-              >
-                <div className="font-medium text-sm">{c.name}</div>
-                <div className="text-xs text-ink/40">{c.mobile}</div>
-              </button>
-            ))}
-          </Card>
+        <div className="lg:grid lg:grid-cols-3 lg:gap-4">
+          {/* List — full screen on mobile until a contact is tapped (a
+              permanent side-by-side split wastes ~35% of a phone's width
+              on a list that's only useful before you've picked someone);
+              always visible alongside the detail pane from lg up. */}
+          <div className={`${mobileDetailOpen ? "hidden lg:block" : "block"}`}>
+            <Card className="p-2 hidden lg:block h-fit max-h-[70vh] overflow-y-auto">
+              {contacts.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setActive(c)}
+                  className={`w-full text-left p-3 rounded-lg mb-1 ${active?.id === c.id ? "bg-primary/8" : "hover:bg-base"}`}
+                >
+                  <div className="font-medium text-sm">{c.name}</div>
+                  <div className="text-xs text-ink/40">{c.mobile}</div>
+                </button>
+              ))}
+            </Card>
+
+            {/* Mobile-only richer cards — same tap target, more context
+                up front (company, phone, last contacted) since there's no
+                detail pane visible alongside to fall back on here. */}
+            <div className="lg:hidden space-y-3">
+              {contacts.map((c) => {
+                const last = lastActivityFor(c.id);
+                return (
+                  <button key={c.id} onClick={() => openContact(c)} className="w-full text-left">
+                    <Card className="p-4">
+                      <p className="font-medium text-sm">{c.name}</p>
+                      {companyName(c.companyId) && <p className="text-xs text-ink/50 mt-0.5">{companyName(c.companyId)}</p>}
+                      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-ink/50">
+                        {c.mobile && <span className="inline-flex items-center gap-1"><Phone size={11} /> {c.mobile}</span>}
+                        {c.email && <span className="inline-flex items-center gap-1 truncate"><Mail size={11} /> {c.email}</span>}
+                      </div>
+                      {last && <p className="text-xs text-ink/35 mt-1.5">Last contacted {last}</p>}
+                    </Card>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {active && (
-            <div className="col-span-2 space-y-4">
-              <Card className="p-5">
+            <div className={`lg:col-span-2 lg:space-y-4 ${mobileDetailOpen ? "block" : "hidden lg:block"}`}>
+              <button onClick={() => setMobileDetailOpen(false)} className="lg:hidden flex items-center gap-1.5 text-sm text-ink/60 mb-3">
+                <ArrowLeft size={16} /> Back
+              </button>
+
+              <Card className="p-5 mb-4 lg:mb-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="w-11 h-11 rounded-full bg-primary text-white flex items-center justify-center font-display font-semibold">
@@ -187,76 +241,101 @@ export default function Contacts() {
                 )}
               </Card>
 
-              <Card className="p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Clock size={16} className="text-primary" />
-                  <h4 className="font-display font-semibold">Call, Email & Meeting History</h4>
-                </div>
-                {contactActivities.length === 0 ? (
-                  <p className="text-sm text-ink/40">No calls, emails, or meetings logged yet.</p>
-                ) : (
-                  <div className="space-y-0.5">
-                    {contactActivities.map((a) => {
-                      const meta = LOG_TYPES.find((l) => l.type === a.type);
-                      const Icon = meta?.icon || Clock;
-                      return (
-                        <div key={a.id} className="flex gap-3 py-2.5 border-b border-border last:border-0">
-                          <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-                            style={{ background: `${meta?.color || "#999"}18`, color: meta?.color || "#999" }}
-                          >
-                            <Icon size={12} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm">{a.summary}</p>
-                            <p className="text-xs text-ink/40 mt-0.5">{a.type} · {timeAgo(a.timestamp)}</p>
-                          </div>
+              {/* Tabs — mobile only. Purchase History/Timeline/Notes/
+                  Documents all stacked one after another was nearly 60%
+                  more scrolling than showing one section at a time. */}
+              <div className="lg:hidden flex gap-2 mb-3 overflow-x-auto">
+                {DETAIL_TABS.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setDetailTab(t)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border ${
+                      detailTab === t ? "bg-primary text-white border-primary" : "bg-white border-border text-ink/60"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <div className={`${detailTab === "Overview" ? "block" : "hidden"} lg:block mb-4 lg:mb-0`}>
+                <Card className="p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ShoppingBag size={16} className="text-primary" />
+                    <h4 className="font-display font-semibold">Purchase History</h4>
+                  </div>
+                  {(active.purchaseHistory || []).length === 0 ? (
+                    <p className="text-sm text-ink/40">No purchases recorded.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {active.purchaseHistory.map((p) => (
+                        <div key={p.id} className="flex justify-between text-sm border-b border-border last:border-0 pb-2 last:pb-0">
+                          <span>{p.product}</span>
+                          <span className="font-mono text-ink/60">{formatINR(p.amount)} · {formatDate(p.date)}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Card>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
 
-              <Card className="p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <ShoppingBag size={16} className="text-primary" />
-                  <h4 className="font-display font-semibold">Purchase History</h4>
-                </div>
-                {(active.purchaseHistory || []).length === 0 ? (
-                  <p className="text-sm text-ink/40">No purchases recorded.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {active.purchaseHistory.map((p) => (
-                      <div key={p.id} className="flex justify-between text-sm border-b border-border last:border-0 pb-2 last:pb-0">
-                        <span>{p.product}</span>
-                        <span className="font-mono text-ink/60">{formatINR(p.amount)} · {formatDate(p.date)}</span>
-                      </div>
-                    ))}
+              <div className={`${detailTab === "Timeline" ? "block" : "hidden"} lg:block mb-4 lg:mb-0`}>
+                <Card className="p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock size={16} className="text-primary" />
+                    <h4 className="font-display font-semibold">Call, Email & Meeting History</h4>
                   </div>
-                )}
-              </Card>
+                  {contactActivities.length === 0 ? (
+                    <p className="text-sm text-ink/40">No calls, emails, or meetings logged yet.</p>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {contactActivities.map((a) => {
+                        const meta = LOG_TYPES.find((l) => l.type === a.type);
+                        const Icon = meta?.icon || Clock;
+                        return (
+                          <div key={a.id} className="flex gap-3 py-2.5 border-b border-border last:border-0">
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                              style={{ background: `${meta?.color || "#999"}18`, color: meta?.color || "#999" }}
+                            >
+                              <Icon size={12} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm">{a.summary}</p>
+                              <p className="text-xs text-ink/40 mt-0.5">{a.type} · {timeAgo(a.timestamp)}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              </div>
 
-              <Card className="p-5">
-                <h4 className="font-display font-semibold mb-2">Notes</h4>
-                <p className="text-sm text-ink/60">{active.notes || "No notes yet."}</p>
-              </Card>
+              <div className={`${detailTab === "Notes" ? "block" : "hidden"} lg:block mb-4 lg:mb-0`}>
+                <Card className="p-5">
+                  <h4 className="font-display font-semibold mb-2">Notes</h4>
+                  <p className="text-sm text-ink/60">{active.notes || "No notes yet."}</p>
+                </Card>
+              </div>
 
-              <Card className="p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <FileText size={16} className="text-primary" />
-                  <h4 className="font-display font-semibold">Documents</h4>
-                </div>
-                {(active.documents || []).length === 0 ? (
-                  <p className="text-sm text-ink/40">No documents uploaded.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {active.documents.map((d) => (
-                      <div key={d.id} className="text-sm text-primary hover:underline cursor-pointer">{d.name}</div>
-                    ))}
+              <div className={`${detailTab === "Documents" ? "block" : "hidden"} lg:block`}>
+                <Card className="p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileText size={16} className="text-primary" />
+                    <h4 className="font-display font-semibold">Documents</h4>
                   </div>
-                )}
-              </Card>
+                  {(active.documents || []).length === 0 ? (
+                    <p className="text-sm text-ink/40">No documents uploaded.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {active.documents.map((d) => (
+                        <div key={d.id} className="text-sm text-primary hover:underline cursor-pointer">{d.name}</div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
             </div>
           )}
         </div>

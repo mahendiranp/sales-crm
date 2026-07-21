@@ -629,7 +629,7 @@ export default function Landing() {
             work, meetings, CRM, AI) in one sentence — the module cards
             and demo just below back each of these up concretely, so this
             reads as a preview, not an empty claim. */}
-        <p className="text-ink/60 text-base leading-relaxed max-w-xl mx-auto mt-7">
+        <p className="text-ink/60 text-[16px] leading-relaxed max-w-xl mx-auto mt-7">
           Create AI-powered forms in seconds. Every submission automatically triggers approvals, tasks, meetings, CRM updates, and AI insights.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3 mt-9">
@@ -703,7 +703,7 @@ export default function Landing() {
           32px above the divider, 20px below the title. */}
       <section id="demo" className="relative max-w-[1320px] mx-auto px-6 mb-16">
         <div className="max-w-xs mx-auto h-px bg-border mt-8 mb-5" />
-        <p className="text-center text-base font-semibold text-ink mb-4">
+        <p className="text-center text-[16px] font-semibold text-ink mb-4">
           ⚡ Live Workflow Demo
         </p>
         {/* Floating chips — fully OUTSIDE the mock's own box (top corners
@@ -827,7 +827,7 @@ export default function Landing() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {HOW_IT_WORKS.map((s) => (
               <div key={s.label} className="flex items-center gap-3 bg-white border border-border rounded-card p-4 shadow-card">
-                <span className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-base shrink-0">
+                <span className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[16px] shrink-0">
                   {s.emoji}
                 </span>
                 <span className="font-medium text-sm">{s.label}</span>

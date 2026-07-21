@@ -11,14 +11,14 @@ import usePlatformFeatures from "../lib/usePlatformFeatures";
 
 function StatCard({ icon: Icon, label, value, accent }) {
   return (
-    <Card className="p-4 flex-1 min-w-[180px]">
+    <Card className="p-4 sm:p-5">
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-ink/50">{label}</p>
-          <p className="text-2xl font-display font-bold mt-1.5">{value}</p>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-ink/50 truncate">{label}</p>
+          <p className="text-xl sm:text-2xl font-display font-bold mt-1.5">{value}</p>
         </div>
         <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center"
+          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
           style={{ background: `${accent}18`, color: accent }}
         >
           <Icon size={17} />
@@ -28,9 +28,31 @@ function StatCard({ icon: Icon, label, value, accent }) {
   );
 }
 
+// AI credits shown as a progress bar rather than a bare number + a
+// separate "used so far" line — the remaining-vs-limit ratio is the thing
+// worth seeing at a glance, especially on a phone where there's no room
+// for a whole extra stat card.
+function AiCreditsCard({ remaining, used }) {
+  const total = remaining + used;
+  const pct = total > 0 ? Math.min(100, Math.round((remaining / total) * 100)) : 0;
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 text-sm font-medium">
+          <Sparkles size={15} className="text-primary" /> AI Credits
+        </div>
+        <span className="text-xs text-ink/50">{remaining} remaining</span>
+      </div>
+      <div className="h-2 rounded-full bg-base overflow-hidden">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+      </div>
+    </Card>
+  );
+}
+
 function WidgetCard({ icon, title, subtitle, children, className = "" }) {
   return (
-    <Card className={`p-5 flex-1 min-w-[280px] ${className}`}>
+    <Card className={`p-4 sm:p-5 ${className}`}>
       <h3 className="font-display font-semibold mb-1 flex items-center gap-2">
         <span>{icon}</span> {title}
       </h3>
@@ -96,7 +118,7 @@ export default function Dashboard() {
       <PageHeader title="Dashboard" subtitle="Here's what's happening across your pipeline today." />
 
       {showPipelineData && (
-        <div className="flex flex-wrap gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
           {showLeads && <StatCard icon={Users2} label="Total Leads" value={data.totalLeads} accent="#3E6FA3" />}
           {showLeads && <StatCard icon={UserPlus} label="New Leads Today" value={data.newLeadsToday} accent="#2F5D50" />}
           {showTasks && <StatCard icon={Clock3} label="Follow-ups Due" value={data.followUpsDue} accent="#E8A33D" />}
@@ -106,17 +128,36 @@ export default function Dashboard() {
       )}
 
       {!isMasterAdmin && aiCredits && (
-        <div className="flex flex-wrap gap-4 mb-6">
-          <StatCard icon={Sparkles} label="AI Credits Left" value={aiCredits.remaining} accent="#2F5D50" />
+        <div className="grid grid-cols-1 mb-6">
+          <AiCreditsCard remaining={aiCredits.remaining} used={aiCredits.used} />
         </div>
       )}
 
       {(showDeals || showPipelineData) && (
-        <div className="flex flex-wrap gap-4 mb-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+          {showPipelineData && (
+            <WidgetCard
+              icon={<Sparkles size={17} className="text-accent inline" />}
+              title="AI Suggestions"
+              subtitle="Rule-based right now, not a live LLM — see Settings → AI Configuration to connect one."
+              // Above the chart on mobile (the more actionable content),
+              // back to its usual spot alongside the chart from lg up.
+              className="order-1 lg:order-2"
+            >
+              <div className="space-y-3">
+                {data.aiSuggestions.map((s, i) => (
+                  <div key={i} className="text-sm text-ink/70 bg-accent/8 border border-accent/20 rounded-lg p-3 leading-snug">
+                    {s}
+                  </div>
+                ))}
+              </div>
+            </WidgetCard>
+          )}
+
           {showDeals && (
-            <Card className="p-5 flex-[2] min-w-[400px]">
+            <Card className="p-4 sm:p-5 lg:col-span-2 order-2 lg:order-1">
               <h3 className="font-display font-semibold mb-4">Sales Trend — Last 6 Months</h3>
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={data.salesGraph}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E4E7EC" />
                   <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#14172B99" }} axisLine={false} tickLine={false} />
@@ -132,27 +173,11 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </Card>
           )}
-
-          {showPipelineData && (
-            <WidgetCard
-              icon={<Sparkles size={17} className="text-accent inline" />}
-              title="AI Suggestions"
-              subtitle="Rule-based right now, not a live LLM — see Settings → AI Configuration to connect one."
-            >
-              <div className="space-y-3">
-                {data.aiSuggestions.map((s, i) => (
-                  <div key={i} className="text-sm text-ink/70 bg-accent/8 border border-accent/20 rounded-lg p-3 leading-snug">
-                    {s}
-                  </div>
-                ))}
-              </div>
-            </WidgetCard>
-          )}
         </div>
       )}
 
       {(showDeals || showLeads || showActivities || showTasks) && (
-        <div className="flex flex-wrap gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
           {showDeals && (
             <WidgetCard icon="📊" title="Sales Performance">
               <MetricRow label="Today's Sales" value={formatINR(salesPerformance.today)} />
@@ -187,7 +212,7 @@ export default function Dashboard() {
       )}
 
       {(showDeals || showLeads) && (
-        <div className="flex flex-wrap gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
           {showDeals && (
             <WidgetCard icon="👨‍💼" title="Sales Team Performance">
               <div className="flex items-center gap-2 text-sm mb-1.5">
@@ -235,13 +260,13 @@ export default function Dashboard() {
       )}
 
       {showForms && formStats && (
-        <div className="flex flex-wrap gap-4 mb-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
           <WidgetCard icon={<FormInput size={17} className="text-primary inline" />} title="Forms">
             <MetricRow label="Total Forms" value={formStats.totalForms} />
             <MetricRow label="Total Responses" value={formStats.totalResponses} />
           </WidgetCard>
 
-          <Card className="p-5 flex-[2] min-w-[400px]">
+          <Card className="p-4 sm:p-5 lg:col-span-2">
             <h3 className="font-display font-semibold mb-4">Recent Form Responses</h3>
             {formStats.recentResponses.length === 0 ? (
               <p className="text-sm text-ink/40">No responses yet.</p>

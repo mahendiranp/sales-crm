@@ -61,13 +61,20 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     cy.contains("label", "Lead Name").find("input").type(unique);
     cy.contains("label", "Mobile Number").find("input").type(mobile);
     cy.contains("label", "Company").find("input").type(`${unique} Co`);
+    // Notes lives behind the "Additional details" disclosure (collapsed by
+    // default when adding a new lead — Budget/Notes aren't needed to
+    // create a usable record) — expand it before typing into it.
+    cy.contains("Additional details").click();
     cy.get("textarea[placeholder*='Looking for ERP']").type(
       "Created by Cypress pipeline test.",
     );
     cy.contains("button", "Save Lead").click();
     cy.wait("@createLead").its("response.statusCode").should("eq", 201);
 
-    cy.contains(unique).should("be.visible");
+    // Below md, the same row also renders as a (hidden) mobile card —
+    // scope to the visible desktop table so this doesn't match that
+    // hidden duplicate at this desktop viewport.
+    cy.get("table").contains(unique).should("be.visible");
     // Call/WhatsApp/Email are inside the row's "⋯" actions menu
     // (consolidated there to keep the table from overflowing, rendered
     // in-place, not portaled) — open it to confirm Call is offered since
@@ -173,15 +180,14 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
       expect(response.body.competitors).to.eq("Zoho, Freshsales");
     });
 
-    // Check the header subtitle (top of page) before scrolling down for
+    // Check the header KPI cards (top of page) before scrolling down for
     // the deal card below — scrolling to reveal one pushes the other out
-    // of view, since they're at opposite ends of the same page. The
-    // subtitle includes both the raw pipeline total and the probability-
-    // weighted forecast — proves the new forecast math is actually wired
+    // of view, since they're at opposite ends of the same page. Both the
+    // raw pipeline total and the probability-weighted forecast get their
+    // own metric card — proves the new forecast math is actually wired
     // up, not just present in the deal record.
-    cy.contains(/in active pipeline.*forecast \(probability-weighted\)/).should(
-      "be.visible",
-    );
+    cy.contains("Active Pipeline").should("be.visible");
+    cy.contains("Forecast").should("be.visible");
 
     // The deal grid grows taller than the viewport as more deals
     // accumulate across test runs — scrollIntoView() before asserting.
@@ -202,9 +208,12 @@ describe("Pipeline (Leads, Contacts, Companies, Deals)", () => {
     // The leads table has its own search box, distinct from a name filter
     // dropdown — a substring of the lead's name should isolate it from
     // every other lead seeded or created by earlier tests in this file.
+    // Below md, the same row also renders as a (hidden) mobile card —
+    // cy.contains() would otherwise match that hidden duplicate at this
+    // desktop viewport, so scope the assertion to the visible table.
     cy.get('input[type="search"]').type("ABC Technologies");
-    cy.contains(unique).should("be.visible");
-    cy.contains("Cypress Lead ").should("not.exist");
+    cy.get("table").contains(unique).should("be.visible");
+    cy.get("table").contains("Cypress Lead ").should("not.exist");
     cy.get('input[type="search"]').clear();
   });
 

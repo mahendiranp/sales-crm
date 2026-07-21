@@ -269,7 +269,7 @@ describe("Forms — Add Form page", () => {
     cy.contains("a", uniqueName).should("be.visible");
     // Delete now lives inside the row's "⋯ More" menu (Forms.jsx's
     // FormMoreMenu) instead of being its own always-visible button.
-    cy.contains("a", uniqueName).closest("div.px-5").within(() => {
+    cy.contains("a", uniqueName).closest("div[class*='px-4']").within(() => {
       cy.get('[title="More actions"]').click();
       cy.contains("button", "Delete").click();
     });
