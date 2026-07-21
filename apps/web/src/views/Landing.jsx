@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Target, Sparkles, ArrowRight, Check, Mail, ChevronDown,
+  Target, Sparkles, ArrowRight, Check, Mail, ChevronDown, UploadCloud,
   Workflow, Bot, Clock, Lock,
   Building2, HeartPulse, GraduationCap, Factory, Landmark, Truck, Store,
   Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity,
@@ -34,20 +34,6 @@ const INDUSTRIES = [
   { icon: ClipboardList, label: "Administration", use: "Internal Requests" },
 ];
 
-// A focused subset of INDUSTRIES above, shown as an explicit
-// Form → Workflow → Result chain — the "Perfect for" grid says *who
-// it's for*, this says *what actually happens* for a handful of the most
-// common ones, reusing the same underlying data.
-const USE_CASE_CHAINS = [
-  { label: "HR", form: "Leave Request Form", workflow: "Manager Approval", result: "Leave Approved & Logged" },
-  { label: "Finance", form: "Expense Form", workflow: "Finance Approval", result: "Reimbursement Processed" },
-  { label: "Sales", form: "Lead Capture Form", workflow: "Auto-create Lead", result: "Deal in Pipeline" },
-  { label: "Operations", form: "Process Request Form", workflow: "Task Assigned", result: "Request Completed" },
-  { label: "Customer Support", form: "Support Ticket Form", workflow: "Task + Notify Agent", result: "Ticket Resolved" },
-  { label: "Education", form: "Admission Form", workflow: "Review Approval", result: "Applicant Enrolled" },
-  { label: "Healthcare", form: "Patient Intake Form", workflow: "Front-Desk Review", result: "Appointment Scheduled" },
-];
-
 const HOW_IT_WORKS = [
   { emoji: "💬", label: "Tell AI what you need" },
   { emoji: "✨", label: "AI creates your form" },
@@ -73,16 +59,25 @@ const AFTER_STEPS = ["AI Builds Form", "Approval", "CRM Updated", "Task Created"
 // not an FAQ) or too support-desk-granular for a marketing page (thank-you
 // page customization, Excel export, coding requirement, Google Forms
 // migration, API availability).
+// Trimmed to 5 — the ones that actually affect a signup decision, per
+// feedback that a 7-question wall reads as filler this far down a page
+// that's already explained most of this in earlier sections.
 const FAQS = [
   { q: "Is Flowora free?", a: "Yes — the Free plan is free forever, no credit card required. Upgrade to Team or Enterprise when you need approval workflows and more responses." },
-  { q: "Can I collect unlimited responses?", a: "The Free plan includes 100 responses/month. Team and Enterprise plans raise or remove that limit." },
+  { q: "Can I import Google Forms?", a: "Yes — paste a Google Form's share link and Flowora imports every question and option automatically." },
   { q: "Does Flowora support approvals?", a: "Yes — route submissions through multi-step approval chains (e.g. Employee → Manager → HR) with role-based or specific-person approvers." },
-  { q: "Can I embed forms on my website?", a: "Yes — every published form gets a public share link you can embed directly on your site or link to from anywhere." },
-  { q: "Can I remove Flowora branding?", a: "Yes, on Team and Enterprise plans. The Free plan shows a small Flowora badge on public forms." },
-  { q: "Can multiple team members collaborate?", a: "Yes — invite teammates with role-based permissions (Admin, Manager, Viewer) on Team and Enterprise plans." },
-  { q: "Can AI build my form?", a: "Yes — describe the form you need in plain language and the AI Assistant generates the fields for you." },
+  { q: "Can teams collaborate?", a: "Yes — invite teammates with role-based permissions (Admin, Manager, Viewer) on Team and Enterprise plans." },
+  { q: "How does AI work?", a: "Describe the form you need in plain language and the AI Assistant generates the fields for you — it can also build workflows and route approvals from that same description." },
 ];
 
+// Every line here is checked against utils/plans.js's actual limits, not
+// just aspirational copy — e.g. AI Form Builder is genuinely gated off
+// Starter/Free (aiAssistant: false, enforced in routes/forms.js and
+// leads.js), so it's deliberately not listed as a Free feature even
+// though a fresh signup gets a one-time 100-credit grant; Enterprise's AI
+// credits are the real 2,000/month from PLANS.enterprise, not a fabricated
+// "unlimited" claim; and SSO isn't listed at all since there's no SAML/
+// enterprise-SSO integration anywhere in the backend.
 const PLANS = [
   {
     key: "free",
@@ -90,7 +85,7 @@ const PLANS = [
     tagline: "For individuals",
     price: "$0",
     period: "forever",
-    features: ["Up to 3 forms", "100 responses / month", "Upgrade to unlock AI features", "CSV/Excel export", "1 user"],
+    features: ["Up to 3 forms", "100 responses/month", "Upgrade to unlock AI features", "CSV export", "1 user"],
     cta: "Start Building Free",
     href: "/signup",
   },
@@ -100,7 +95,7 @@ const PLANS = [
     tagline: "For growing businesses",
     price: "$19",
     period: "/month",
-    features: ["Unlimited forms", "2,000 responses / month", "+500 AI credits / month", "Approval workflows", "Import PDFs, Word, Images & Google Forms", "Team collaboration", "Up to 20 users"],
+    features: ["Unlimited active forms", "2,000 responses/month", "Approval workflows", "CRM + Work automation", "500 AI credits/month", "Import existing forms", "Up to 20 users"],
     cta: "Start free trial",
     highlighted: true,
     // Signup collects payment for this plan right after email verification
@@ -113,7 +108,7 @@ const PLANS = [
     tagline: "For large organizations",
     price: "Custom",
     period: "",
-    features: ["Everything in Team", "Unlimited responses", "+2,000 AI credits / month", "Role-based permissions", "Priority support", "Custom integrations"],
+    features: ["Unlimited forms, responses & users", "2,000+ AI credits/month", "Advanced permissions", "Custom integrations", "Dedicated support"],
     cta: "Talk to sales",
     href: "mailto:info@floworaone.com?subject=Enterprise%20plan%20inquiry",
   },
@@ -126,12 +121,13 @@ const PLANS = [
 // that page exists.
 const FOOTER_COLUMNS = [
   {
+    // Templates/Roadmap dropped — no such pages exist yet; fewer links
+    // beats dead ones (same reasoning the Resources column below no
+    // longer exists at all).
     title: "Product",
     links: [
       { label: "Features", href: "#features" },
       { label: "Pricing", href: "#pricing" },
-      { label: "Templates", href: null },
-      { label: "Roadmap", href: null },
     ],
   },
   {
@@ -151,14 +147,6 @@ const FOOTER_COLUMNS = [
     ],
   },
   {
-    title: "Resources",
-    links: [
-      { label: "Help Center", href: null },
-      { label: "Blog", href: null },
-      { label: "API", href: null },
-    ],
-  },
-  {
     title: "Company",
     links: [
       { label: "About", href: null },
@@ -173,15 +161,18 @@ const FOOTER_COLUMNS = [
 // this codebase backs a "50% off" or similar promotion, so the bar states
 // what's actually true (AI Forms + CRM + Approval Workflows shipped) and
 // links to the section that proves it.
+// Fixed height (h-9), single line always (truncate instead of wrap) — a
+// wrapped 2-line bar was growing tall enough to push/overlap the hero's
+// CTA buttons below it on narrower viewports. Shorter copy so truncation
+// rarely if ever kicks in even on small screens.
 function AnnouncementBar() {
   return (
     <a
       href="#demo"
-      className="group flex items-center justify-center gap-1.5 bg-primary text-white text-xs sm:text-sm font-medium text-center py-2 px-4 hover:bg-primary-dark transition-colors"
+      className="group flex items-center justify-center gap-1.5 h-9 bg-primary text-white text-xs sm:text-sm font-medium px-4 hover:bg-primary-dark transition-colors overflow-hidden"
     >
-      <span>✨ New — Google Forms Import · Approval Automation · CRM Updates</span>
-      <span className="hidden sm:inline">— See Demo</span>
-      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+      <span className="truncate">✨ New — Google Forms Import · Approval Automation</span>
+      <ArrowRight size={13} className="shrink-0 transition-transform group-hover:translate-x-1" />
     </a>
   );
 }
@@ -320,7 +311,10 @@ function HeroMock({ phaseIndex }) {
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Request</p>
             <div className="bg-white rounded-lg border border-border px-3 py-2.5 text-sm text-ink/70 min-h-[52px]">
-              &quot;Create an Employee Leave Process&quot;
+              {/* Reads as "still typing" during the prompt phase (trailing
+                  ellipsis + blinking caret), then settles to the plain
+                  quoted request once the AI has moved on to building it. */}
+              {phase === "prompt" ? "Create an Employee Leave Process…" : "“Create an Employee Leave Process”"}
               {phase === "prompt" && <span className="inline-block w-[2px] h-3.5 bg-primary ml-0.5 align-middle animate-pulse" />}
             </div>
           </div>
@@ -484,6 +478,16 @@ const ORG_JSON_LD = {
 
 export default function Landing() {
   const heroPhase = useSyncedPhase();
+  // Real, live remaining-slots count from the backend (routes/payments.js's
+  // public GET /launch-offer) — never a hardcoded "first 100" claim that
+  // could drift from what checkout would actually charge.
+  const [launchOffer, setLaunchOffer] = useState(null);
+  useEffect(() => {
+    fetch("/api/payments/launch-offer")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => data?.active && setLaunchOffer(data))
+      .catch(() => {});
+  }, []);
   return (
     <div className="font-body text-ink">
       <Seo
@@ -574,7 +578,7 @@ export default function Landing() {
       <div className="relative">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[460px] -z-10"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[680px] -z-10"
           style={{ background: "radial-gradient(circle at top, rgba(47,93,80,0.08), transparent 45%), #ffffff" }}
         />
         {/* Near-invisible dot grid for texture (Linear-style) — a single
@@ -583,12 +587,12 @@ export default function Landing() {
             pattern. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[460px] -z-10 opacity-[0.4]"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[680px] -z-10 opacity-[0.4]"
           style={{
             backgroundImage: "radial-gradient(rgba(20,23,43,0.08) 1px, transparent 1px)",
             backgroundSize: "24px 24px",
-            maskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black 40%, transparent 90%)",
-            WebkitMaskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black 40%, transparent 90%)",
+            maskImage: "radial-gradient(ellipse 55% 45% at 50% 0%, black 25%, transparent 65%)",
+            WebkitMaskImage: "radial-gradient(ellipse 55% 45% at 50% 0%, black 25%, transparent 65%)",
           }}
         />
         {/* Two faint blurred circles for a touch of depth — hidden below
@@ -596,54 +600,79 @@ export default function Landing() {
             on a narrow viewport. */}
         <div aria-hidden="true" className="hidden md:block pointer-events-none absolute left-[8%] top-4 w-40 h-40 rounded-full bg-primary/[0.06] blur-3xl -z-10" />
         <div aria-hidden="true" className="hidden md:block pointer-events-none absolute right-[8%] top-32 w-56 h-56 rounded-full bg-accent/[0.07] blur-3xl -z-10" />
-      <section className="max-w-6xl mx-auto px-6 pt-14 pb-8 text-center">
-        {/* Tight category tag, not a feature dump — the feature list
-            (import formats, etc.) belongs lower on the page where a
-            visitor is already convinced, not in the first thing they read. */}
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/8 text-primary text-sm font-medium mb-6 shadow-[0_1px_2px_rgba(20,23,43,0.06)]">
-          <Sparkles size={13} className="animate-pulse" /> AI Forms + Business Automation
+      <section className="max-w-[820px] mx-auto px-6 pt-12 pb-3 text-center">
+        {/* Narrower hero column (820px, was max-w-6xl/1152px) and a
+            deliberate spacing rhythm between each element (24/28/36/24/28
+            per the badge→headline→subtitle→buttons→badges→chips chain)
+            instead of a uniform tight stack — reads calmer, and gives the
+            headline room to be the clear focal point at a smaller,
+            better-balanced size. This reverses the previous "compact
+            Monday-style" pass's tighter spacing — that direction and this
+            one were both requested; this is the later, more specific
+            instruction. */}
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/8 text-primary text-xs font-medium mb-6 shadow-[0_1px_2px_rgba(20,23,43,0.06)]">
+          <Sparkles size={12} className="animate-pulse" /> AI Forms + Business Automation
         </div>
-        <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.02] max-w-5xl mx-auto">
-          Build AI Forms. Automate Everything After Submission.
+        {/* Shortened ("Everything After Submission" → "Every Submission")
+            and reduced from 60px to a slightly smaller, narrower block —
+            one line shorter reads more balanced at this hero width. */}
+        <h1 className="font-display font-extrabold text-4xl md:text-[60px] leading-[1.05] tracking-[-0.04em] max-w-[900px] mx-auto">
+          {"Build AI Forms. "}
+          <br />
+          {/* "Automate Every Submission." alone is wider than the 900px
+              box at 60px — nowrap (past sm, where there's room for it to
+              overflow the box width without hitting the viewport edge)
+              keeps it as one line instead of wrapping again mid-line. */}
+          <span className="sm:whitespace-nowrap">Automate Every Submission.</span>
         </h1>
         {/* Names the breadth of what a submission triggers (approvals,
             work, meetings, CRM, AI) in one sentence — the module cards
             and demo just below back each of these up concretely, so this
             reads as a preview, not an empty claim. */}
-        <p className="text-ink/60 text-lg leading-relaxed max-w-[760px] mx-auto mt-8">
-          Create AI-powered forms in seconds. Every submission automatically triggers approvals, work, meetings, CRM updates, and AI-powered business automation.
+        <p className="text-ink/60 text-base leading-relaxed max-w-xl mx-auto mt-7">
+          Create AI-powered forms in seconds. Every submission automatically triggers approvals, tasks, meetings, CRM updates, and AI insights.
         </p>
-        <div className="flex items-center justify-center gap-3 mt-10">
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-9">
           <Link
             href="/signup"
             className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg bg-primary text-white font-medium shadow-[0_1px_2px_rgba(20,23,43,0.06)] transition-all duration-[250ms] hover:bg-primary-dark hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-[0_12px_35px_rgba(47,93,80,0.3)]"
           >
-            🚀 Start Building Free
+            Start Free →
           </Link>
-          {/* Ghost/text style, not a competing outline button — one
-              unmistakable primary action for a free-forever, no-CC product.
-              Still a real differentiator (migrating off Google Forms), so
-              it keeps a hover underline + arrow rather than disappearing
-              entirely. */}
-          <Link href="/signup" className="group inline-flex items-center gap-1.5 px-5 py-3 rounded-lg font-medium text-ink/60 hover:text-ink">
-            <span className="group-hover:underline">Import Existing Form</span>
+          {/* Ghost BUTTON now (bordered), not plain text — was easy to
+              miss next to the solid primary CTA. Still visually secondary
+              (no fill), but recognizable as a real second action, with an
+              upload icon since "import" is the whole point of it. */}
+          <Link
+            href="/signup"
+            className="group inline-flex items-center gap-1.5 px-5 py-3 rounded-lg font-medium text-ink/70 border border-border hover:border-ink/30 hover:text-ink hover:bg-base transition-colors"
+          >
+            <UploadCloud size={16} />
+            Import Existing Form
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
         {/* Concrete, click-de-risking checkmarks sit closest to the CTA;
             the softer department/qualitative trust line sits further
-            below it — ordered by how directly each de-risks the click. */}
-        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-7 text-xs text-ink/50">
-          {["Free forever", "No credit card required", "Setup in under 60 seconds", "Cancel anytime"].map((t) => (
+            below it — ordered by how directly each de-risks the click.
+            Trimmed to 3 (dropped "Cancel anytime" — least relevant to
+            someone starting on the free plan, where there's nothing to
+            cancel yet). */}
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-5 text-xs text-ink/50">
+          {["Free forever", "No credit card required", "Setup in under 60 seconds"].map((t) => (
             <span key={t} className="flex items-center gap-1">
               <Check size={12} className="text-primary" /> {t}
             </span>
           ))}
         </div>
-        {/* Icon chips instead of a plain text sentence — reuses the same
-            department icons the "Perfect for" section further down the
-            page already uses, so it's a visual echo, not a new icon set. */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+        {/* "Built for" rather than "Trusted by teams in" — the latter
+            implies existing customer traction across these industries,
+            which isn't a claim there's real data to back yet. Also not
+            "Perfect for" — this page already has a "Perfect for" heading
+            further down (the INDUSTRIES grid); reusing it here would
+            either read as a duplicate heading or trip up a
+            cy.contains("Perfect for") match against two elements. */}
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
           <span className="text-xs font-medium text-ink/40 mr-1">Built for</span>
           {[
             { icon: Building2, label: "HR" },
@@ -657,9 +686,6 @@ export default function Landing() {
             </span>
           ))}
         </div>
-        {/* This outcome line moved to sit right above the demo instead of
-            living here too — same idea said twice back-to-back read as
-            filler, not two different points. */}
       </section>
       </div>
 
@@ -669,10 +695,16 @@ export default function Landing() {
           visitor understands what Flowora does within a few seconds
           without needing a real demo video. A real product screenshot/GIF
           still converts better than a hand-built mock like this — swap
-          this block for one once captured. */}
+          this block for one once captured.
+          A divider + a short, bold section-label ("⚡ Live Workflow Demo")
+          replaces the previous long sentence, which was the same size/
+          weight as the industry chips right above it and visually blurred
+          into them — this is deliberately a clear section break instead,
+          32px above the divider, 20px below the title. */}
       <section id="demo" className="relative max-w-[1320px] mx-auto px-6 mb-16">
-        <p className="text-center text-sm font-medium text-primary mb-4">
-          ⚡ Watch {APP_NAME} build a complete business workflow in seconds
+        <div className="max-w-xs mx-auto h-px bg-border mt-8 mb-5" />
+        <p className="text-center text-base font-semibold text-ink mb-4">
+          ⚡ Live Workflow Demo
         </p>
         {/* Floating chips — fully OUTSIDE the mock's own box (top corners
             + bottom-center), not overlapping its edges. The mock is wide
@@ -710,7 +742,7 @@ export default function Landing() {
           means the same thing everywhere on the page. Hover: 4px lift,
           border turns primary-green, icon scales + rotates a touch,
           shadow deepens, description darkens. */}
-      <section className="max-w-4xl mx-auto px-6 mb-16">
+      <section id="features" className="max-w-4xl mx-auto px-6 mb-16">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
             { icon: Sparkles, label: "Forms", desc: "Generate forms from prompts, PDFs and images", color: MODULE_COLOR.Forms },
@@ -841,58 +873,10 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* One Platform. Everything Connected. — id="features" lives here
-          now (NavBar's "Features" link and the announcement bar both
-          scroll here); the old "Why Businesses Switch" section covered
-          the same ground with a 3-card grid immediately above the feature
-          icon-cards near the top of the page and the checklist below, so
-          it was cut rather than moved intact. */}
-      <section id="features" className="bg-base/40 py-20">
-        <div className="max-w-2xl mx-auto px-6 text-center">
-          <Workflow size={28} className="mx-auto mb-4 text-primary" />
-          <h2 className="font-display font-bold text-3xl mb-2">One Platform.</h2>
-          <h2 className="font-display font-bold text-3xl mb-10">Everything Connected.</h2>
-          <div className="space-y-1.5">
-            {["Form", "Response", "Approval", "Lead", "Task", "Meeting", "Timeline", "AI Center"].map((s, i, arr) => (
-              <div key={s}>
-                <div className="text-sm font-medium text-ink/80 bg-white border border-border rounded-lg py-2.5 px-4 max-w-xs mx-auto">{s}</div>
-                {i < arr.length - 1 && <div className="text-primary/40 text-center py-0.5">↓</div>}
-              </div>
-            ))}
-          </div>
-
-          {/* Illustrative mini previews, not real screenshots — the hero
-              mock already shows Forms in detail; this is just enough of
-              each module's own look to signal "this is a broader
-              platform," not a claim of what the real UI pixel-for-pixel
-              looks like. */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-14 text-left">
-            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">CRM</p>
-              <p className="text-xs font-medium text-ink/70 truncate">Priya Sharma</p>
-              <span className="inline-block mt-1 text-[10px] font-medium text-blue-700 bg-blue-100 rounded-full px-1.5 py-0.5">Qualified</span>
-            </div>
-            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">Tasks</p>
-              <p className="text-xs font-medium text-ink/70 truncate">Send proposal</p>
-              <span className="inline-block mt-1 text-[10px] font-medium text-amber-700 bg-amber-100 rounded-full px-1.5 py-0.5">Due today</span>
-            </div>
-            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">Meetings</p>
-              <p className="text-xs font-medium text-ink/70 truncate">Demo call</p>
-              <span className="inline-block mt-1 text-[10px] font-medium text-emerald-700 bg-emerald-100 rounded-full px-1.5 py-0.5">3:00 PM</span>
-            </div>
-            <div className="bg-white border border-border rounded-lg p-3 shadow-card">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-2">Timeline</p>
-              <p className="text-xs font-medium text-ink/70 truncate">Form submitted</p>
-              <span className="inline-block mt-1 text-[10px] text-ink/40">2m ago</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Industries — moved before the comparison table: "who this is for"
-          before "how it stacks up," not after. */}
+      {/* Perfect for — INDUSTRIES already carries icon + department +
+          one-line use case per entry, which is exactly "Common use
+          cases" was showing a second time in a separate sub-section
+          below this one; merged into this single grid instead of two. */}
       <section className="max-w-5xl mx-auto px-6 pb-20">
         <h2 className="font-display font-bold text-3xl text-center mb-10">Perfect for</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -908,24 +892,6 @@ export default function Landing() {
             </div>
           ))}
         </div>
-
-        <div className="mt-14">
-          <p className="text-sm font-semibold text-ink/60 text-center mb-6">Common use cases</p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {USE_CASE_CHAINS.map((u) => (
-              <div key={u.label} className="p-4 rounded-card border border-border bg-white shadow-card">
-                <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">{u.label}</p>
-                <div className="flex items-center gap-1.5 text-xs text-ink/60 flex-wrap">
-                  <span className="bg-base rounded-full px-2 py-1">{u.form}</span>
-                  <ArrowRight size={11} className="text-ink/30 shrink-0" />
-                  <span className="bg-base rounded-full px-2 py-1">{u.workflow}</span>
-                  <ArrowRight size={11} className="text-ink/30 shrink-0" />
-                  <span className="bg-primary/10 text-primary rounded-full px-2 py-1 font-medium">{u.result}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </section>
 
       {/* Pricing */}
@@ -935,40 +901,68 @@ export default function Landing() {
           <p className="text-ink/50 mt-2">Start free. Upgrade when you need approval workflows and more responses.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5">
-          {PLANS.map((p) => (
-            <div
-              key={p.name}
-              className={`rounded-card p-6 border ${p.highlighted ? "border-primary shadow-lg bg-white relative" : "border-border bg-white shadow-card"}`}
-            >
-              {p.highlighted && (
-                <span className="absolute -top-3 left-6 bg-accent text-white text-xs font-medium px-2.5 py-1 rounded-full">
-                  Most popular
-                </span>
-              )}
-              <h3 className="font-display font-semibold text-lg">{p.name}</h3>
-              <p className="text-xs text-ink/50 mt-1 mb-4 h-8">{p.tagline}</p>
-              <div className="flex items-baseline gap-1 mb-5">
-                <span className="text-3xl font-display font-bold">{p.price}</span>
-                <span className="text-sm text-ink/40">{p.period}</span>
-              </div>
-              <ul className="space-y-2 mb-6">
-                {p.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-sm text-ink/70">
-                    <Check size={14} className="text-primary shrink-0" /> {f}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href={p.href}
-                className={`block text-center py-2.5 rounded-lg text-sm font-medium ${
-                  p.highlighted ? "bg-primary text-white hover:bg-primary-dark" : "border border-border hover:bg-base"
-                }`}
+          {PLANS.map((p) => {
+            const offer = p.key === "team" ? launchOffer : null;
+            return (
+              <div
+                key={p.name}
+                className={`rounded-card p-6 border ${p.highlighted ? "border-primary shadow-lg bg-white relative" : "border-border bg-white shadow-card"}`}
               >
-                {p.cta}
-              </Link>
-              {p.key === "free" && <p className="text-[11px] text-ink/35 text-center mt-2">No credit card required</p>}
-            </div>
-          ))}
+                {offer ? (
+                  <span className="absolute -top-3 left-6 flex items-center gap-1 bg-accent text-white text-xs font-medium px-2.5 py-1 rounded-full">
+                    🚀 Launch Offer · Most popular
+                  </span>
+                ) : (
+                  p.highlighted && (
+                    <span className="absolute -top-3 left-6 bg-accent text-white text-xs font-medium px-2.5 py-1 rounded-full">
+                      Most popular
+                    </span>
+                  )
+                )}
+                <h3 className="font-display font-semibold text-lg">{p.name}</h3>
+                <p className="text-xs text-ink/50 mt-1 mb-4 h-8">{p.tagline}</p>
+                {offer ? (
+                  <div className="mb-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-display font-bold">${offer.priceInMinorUnits / 100}</span>
+                      <span className="text-sm text-ink/40">{p.period}</span>
+                      <span className="text-sm text-ink/35 line-through">${offer.regularPriceInMinorUnits / 100}</span>
+                    </div>
+                    <p className="text-xs font-medium text-primary mt-1">Save 50% on your first payment</p>
+                  </div>
+                ) : (
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <span className="text-3xl font-display font-bold">{p.price}</span>
+                    <span className="text-sm text-ink/40">{p.period}</span>
+                  </div>
+                )}
+                {offer && (
+                  <p className="text-[11px] text-ink/40 mb-4">{offer.remaining} of {offer.limit} launch-offer spots left</p>
+                )}
+                <ul className={`space-y-2 mb-6 ${offer ? "mt-4" : "mt-5"}`}>
+                  {p.features.map((f) => (
+                    <li key={f} className="flex items-center gap-2 text-sm text-ink/70">
+                      <Check size={14} className="text-primary shrink-0" /> {f}
+                    </li>
+                  ))}
+                </ul>
+                {p.key === "team" && (
+                  <a href="#features" className="block text-center text-xs text-primary hover:underline -mt-4 mb-4">
+                    View all features →
+                  </a>
+                )}
+                <Link
+                  href={p.href}
+                  className={`block text-center py-2.5 rounded-lg text-sm font-medium ${
+                    p.highlighted ? "bg-primary text-white hover:bg-primary-dark" : "border border-border hover:bg-base"
+                  }`}
+                >
+                  {offer ? "Claim Launch Offer" : p.cta}
+                </Link>
+                {p.key === "free" && <p className="text-[11px] text-ink/35 text-center mt-2">No credit card required</p>}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -1014,7 +1008,7 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border">
-        <div className="max-w-6xl mx-auto px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-6 gap-8">
+        <div className="max-w-6xl mx-auto px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-8">
           <div className="lg:col-span-2">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">

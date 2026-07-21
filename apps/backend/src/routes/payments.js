@@ -10,6 +10,12 @@ const { recordEvent, EVENT_TYPES, EVENT_SOURCES } = require("../services/eventEn
 const router = express.Router();
 const settings = collection("settings");
 const payments = collection("payments");
+// Tracks what an order was actually created for (accountId, plan, the
+// resolved price) so /verify can trust that instead of re-deriving it (or
+// trusting whatever the client sends back) — eligibility for the launch
+// offer is a snapshot at create-order time, not something to recompute
+// after the fact where a race with another signup could flip the answer.
+const paymentIntents = collection("payment_intents");
 
 // Same owner check used in routes/settings.js for subscription changes —
 // a teammate (even with "full" permission) shouldn't be able to spend the
@@ -19,11 +25,50 @@ function isOwner(req) {
   return req.user.isMasterAdmin || req.user.authRole === "admin";
 }
 
+// Launch offer: 50% off ($9) on an account's first-ever Growth payment,
+// capped at the plan's launchOfferLimit accounts. Not "$9/mo for 3 months
+// then $19/mo" — checkout here is a one-time charge, not a recurring
+// subscription (see routes/payments.js's own doc comment on /verify), so
+// this is a one-time first-payment discount rather than a multi-cycle
+// mechanic this codebase has no billing engine to actually enforce.
+async function resolveGrowthPrice(accountId) {
+  const planConfig = PLANS.growth;
+  const priorGrowthPayments = await payments.query((p) => p.accountId === accountId && p.plan === "growth");
+  if (priorGrowthPayments.length > 0) {
+    return { amountInMinorUnits: planConfig.priceInMinorUnits, launchOffer: false };
+  }
+  const launchOfferPaymentsUsed = await payments.query((p) => p.plan === "growth" && p.launchOffer === true);
+  if (planConfig.launchOfferPriceInMinorUnits && launchOfferPaymentsUsed.length < planConfig.launchOfferLimit) {
+    return { amountInMinorUnits: planConfig.launchOfferPriceInMinorUnits, launchOffer: true };
+  }
+  return { amountInMinorUnits: planConfig.priceInMinorUnits, launchOffer: false };
+}
+
 // Starts a purchase — creates a Razorpay order for the plan's price and
 // hands back just enough (order id, amount, the public key id) for the
 // frontend to open Razorpay's Checkout widget. Nothing about the account's
 // plan changes here; that only happens once /verify confirms a real,
 // signed payment (see below) — this step alone can't grant an upgrade.
+// Public (see app.js's PUBLIC_ROUTES) — the landing page's pricing
+// section reads this, unauthenticated, to show a real remaining-slots
+// count instead of a made-up one.
+router.get("/launch-offer", async (req, res) => {
+  const planConfig = PLANS.growth;
+  if (!planConfig.launchOfferPriceInMinorUnits) {
+    return res.json({ active: false, remaining: 0 });
+  }
+  const used = await payments.query((p) => p.plan === "growth" && p.launchOffer === true);
+  const remaining = Math.max(0, planConfig.launchOfferLimit - used.length);
+  res.json({
+    active: remaining > 0,
+    remaining,
+    limit: planConfig.launchOfferLimit,
+    priceInMinorUnits: planConfig.launchOfferPriceInMinorUnits,
+    regularPriceInMinorUnits: planConfig.priceInMinorUnits,
+    currency: planConfig.currency,
+  });
+});
+
 router.post("/create-order", requireManager, async (req, res) => {
   if (!isOwner(req)) {
     return res.status(403).json({ error: "Only the account owner can change the billing plan." });
@@ -37,6 +82,10 @@ router.post("/create-order", requireManager, async (req, res) => {
     return res.status(400).json({ error: "That plan isn't available for self-serve purchase." });
   }
 
+  const { amountInMinorUnits, launchOffer } = plan === "growth"
+    ? await resolveGrowthPrice(req.user.accountId)
+    : { amountInMinorUnits: planConfig.priceInMinorUnits, launchOffer: false };
+
   // Razorpay caps `receipt` at 40 characters — the full accountId (a UUID)
   // plus plan and timestamp blows past that, so this is just a short,
   // unique-enough reference; the actual accountId/plan/actor live in
@@ -44,10 +93,23 @@ router.post("/create-order", requireManager, async (req, res) => {
   const receipt = `${plan}_${Date.now().toString(36)}_${uuid().slice(0, 8)}`;
   try {
     const order = await razorpay.createOrder({
-      amountInMinorUnits: planConfig.priceInMinorUnits,
+      amountInMinorUnits,
       currency: planConfig.currency,
       receipt,
-      notes: { accountId: req.user.accountId, plan, requestedBy: req.user.id },
+      notes: { accountId: req.user.accountId, plan, requestedBy: req.user.id, launchOffer },
+    });
+    // Snapshot what this order is actually for — /verify trusts this
+    // record instead of re-deriving eligibility (which could have shifted
+    // if another account claimed the last launch-offer slot in between)
+    // or trusting a client-supplied amount.
+    await paymentIntents.insert({
+      id: order.id,
+      accountId: req.user.accountId,
+      plan,
+      amountInMinorUnits,
+      currency: planConfig.currency,
+      launchOffer,
+      createdAt: new Date().toISOString(),
     });
     res.json({
       orderId: order.id,
@@ -56,6 +118,7 @@ router.post("/create-order", requireManager, async (req, res) => {
       keyId: process.env.RAZORPAY_KEY_ID,
       plan,
       planLabel: planConfig.label,
+      launchOffer,
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -86,6 +149,15 @@ router.post("/verify", requireManager, async (req, res) => {
     return res.status(400).json({ error: "That plan isn't available for self-serve purchase." });
   }
 
+  // Trust the intent snapshot from create-order, not planConfig's default
+  // price — this order may have been created at the launch-offer price.
+  // Also confirms the order actually belongs to this account, so one
+  // account can't verify a payment intent created for another.
+  const intent = await paymentIntents.find(orderId);
+  if (!intent || intent.accountId !== req.user.accountId || intent.plan !== plan) {
+    return res.status(400).json({ error: "This order doesn't match your account or plan — contact support before retrying." });
+  }
+
   const valid = razorpay.verifySignature({ orderId, paymentId, signature });
   if (!valid) {
     return res.status(400).json({ error: "Payment verification failed — please contact support before retrying." });
@@ -108,8 +180,9 @@ router.post("/verify", requireManager, async (req, res) => {
       id: uuid(),
       accountId: req.user.accountId,
       plan,
-      amountInMinorUnits: planConfig.priceInMinorUnits,
-      currency: planConfig.currency,
+      amountInMinorUnits: intent.amountInMinorUnits,
+      currency: intent.currency,
+      launchOffer: intent.launchOffer,
       razorpayOrderId: orderId,
       razorpayPaymentId: paymentId,
       createdAt: new Date().toISOString(),
@@ -122,10 +195,10 @@ router.post("/verify", requireManager, async (req, res) => {
       actorId: req.user.id,
       actorName: req.user.email,
       source: EVENT_SOURCES.PAYMENTS,
-      payload: { plan, amountInMinorUnits: planConfig.priceInMinorUnits, currency: planConfig.currency, razorpayOrderId: orderId },
+      payload: { plan, amountInMinorUnits: intent.amountInMinorUnits, currency: intent.currency, launchOffer: intent.launchOffer, razorpayOrderId: orderId },
     });
 
-    res.json({ success: true, plan });
+    res.json({ success: true, plan, launchOffer: intent.launchOffer });
   } catch (err) {
     // The payment itself is real and already verified at this point — a DB
     // hiccup here shouldn't be reported as "payment failed" to the payer.
@@ -136,3 +209,6 @@ router.post("/verify", requireManager, async (req, res) => {
 });
 
 module.exports = router;
+// Exposed for testing only (test/payments.test.js) — Express routers are
+// plain functions, so attaching this doesn't change how app.js mounts it.
+module.exports.resolveGrowthPrice = resolveGrowthPrice;

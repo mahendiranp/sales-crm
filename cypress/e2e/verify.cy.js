@@ -1,7 +1,7 @@
 describe("Landing page", () => {
-  it("renders new hero, business-workflow diagram, comparison, one platform, industries, security, pricing, FAQ, final CTA", () => {
+  it("renders new hero, business-workflow diagram, comparison, industries, security, pricing, FAQ, final CTA", () => {
     cy.visit("/");
-    cy.contains("Build AI Forms. Automate Everything After Submission.").should("be.visible");
+    cy.contains("Build AI Forms. Automate Every Submission.").should("be.visible");
     cy.contains("Forms are just the beginning.").should("be.visible");
     cy.contains("Every submission becomes an automated business workflow.").should("be.visible");
     // "See the Difference" / "Why Businesses Switch" / "Everything Your
@@ -10,7 +10,9 @@ describe("Landing page", () => {
     // one comparison section — each said essentially the same thing.
     cy.contains("Traditional Forms vs. Flowora").should("be.visible");
     cy.contains("Manual CRM Entry").should("be.visible");
-    cy.contains("One Platform.").should("be.visible");
+    // "One Platform. Everything Connected." and "Common use cases" were
+    // removed entirely — both repeated the Form→CRM→Approval→Work chain
+    // shown three times earlier on the page by this point.
     cy.contains("Google Forms").should("be.visible");
     cy.contains("Perfect for").should("be.visible");
     cy.contains("Administration").should("be.visible");
@@ -26,7 +28,7 @@ describe("Landing page", () => {
     cy.get("#faq").within(() => {
       cy.contains("Is Flowora free?").click();
       cy.contains("no credit card required").should("be.visible");
-      cy.contains("Can AI build my form?").should("be.visible");
+      cy.contains("How does AI work?").should("be.visible");
     });
     cy.contains("Stop Managing Work Across Five Different Tools").scrollIntoView().should("be.visible");
     cy.screenshot("landing-full", { capture: "fullPage" });
@@ -41,7 +43,7 @@ describe("Landing page", () => {
   // cycles through the real story instead of being stuck on one frame.
   it("hero mock cycles through Describe → Generate → Execute → Complete", () => {
     cy.visit("/");
-    cy.contains("Watch Flowora build a complete business workflow in seconds").should("be.visible");
+    cy.contains("Live Workflow Demo").should("be.visible");
 
     // Chip row — all four phase labels present.
     cy.contains("Describe").should("be.visible");
