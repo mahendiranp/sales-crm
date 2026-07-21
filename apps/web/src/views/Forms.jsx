@@ -28,7 +28,7 @@ import {
 import { limitsFor } from "../lib/plans";
 import { LAYOUT_GRID_COLS_CLASS, fieldColSpanClass } from "../lib/formLayout";
 
-const FIELD_TYPES = [
+export const FIELD_TYPES = [
   { type: "text", label: "Short Text", icon: Type },
   { type: "longtext", label: "Long Text", icon: AlignLeft },
   { type: "email", label: "Email", icon: Mail },
@@ -126,11 +126,11 @@ function templateMinutes(fieldCount) {
   return Math.max(1, Math.ceil((fieldCount || 0) / 6));
 }
 
-function fieldTypeLabel(type) {
+export function fieldTypeLabel(type) {
   return FIELD_TYPES.find((f) => f.type === type)?.label || type;
 }
 
-function newField(type) {
+export function newField(type) {
   return {
     id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     type,
@@ -571,7 +571,7 @@ function CollapsibleSection({ title, open, onToggle, children }) {
   );
 }
 
-function FieldEditor({ field, fields, onChange, onDelete, bare }) {
+export function FieldEditor({ field, fields, onChange, onDelete, bare }) {
   const update = (patch) => onChange({ ...field, ...patch });
   // Placeholder/Default Value don't mean anything for a booking field
   // (there's no text box to place text in, and no sensible "default"

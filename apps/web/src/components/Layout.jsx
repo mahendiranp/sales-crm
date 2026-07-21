@@ -38,6 +38,7 @@ import {
   Inbox,
   UploadCloud,
   Command,
+  Wand2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
@@ -91,7 +92,10 @@ const NAV_SECTIONS = [
   },
   {
     label: "AI",
-    items: [{ to: "/app/ai-center", label: "AI Center", icon: Sparkles, minPlan: "growth" }],
+    items: [
+      { to: "/app/ai-architect", label: "AI Form Architect", icon: Wand2, module: "templates" },
+      { to: "/app/ai-center", label: "AI Center", icon: Sparkles, minPlan: "growth" },
+    ],
   },
   {
     label: "Analytics",

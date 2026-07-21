@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { Target, ArrowLeft, ShieldCheck, LockKeyhole, CheckCircle2, Sparkles, Zap, BarChart3, Palette, Download } from "lucide-react";
+import { Target, ArrowLeft, ArrowRight, LockKeyhole, CheckCircle2, Sparkles, Zap } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
 import { Field, inputCls, Button, PasswordInput } from "../components/ui";
@@ -19,15 +19,30 @@ const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.m
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Mirrors the login page's right-side feature panel — same list, same
-// styling — so the two auth screens read as one cohesive system.
-const WHY_FLOWORA = [
-  { icon: Sparkles, label: "AI Form Builder", desc: "Create forms in seconds using plain English.", badge: "New" },
-  { icon: Zap, label: "Approval Workflows", desc: "Automatically route requests for approval." },
-  { icon: BarChart3, label: "Analytics Dashboard", desc: "Monitor submissions in real time." },
-  { icon: Palette, label: "Brand Customization", desc: "Match forms to your company." },
-  { icon: Download, label: "CSV & Excel Export", desc: "Export your data whenever you need it." },
-];
+// Feedback only — the actual minimum ("at least 8 characters") is still
+// enforced by continueToStep2's validation, unaffected by this score.
+function getPasswordStrength(pw) {
+  if (!pw) return "weak";
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return "weak";
+  if (score <= 3) return "medium";
+  return "strong";
+}
+const STRENGTH_BARS = { weak: 1, medium: 2, strong: 3 };
+const STRENGTH_COLOR = { weak: "bg-danger", medium: "bg-amber-500", strong: "bg-emerald-500" };
+const STRENGTH_TEXT_COLOR = { weak: "text-danger", medium: "text-amber-600", strong: "text-emerald-600" };
+const STRENGTH_LABEL = { weak: "Weak", medium: "Medium", strong: "Strong" };
+
+// Same six steps as the homepage hero's synced animation (Landing.jsx's
+// SYNCED_STEPS) — reusing the exact sequence here (instead of a generic
+// feature list) so the signup page reinforces the same product story a
+// visitor just saw, rather than introducing a new mental model.
+const SIGNUP_STEPS = ["Describe", "Generate", "Publish", "Collect", "Approve", "Done"];
 
 // Bumps input height/border/focus-ring for step 1 only — `inputCls` is
 // shared by every form across the app (including steps 2-3 below), so
@@ -41,30 +56,31 @@ const loginInputCls = `${inputCls} h-[52px] text-[16px] bg-white text-[#14172b99
 function WhyFloworaPanel() {
   return (
     <div
-      className="hidden lg:flex flex-col gap-5 w-full max-w-[430px] bg-white rounded-card p-8 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+      className="hidden lg:flex flex-col gap-6 w-full max-w-[430px] bg-white rounded-card p-8 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
       style={{ border: "1px solid #E7ECEF", boxShadow: "0 15px 45px rgba(0,0,0,.06)" }}
     >
       <h2 className="flex items-center gap-2 font-display font-bold text-ink leading-snug text-[28px]">
         <Sparkles size={22} className="text-primary shrink-0" />
-        Why teams choose {APP_NAME}
+        From prompt to done
       </h2>
-      <ul className="space-y-5">
-        {WHY_FLOWORA.map(({ icon: Icon, label, desc, badge }) => (
-          <li key={label} className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-lg bg-primary/8 flex items-center justify-center shrink-0">
-              <Icon size={19} className="text-primary" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 text-[18px] font-semibold text-ink">
-                {label}
-                {badge && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-dark bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded-full">
-                    {badge}
-                  </span>
-                )}
-              </div>
-              <p className="text-[16px] text-ink/50 mt-0.5">{desc}</p>
-            </div>
+      <p className="text-[15px] text-ink/50 -mt-3">
+        Every {APP_NAME} form follows the same path — describe it, and everything after submission runs itself.
+      </p>
+      <ol className="space-y-3">
+        {SIGNUP_STEPS.map((step, i) => (
+          <li key={step} className="flex items-center gap-3">
+            <span className="w-7 h-7 rounded-full bg-primary/8 text-primary text-sm font-semibold flex items-center justify-center shrink-0">
+              {i + 1}
+            </span>
+            <span className="text-[17px] font-medium text-ink">{step}</span>
+            {i < SIGNUP_STEPS.length - 1 && <ArrowRight size={14} className="text-ink/25 ml-auto shrink-0" />}
+          </li>
+        ))}
+      </ol>
+      <ul className="space-y-2 pt-2 border-t border-border">
+        {["AI builds the form for you", "Import PDFs, Word & Google Forms", "Approval workflows built in", "AI insights on every response"].map((line) => (
+          <li key={line} className="flex items-center gap-2 text-[14px] text-ink/60">
+            <CheckCircle2 size={15} className="text-primary shrink-0" /> {line}
           </li>
         ))}
       </ul>
@@ -240,7 +256,7 @@ export default function Signup() {
     }
   };
 
-  const passwordValid = form.password.length >= 8;
+  const passwordStrength = getPasswordStrength(form.password);
 
   return (
     <div
@@ -265,7 +281,7 @@ export default function Signup() {
           </div>
           <span className="font-display font-bold text-[22px]">{APP_NAME}</span>
         </Link>
-        {step === 1 && <p className="text-center text-xs text-ink/40 mb-4">AI-powered forms for modern teams</p>}
+        {step === 1 && <p className="text-center text-xs text-ink/40 mb-4">Build AI Forms. Automate Everything After Submission.</p>}
 
         <div
           className={`bg-white rounded-card p-6 ${step === 1 ? "lg:p-10 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg" : "shadow-card border border-border"}`}
@@ -274,21 +290,50 @@ export default function Signup() {
           {step === 1 ? (
             <>
               <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
-                <h1 className="font-display font-bold text-ink text-[32px] leading-tight">Create your Flowora account</h1>
-                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full shrink-0">
-                  FREE FOREVER
-                </span>
+                <h1 className="font-display font-bold text-ink text-[32px] leading-tight">Create your {APP_NAME} account</h1>
+                {selectedPlan !== "growth" && (
+                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full shrink-0">
+                    Free Plan
+                  </span>
+                )}
               </div>
               <p className="text-[16px] mb-6" style={{ color: "#6B7280" }}>
-                {selectedPlan === "growth"
-                  ? "Signing up for Growth ($19/month) — you'll pay after verifying your email."
-                  : "Start building AI-powered forms for free. No credit card required."}
+                Start free. Upgrade anytime. No credit card required.
               </p>
+
+              {selectedPlan === "growth" && (
+                <div className="flex items-center justify-between gap-3 border border-primary/20 bg-primary/5 rounded-lg p-3.5 mb-6">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70">Selected Plan</p>
+                    <p className="font-semibold text-ink">Growth <span className="font-normal text-ink/50">$19/month</span></p>
+                  </div>
+                  <p className="text-xs text-ink/50 text-right max-w-[160px]">You won't be charged until after email verification.</p>
+                </div>
+              )}
+
+              {selectedPlan !== "growth" && (
+                <>
+                  <div className="transition-colors rounded-lg [&_button]:hover:bg-[#FAFAFA] mb-5">
+                    <GoogleSignInButton
+                      text="signup_with"
+                      onSuccess={() => router.push("/app")}
+                      onError={(msg) => setFieldErrors((er) => ({ ...er, form: msg }))}
+                    />
+                  </div>
+                  {fieldErrors.form && <p className="text-center text-sm text-danger mb-3">{fieldErrors.form}</p>}
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="h-px bg-border flex-1" />
+                    <span className="text-[10px] font-semibold tracking-wider text-ink/40 uppercase">Or</span>
+                    <div className="h-px bg-border flex-1" />
+                  </div>
+                </>
+              )}
 
               <form onSubmit={continueToStep2} noValidate>
                 <Field label="Full Name">
                   <input
                     className={loginInputCls}
+                    placeholder="John Smith"
                     value={form.name}
                     onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((er) => ({ ...er, name: "" })); }}
                     style={fieldErrors.name ? { borderColor: "#DC2626" } : undefined}
@@ -300,6 +345,7 @@ export default function Signup() {
                     <input
                       className={loginInputCls}
                       type="email"
+                      placeholder="john@company.com"
                       value={form.email}
                       onChange={(e) => { setForm({ ...form, email: e.target.value }); setFieldErrors((er) => ({ ...er, email: "" })); }}
                       style={fieldErrors.email ? { borderColor: "#DC2626" } : undefined}
@@ -311,15 +357,27 @@ export default function Signup() {
                   <Field label="Password">
                     <PasswordInput
                       className={loginInputCls}
+                      placeholder="••••••••"
                       value={form.password}
                       onChange={(e) => { setForm({ ...form, password: e.target.value }); setFieldErrors((er) => ({ ...er, password: "" })); }}
                       style={fieldErrors.password ? { borderColor: "#DC2626" } : undefined}
                     />
                   </Field>
                   {fieldErrors.password && <p className="text-sm text-danger mt-1">{fieldErrors.password}</p>}
-                  <p className={`text-xs mt-1 ${passwordValid ? "text-emerald-600" : "text-ink/40"}`}>
-                    {passwordValid ? "✓ Strong password" : "• Use at least 8 characters."}
-                  </p>
+                  {form.password && (
+                    <div className="mt-1.5">
+                      <div className="flex gap-1">
+                        {[0, 1, 2].map((i) => (
+                          <span
+                            key={i}
+                            className={`h-1 flex-1 rounded-full ${i < STRENGTH_BARS[passwordStrength] ? STRENGTH_COLOR[passwordStrength] : "bg-ink/10"}`}
+                          />
+                        ))}
+                      </div>
+                      <p className={`text-xs mt-1 ${STRENGTH_TEXT_COLOR[passwordStrength]}`}>{STRENGTH_LABEL[passwordStrength]}</p>
+                    </div>
+                  )}
+                  {!form.password && <p className="text-xs mt-1 text-ink/40">• Use at least 8 characters.</p>}
                 </div>
                 <div className="mt-5">
                   <Button
@@ -327,37 +385,18 @@ export default function Signup() {
                     className="w-full justify-center h-[53px] text-[16px] font-semibold rounded-[10px] transition-all duration-200 hover:-translate-y-px hover:shadow-md"
                     disabled={checkingEmail}
                   >
-                    {checkingEmail ? "Checking…" : "Create account →"}
+                    {checkingEmail ? "Checking…" : "Create Free Account →"}
                   </Button>
                 </div>
               </form>
-
-              {selectedPlan !== "growth" && (
-                <>
-                  <div className="flex items-center gap-3 mt-8 mb-3">
-                    <div className="h-px bg-border flex-1" />
-                    <span className="text-[10px] font-semibold tracking-wider text-ink/40 uppercase">Or continue with</span>
-                    <div className="h-px bg-border flex-1" />
-                  </div>
-                  <div className="transition-colors rounded-lg [&_button]:hover:bg-[#FAFAFA]">
-                    <GoogleSignInButton
-                      text="signup_with"
-                      onSuccess={() => router.push("/app")}
-                      onError={(msg) => setFieldErrors((er) => ({ ...er, form: msg }))}
-                    />
-                  </div>
-                  {fieldErrors.form && <p className="text-center text-sm text-danger mt-2">{fieldErrors.form}</p>}
-                  <p className="text-center text-xs text-ink/40 mt-2">Securely sign up with your Google account.</p>
-                </>
-              )}
 
               <div className="mt-7 text-center">
                 <div className="flex items-center justify-center flex-wrap gap-x-2 gap-y-1 text-ink/35" style={{ fontSize: "13px" }}>
                   <span className="flex items-center gap-1"><LockKeyhole size={12} className="text-primary" /> Secure signup</span>
                   <span>•</span>
-                  <span className="flex items-center gap-1"><ShieldCheck size={12} className="text-primary" /> Google OAuth</span>
+                  <span className="flex items-center gap-1"><CheckCircle2 size={12} className="text-primary" /> No credit card required</span>
                   <span>•</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 size={12} className="text-primary" /> No credit card</span>
+                  <span className="flex items-center gap-1"><Zap size={12} className="text-primary" /> Setup in under 60 seconds</span>
                 </div>
               </div>
 
