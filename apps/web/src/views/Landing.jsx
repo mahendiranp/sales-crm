@@ -4,7 +4,7 @@ import {
   Target, Sparkles, ArrowRight, Check, X as XIcon, Mail, ChevronDown,
   Workflow, BarChart3, Bot, Clock, Lock,
   Building2, HeartPulse, GraduationCap, Factory, Landmark, Truck, Store,
-  Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity, Eye,
+  Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity,
 } from "lucide-react";
 import { APP_NAME } from "../lib/brand";
 import Seo from "../components/Seo";
@@ -231,32 +231,54 @@ function ComparisonCell({ value }) {
 }
 
 // Single shared timeline driving BOTH the hero mock and the "How it
-// works" chip row below it — one interval, owned by Landing() and passed
+// works" chip row below it — one timer, owned by Landing() and passed
 // down as a prop, so the two animations move on the exact same clock
-// instead of two independent setInterval loops that drift apart from
-// each other over time even at the same nominal duration.
-const SYNCED_STEPS = ["Describe", "Generate", "Publish", "Response", "Approval", "Done"];
-const SYNCED_STEP_MS = 1700;
+// instead of two independent loops that drift apart from each other.
+// Four macro-phases instead of six granular steps — each phase groups
+// several real things happening (e.g. "Workflow Executes" covers the
+// submit → approve → task-creation chain) so the story reads as "prompt
+// in, business outcome out" rather than a flat list of form-builder UI
+// states. Phases run at different durations (2s/2s/3s/3s = 10s/loop)
+// since "Workflow Executes" and "Business Updates" each show three
+// sub-items that need time to stagger in, while "Prompt" is just a
+// typing cursor.
+const HERO_PHASES = [
+  { key: "prompt", label: "Prompt", ms: 2000 },
+  { key: "assets", label: "AI Creates Assets", ms: 2000 },
+  { key: "workflow", label: "Workflow Executes", ms: 3000 },
+  { key: "business", label: "Business Updates", ms: 3000 },
+];
 
-function useSyncedStep() {
-  const [stepIndex, setStepIndex] = useState(0);
+function useSyncedPhase() {
+  const [phaseIndex, setPhaseIndex] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setStepIndex((i) => (i + 1) % SYNCED_STEPS.length), SYNCED_STEP_MS);
-    return () => clearInterval(id);
-  }, []);
-  return stepIndex;
+    const timer = setTimeout(() => setPhaseIndex((i) => (i + 1) % HERO_PHASES.length), HERO_PHASES[phaseIndex].ms);
+    return () => clearTimeout(timer);
+  }, [phaseIndex]);
+  return phaseIndex;
 }
 
-const LEAVE_FORM_FIELDS = ["Name", "Leave Type", "Start Date", "End Date"];
+const AI_ASSETS = [
+  { icon: "📄", label: "Form" },
+  { icon: "✅", label: "Approval" },
+  { icon: "📋", label: "Task" },
+];
+const WORKFLOW_STEPS = ["Employee submits", "Manager approves", "Task created"];
+const BUSINESS_UPDATES = [
+  { icon: "📈", label: "CRM updated" },
+  { icon: "🤖", label: "AI Center notified" },
+  { icon: "🎉", label: "Process complete" },
+];
 
-// Three always-visible columns (Prompt / Generated Form / right-hand
-// status panel, stacked on mobile). The right panel tells the actual
-// story in order — waiting → published → response received → approval →
-// done — rather than jumping straight to the approval chain, so it
-// matches what a user really sees after publishing a form.
-function HeroMock({ stepIndex }) {
-  const step = SYNCED_STEPS[stepIndex];
-  const at = (s) => stepIndex >= SYNCED_STEPS.indexOf(s);
+// Three always-visible columns (Prompt / AI Creates Assets / a
+// right-hand panel that swaps between "Workflow Executes" and "Business
+// Updates" content). The right panel tells the real story in order —
+// waiting → executing the workflow → the business-level outcome — so it
+// matches what actually happens after a form gets submitted, not just
+// form-builder UI states.
+function HeroMock({ phaseIndex }) {
+  const phase = HERO_PHASES[phaseIndex].key;
+  const at = (k) => phaseIndex >= HERO_PHASES.findIndex((p) => p.key === k);
 
   return (
     <div className="rounded-2xl border border-border shadow-card bg-white p-3">
@@ -266,99 +288,70 @@ function HeroMock({ stepIndex }) {
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Prompt</p>
             <div className="bg-white rounded-lg border border-border px-3 py-2.5 text-sm text-ink/70 min-h-[52px]">
-              &quot;Create an Employee Leave Request Form&quot;
-              {step === "Describe" && <span className="inline-block w-[2px] h-3.5 bg-primary ml-0.5 align-middle animate-pulse" />}
+              &quot;Create an Employee Leave Process&quot;
+              {phase === "prompt" && <span className="inline-block w-[2px] h-3.5 bg-primary ml-0.5 align-middle animate-pulse" />}
             </div>
           </div>
 
-          {/* Generated Form — built once at "Generate" and stays visible
-              (as the source of truth) through every later step. */}
+          {/* AI creates assets — built once at "assets" and stays visible
+              (as the source of truth) through every later phase. */}
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Generated Form</p>
-            {!at("Generate") ? (
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">AI Creates Assets</p>
+            {!at("assets") ? (
               <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
                 <p className="text-xs text-ink/30">Waiting for prompt…</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg border border-border p-3.5">
-                <p className="text-sm font-display font-semibold mb-2.5">Employee Leave Request</p>
-                <div className="space-y-1.5">
-                  {LEAVE_FORM_FIELDS.map((f, i) => (
-                    <div
-                      key={f}
-                      className={`flex items-center gap-1.5 text-xs text-ink/70 ${step === "Generate" ? "opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]" : ""}`}
-                      style={step === "Generate" ? { animationDelay: `${i * 0.3}s` } : undefined}
-                    >
-                      <Check size={12} className="text-primary shrink-0" /> {f}
-                    </div>
-                  ))}
-                </div>
+              <div className="bg-white rounded-lg border border-border p-3.5 space-y-1.5">
+                {AI_ASSETS.map((a, i) => (
+                  <div
+                    key={a.label}
+                    className={`flex items-center gap-1.5 text-xs text-ink/70 ${phase === "assets" ? "opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]" : ""}`}
+                    style={phase === "assets" ? { animationDelay: `${i * 0.5}s` } : undefined}
+                  >
+                    <span>{a.icon}</span> {a.label}
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Status panel — completely swaps content per step: waiting →
-              published (with a real-looking public link + Preview) →
-              a response arriving → the approval chain → a final summary. */}
+          {/* Right panel — swaps from "waiting" to the workflow-execution
+              chain to the business-level outcome. */}
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">
-              {step === "Publish" ? "Public Form" : step === "Response" ? "Responses" : step === "Approval" ? "Approval Workflow" : step === "Done" ? "Summary" : "Status"}
+              {phase === "workflow" ? "Workflow Executes" : phase === "business" ? "Business Updates" : "Status"}
             </p>
 
-            {!at("Generate") && (
+            {(phase === "prompt" || phase === "assets") && (
               <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
                 <p className="text-xs text-ink/30">Not yet configured</p>
               </div>
             )}
 
-            {step === "Generate" && (
-              <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
-                <p className="text-xs text-ink/30">Waiting for publish…</p>
-              </div>
-            )}
-
-            {step === "Publish" && (
-              <div className="bg-white rounded-lg border border-border p-3.5">
-                <p className="flex items-center gap-1.5 text-xs text-ink/50 mb-2">
-                  <Globe size={12} className="text-primary shrink-0" /> flowora.app/f/leave-request
-                </p>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 mb-3">
-                  <Check size={13} /> Published
-                </p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-lg px-2.5 py-1.5">
-                  <Eye size={12} /> Preview Form
-                </span>
-              </div>
-            )}
-
-            {step === "Response" && (
-              <div className="bg-white rounded-lg border border-border p-3.5">
-                <p className="text-sm font-medium text-ink/80">Priya Sharma</p>
-                <p className="text-xs text-ink/50 mt-0.5">Vacation · Jul 22</p>
-                <p className="text-[10px] text-ink/35 mt-2">Submitted just now</p>
-              </div>
-            )}
-
-            {step === "Approval" && (
-              <div className="bg-white rounded-lg border border-border p-3.5">
-                <div className="flex items-center gap-2 text-xs font-medium">
-                  <span className="flex items-center gap-1 bg-blue-100 text-blue-700 rounded-full px-2.5 py-1">👨 Manager</span>
-                </div>
-                <div className="text-ink/25 pl-3 py-0.5">↓</div>
-                <div className="flex items-center gap-2 text-xs font-medium">
-                  <span className="flex items-center gap-1 bg-purple-100 text-purple-700 rounded-full px-2.5 py-1">👩 HR</span>
-                </div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 mt-3 pt-3 border-t border-border">
-                  <Check size={13} /> Approved
-                </p>
-              </div>
-            )}
-
-            {step === "Done" && (
+            {phase === "workflow" && (
               <div className="bg-white rounded-lg border border-border p-3.5 space-y-1.5">
-                {["Form Published", "Response Received", "Approval Completed", "Workflow Finished"].map((t) => (
-                  <div key={t} className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
-                    <Check size={12} className="shrink-0" /> {t}
+                {WORKFLOW_STEPS.map((s, i) => (
+                  <div
+                    key={s}
+                    className="flex items-center gap-1.5 text-xs text-ink/70 opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]"
+                    style={{ animationDelay: `${i * 0.8}s` }}
+                  >
+                    <Check size={12} className="text-primary shrink-0" /> {s}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {phase === "business" && (
+              <div className="bg-white rounded-lg border border-border p-3.5 space-y-1.5">
+                {BUSINESS_UPDATES.map((u, i) => (
+                  <div
+                    key={u.label}
+                    className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]"
+                    style={{ animationDelay: `${i * 0.8}s` }}
+                  >
+                    <span>{u.icon}</span> {u.label}
                   </div>
                 ))}
               </div>
@@ -370,20 +363,20 @@ function HeroMock({ stepIndex }) {
   );
 }
 
-// Animated chip row — Option 1 from feedback: only the current step is
-// highlighted (solid green), completed steps get a checkmark + light
-// green, upcoming steps stay white/gray. Driven by the same stepIndex as
-// HeroMock (see useSyncedStep above) so both animations move in lockstep
-// instead of two independently-drifting timers.
-function WorkflowChips({ stepIndex }) {
+// Animated chip row — only the current phase is highlighted (solid
+// green), completed phases get a checkmark + light green, upcoming
+// phases stay white/gray. Driven by the same phaseIndex as HeroMock (see
+// useSyncedPhase above) so both animations move in lockstep instead of
+// two independently-drifting timers.
+function WorkflowChips({ phaseIndex }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3 text-sm font-medium">
-      {SYNCED_STEPS.map((s, i) => {
-        const isDone = s === "Done";
-        const completed = i < stepIndex || (isDone && stepIndex === SYNCED_STEPS.length - 1);
-        const active = i === stepIndex;
+      {HERO_PHASES.map((p, i) => {
+        const isLast = i === HERO_PHASES.length - 1;
+        const completed = i < phaseIndex || (isLast && phaseIndex === HERO_PHASES.length - 1);
+        const active = i === phaseIndex;
         return (
-          <span key={s} className="flex items-center gap-2">
+          <span key={p.key} className="flex items-center gap-2">
             <span
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-colors ${
                 active
@@ -393,9 +386,9 @@ function WorkflowChips({ stepIndex }) {
                   : "bg-white border-border text-ink/60"
               }`}
             >
-              {completed && !active && <Check size={12} />} {s}
+              {completed && !active && <Check size={12} />} {p.label}
             </span>
-            {i < SYNCED_STEPS.length - 1 && <ArrowRight size={13} className={i < stepIndex ? "text-primary/40" : "text-ink/25"} />}
+            {!isLast && <ArrowRight size={13} className={i < phaseIndex ? "text-primary/40" : "text-ink/25"} />}
           </span>
         );
       })}
@@ -455,7 +448,7 @@ const ORG_JSON_LD = {
 };
 
 export default function Landing() {
-  const heroStep = useSyncedStep();
+  const heroPhase = useSyncedPhase();
   return (
     <div className="font-body text-ink">
       <Seo
@@ -581,17 +574,18 @@ export default function Landing() {
         </p>
       </section>
 
-      {/* Product preview mock — a small looping animation (prompt →
-          generating → fields appear → approval chain → published) instead
-          of a static list, so a visitor understands what Flowora does
-          within a few seconds without needing a real demo video. A real
-          product screenshot/GIF still converts better than a hand-built
-          mock like this — swap this block for one once captured. */}
+      {/* Product preview mock — a small looping animation (prompt → AI
+          creates the form/approval/task assets → the workflow executes →
+          the business-level outcome) instead of a static list, so a
+          visitor understands what Flowora does within a few seconds
+          without needing a real demo video. A real product screenshot/GIF
+          still converts better than a hand-built mock like this — swap
+          this block for one once captured. */}
       <section className="max-w-5xl mx-auto px-6 mb-16">
         <p className="text-center text-sm font-medium text-ink/50 mb-4">
           See {APP_NAME} build an approval-ready form in seconds
         </p>
-        <HeroMock stepIndex={heroStep} />
+        <HeroMock phaseIndex={heroPhase} />
       </section>
 
       {/* How it works — simplified to the scannable main chain; the fan-out
@@ -599,7 +593,7 @@ export default function Landing() {
           highlighted "Forms are just the beginning" section below instead
           of being crammed under these chips too. */}
       <section className="max-w-3xl mx-auto px-6 mb-20">
-        <WorkflowChips stepIndex={heroStep} />
+        <WorkflowChips phaseIndex={heroPhase} />
       </section>
 
       {/* Imports — the concrete differentiator, as visual cards instead of
@@ -1060,7 +1054,7 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-border">
-        <div className="max-w-6xl mx-auto px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-8">
+        <div className="max-w-6xl mx-auto px-6 py-12 grid sm:grid-cols-2 lg:grid-cols-6 gap-8">
           <div className="lg:col-span-2">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">

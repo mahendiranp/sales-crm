@@ -35,39 +35,39 @@ describe("Landing page", () => {
   });
 
   // The hero mock and the "How it works" chip row (Landing.jsx) share one
-  // timer (useSyncedStep) cycling Describe → Generate → Publish →
-  // Response → Approval → Done every 1.7s, looping continuously. Rather
-  // than assert exact timing (flaky against real browser/CI speed), just
-  // confirm every step's distinctive content shows up somewhere within
-  // one full loop (6 × 1.7s = 10.2s) — proves the animation actually
-  // cycles through the real story instead of being stuck on one frame.
-  it("hero mock cycles through Describe → Generate → Publish → Response → Approval → Done", () => {
+  // timer (useSyncedPhase) cycling Prompt (2s) → AI Creates Assets (2s) →
+  // Workflow Executes (3s) → Business Updates (3s) = 10s/loop, looping
+  // continuously. Rather than assert exact timing (flaky against real
+  // browser/CI speed), just confirm every phase's distinctive content
+  // shows up somewhere within one full loop — proves the animation
+  // actually cycles through the real story instead of being stuck on one
+  // frame.
+  it("hero mock cycles through Prompt → AI Creates Assets → Workflow Executes → Business Updates", () => {
     cy.visit("/");
     cy.contains("See Flowora build an approval-ready form in seconds").should("be.visible");
 
-    // Chip row — all six renamed labels present (not the old
-    // "AI Builds"/"Collect"/"Automate" set).
-    cy.contains("Describe").should("be.visible");
-    cy.contains("Generate").should("be.visible");
-    cy.contains("Publish").should("be.visible");
-    cy.contains("Response").should("be.visible");
-    cy.contains("Approval").should("be.visible");
-    cy.contains("Done").should("be.visible");
+    // Chip row — all four phase labels present.
+    cy.contains("Prompt").should("be.visible");
+    cy.contains("AI Creates Assets").should("be.visible");
+    cy.contains("Workflow Executes").should("be.visible");
+    cy.contains("Business Updates").should("be.visible");
 
-    // Prompt panel — always visible regardless of step.
-    cy.contains("Create an Employee Leave Request Form").should("be.visible");
+    // Prompt panel — always visible regardless of phase.
+    cy.contains("Create an Employee Leave Process").should("be.visible");
 
-    // Generated Form panel — the field checklist appears once the loop
-    // reaches "Generate" and stays visible through every later step.
-    cy.contains("Employee Leave Request", { timeout: 12000 }).should("be.visible");
-    cy.contains("Leave Type").should("be.visible");
+    // AI Creates Assets panel — appears once the loop reaches "assets"
+    // and stays visible through every later phase (10s loop, so a 12s
+    // timeout covers a full cycle either way).
+    cy.contains("Form", { timeout: 12000 }).should("be.visible");
+    cy.contains("Approval", { timeout: 12000 }).should("be.visible");
+    cy.contains("Task", { timeout: 12000 }).should("be.visible");
 
-    // Right-hand status panel — each step's distinctive content, in
-    // order, within one full loop.
-    cy.contains("flowora.app/f/leave-request", { timeout: 12000 }).should("be.visible");
-    cy.contains("Priya Sharma", { timeout: 12000 }).should("be.visible");
-    cy.contains("Approved", { timeout: 12000 }).should("be.visible");
-    cy.contains("Workflow Finished", { timeout: 12000 }).should("be.visible");
+    // Right-hand panel — Workflow Executes then Business Updates content,
+    // each within one full loop.
+    cy.contains("Employee submits", { timeout: 12000 }).should("be.visible");
+    cy.contains("Manager approves", { timeout: 12000 }).should("be.visible");
+    cy.contains("CRM updated", { timeout: 12000 }).should("be.visible");
+    cy.contains("Process complete", { timeout: 12000 }).should("be.visible");
   });
 });
 
