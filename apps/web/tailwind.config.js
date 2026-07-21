@@ -39,7 +39,9 @@ export default {
         card: "10px",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(20, 23, 43, 0.04), 0 1px 8px rgba(20, 23, 43, 0.04)",
+        // A softer, more visible lift than a hairline border alone — was
+        // faint enough to read as "no shadow" at a glance.
+        card: "0 8px 24px rgba(15, 23, 42, 0.06)",
       },
       // Used by Landing.jsx's hero mock (animate-[fadeIn_0.4s_ease-out_forwards])
       // to stagger the "Creating fields / Adding validation / ..." checklist
