@@ -30,6 +30,19 @@ body {
   outline-offset: 2px;
 }
 
+/* Respect the OS-level "reduce motion" setting app-wide — neutralizes
+   every CSS animation/transition/scroll-behavior (the landing page's
+   hero-mock fade-ins, floating chips, hover lifts, etc. included)
+   instead of requiring every animated element to opt out individually. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Chrome/Safari/Edge apply their own text/background color to autofilled
    inputs (e.g. saved login credentials) that ignores the page's normal
    `color`/`background-color` CSS entirely — only `-webkit-text-fill-color`

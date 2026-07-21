@@ -1,32 +1,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Target, Sparkles, ArrowRight, Check, X as XIcon, Mail, ChevronDown,
-  Workflow, BarChart3, Bot, Clock, Lock,
+  Target, Sparkles, ArrowRight, Check, Mail, ChevronDown,
+  Workflow, Bot, Clock, Lock,
   Building2, HeartPulse, GraduationCap, Factory, Landmark, Truck, Store,
   Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity,
 } from "lucide-react";
 import { APP_NAME } from "../lib/brand";
 import Seo from "../components/Seo";
 
-const FEATURES = [
-  { icon: Bot, title: "AI Forms", desc: "Build forms in seconds—describe what you need or import a PDF, Word doc, image, or Google Form." },
-  { icon: Building2, title: "CRM", desc: "Convert responses into leads and deals, automatically." },
-  { icon: ClipboardList, title: "Work", desc: "Assign tasks and schedule meetings straight from a submission." },
-  { icon: Sparkles, title: "AI", desc: "Receive recommendations and AI-generated summaries as work moves." },
-  { icon: BarChart3, title: "Analytics", desc: "Track every submission, approval, and outcome from one dashboard." },
-];
-
 // Grouped by the same Forms/CRM/Work/AI structure as the rest of the
 // page's "forms are the entry point, everything after is the platform"
 // positioning, instead of one flat undifferentiated checklist.
-const FEATURE_CATEGORIES = [
-  { label: "Forms", items: ["AI Builder", "PDF Import", "Word Import", "Image Import", "Google Forms Import", "Conditional Logic"] },
-  { label: "CRM", items: ["Leads", "Contacts", "Companies", "Deals"] },
-  { label: "Work", items: ["Tasks", "Meetings", "Timeline", "Approval Workflows"] },
-  { label: "AI", items: ["AI Center", "Insights", "Recommendations"] },
-];
-
 const SECURITY_POINTS = [
   { icon: Lock, label: "Encrypted in transit and at rest" },
   { icon: ShieldCheck, label: "Role-based access control" },
@@ -34,18 +19,6 @@ const SECURITY_POINTS = [
   { icon: DatabaseBackup, label: "Automatic backups" },
   { icon: Globe, label: "Secure cloud infrastructure" },
   { icon: Activity, label: "24×7 system monitoring" },
-];
-
-// true/false/"limited"/"basic" — a defensible, not-fabricated read of each
-// competitor's public feature set, same spirit as any vendor comparison
-// page. Not tied to any live data source, so revisit if a competitor
-// ships one of these.
-const COMPARISON_ROWS = [
-  { feature: "AI Form Builder", flowora: true, googleForms: false, typeform: "limited" },
-  { feature: "Approval Workflow", flowora: true, googleForms: false, typeform: false },
-  { feature: "Dashboard & Analytics", flowora: true, googleForms: "basic", typeform: "basic" },
-  { feature: "Workflow Automation", flowora: true, googleForms: false, typeform: "limited" },
-  { feature: "Team Collaboration", flowora: true, googleForms: "limited", typeform: "limited" },
 ];
 
 const INDUSTRIES = [
@@ -84,15 +57,15 @@ const HOW_IT_WORKS = [
   { emoji: "⚡", label: "Automate approvals" },
 ];
 
-const BEFORE_STEPS = ["Create Form", "Collect Responses", "Download Excel", "Email Manager", "Wait", "Update Spreadsheet"];
-const AFTER_STEPS = ["Describe Form", "AI Builds It", "Share", "Responses", "Approvals", "Done"];
-
-const TIME_SAVED_ROWS = [
-  { without: "Build a form manually", withFlowora: "AI creates it in seconds" },
-  { without: "Recreate old forms", withFlowora: "Import PDF, Word, Image, or Google Forms" },
-  { without: "Chase approvals by email", withFlowora: "Automated approval workflows" },
-  { without: "Analyze spreadsheets", withFlowora: "AI summaries and dashboards" },
-];
+// This is now the single comparison section on the homepage — it used to
+// compete with "See the Difference" (a 2-col outcome table) and "How
+// Flowora compares" (a 4-col feature-vs-competitor table), all saying the
+// same "Traditional forms stop at collecting data, Flowora keeps going"
+// thing three different ways. The named-competitor angle (Google Forms/
+// Typeform feature-by-feature) still lives on the dedicated /compare/
+// [slug] pages — this is deliberately the simple, single visual version.
+const BEFORE_STEPS = ["Create Form", "Download Excel", "Email Approval", "Manual CRM Entry", "Manual Tasks"];
+const AFTER_STEPS = ["AI Builds Form", "Approval", "CRM Updated", "Task Created", "Meeting Scheduled", "AI Insight"];
 
 // Trimmed from 16 to the ones that actually affect a signup decision
 // (pricing, core differentiators, collaboration, branding) — cut ones
@@ -196,6 +169,23 @@ const FOOTER_COLUMNS = [
   },
 ];
 
+// Descriptive, not a fabricated discount/launch-offer claim — nothing in
+// this codebase backs a "50% off" or similar promotion, so the bar states
+// what's actually true (AI Forms + CRM + Approval Workflows shipped) and
+// links to the section that proves it.
+function AnnouncementBar() {
+  return (
+    <a
+      href="#demo"
+      className="group flex items-center justify-center gap-1.5 bg-primary text-white text-xs sm:text-sm font-medium text-center py-2 px-4 hover:bg-primary-dark transition-colors"
+    >
+      <span>✨ New — Google Forms Import · Approval Automation · CRM Updates</span>
+      <span className="hidden sm:inline">— See Demo</span>
+      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+    </a>
+  );
+}
+
 function NavBar() {
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-border">
@@ -224,12 +214,6 @@ function NavBar() {
   );
 }
 
-function ComparisonCell({ value }) {
-  if (value === true) return <Check size={16} className="text-primary mx-auto" />;
-  if (value === false) return <XIcon size={16} className="text-ink/25 mx-auto" />;
-  return <span className="text-xs text-ink/50">{value === "limited" ? "Limited" : "Basic"}</span>;
-}
-
 // Single shared timeline driving BOTH the hero mock and the "How it
 // works" chip row below it — one timer, owned by Landing() and passed
 // down as a prop, so the two animations move on the exact same clock
@@ -243,10 +227,10 @@ function ComparisonCell({ value }) {
 // sub-items that need time to stagger in, while "Prompt" is just a
 // typing cursor.
 const HERO_PHASES = [
-  { key: "prompt", label: "Prompt", ms: 2000 },
-  { key: "assets", label: "AI Creates Assets", ms: 2000 },
-  { key: "workflow", label: "Workflow Executes", ms: 3000 },
-  { key: "business", label: "Business Updates", ms: 3000 },
+  { key: "prompt", label: "Describe", ms: 2000 },
+  { key: "assets", label: "Generate", ms: 2000 },
+  { key: "workflow", label: "Execute", ms: 3000 },
+  { key: "business", label: "Complete", ms: 3000 },
 ];
 
 function useSyncedPhase() {
@@ -258,16 +242,45 @@ function useSyncedPhase() {
   return phaseIndex;
 }
 
+// One accent color per module — echoed in the mock, the sidebar dots, and
+// the feature cards below, so a visitor learns "orange = Work, indigo =
+// AI Center" once and it stays consistent everywhere. Restrained on
+// purpose (text color only, not full colored backgrounds) — enough to
+// scan by, not a rainbow.
+const MODULE_COLOR = {
+  Forms: "text-blue-600",
+  Form: "text-blue-600",
+  Approval: "text-emerald-600",
+  Work: "text-amber-600",
+  Task: "text-amber-600",
+  Meetings: "text-violet-600",
+  CRM: "text-primary",
+  "AI Center": "text-indigo-600",
+};
+
 const AI_ASSETS = [
-  { icon: "📄", label: "Form" },
-  { icon: "✅", label: "Approval" },
-  { icon: "📋", label: "Task" },
+  { icon: "📄", label: "Form Created", color: MODULE_COLOR.Form },
+  { icon: "✅", label: "Approval Added", color: MODULE_COLOR.Approval },
+  { icon: "📋", label: "Task Assigned", color: MODULE_COLOR.Task },
 ];
 const WORKFLOW_STEPS = ["Employee submits", "Manager approves", "Task created"];
 const BUSINESS_UPDATES = [
-  { icon: "📈", label: "CRM updated" },
-  { icon: "🤖", label: "AI Center notified" },
-  { icon: "🎉", label: "Process complete" },
+  { icon: "📈", label: "CRM updated", color: MODULE_COLOR.CRM },
+  { icon: "🤖", label: "AI Center receives event", color: MODULE_COLOR["AI Center"] },
+  { icon: "🎉", label: "Business Process Completed", color: "text-emerald-600" },
+];
+
+// Mimics a real app's left nav rail (one dot per module, in module-color
+// order) — a small, low-cost signal that this is a miniature product
+// screenshot, not an abstract diagram, without rebuilding the mock as a
+// full fake application.
+const SIDEBAR_MODULES = [
+  { icon: "📄", color: MODULE_COLOR.Forms },
+  { icon: "✅", color: MODULE_COLOR.Approval },
+  { icon: "📋", color: MODULE_COLOR.Work },
+  { icon: "📅", color: MODULE_COLOR.Meetings },
+  { icon: "📈", color: MODULE_COLOR.CRM },
+  { icon: "🤖", color: MODULE_COLOR["AI Center"] },
 ];
 
 // Three always-visible columns (Prompt / AI Creates Assets / a
@@ -281,22 +294,43 @@ function HeroMock({ phaseIndex }) {
   const at = (k) => phaseIndex >= HERO_PHASES.findIndex((p) => p.key === k);
 
   return (
-    <div className="rounded-2xl border border-border shadow-card bg-white p-3">
-      <div className="rounded-xl bg-base border border-border p-5 sm:p-6">
+    <div className="rounded-3xl border border-border/70 shadow-[0_20px_60px_-15px_rgba(20,23,43,0.15)] bg-white/90 backdrop-blur-sm p-3">
+      {/* Window chrome — a real app's title bar, not an abstract card, so
+          the mock reads as a miniature product screenshot at a glance. */}
+      <div className="flex items-center gap-1.5 px-2 pb-2.5">
+        <span className="w-2.5 h-2.5 rounded-full bg-danger/70" />
+        <span className="w-2.5 h-2.5 rounded-full bg-accent/70" />
+        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/70" />
+        <span className="ml-2 text-[10px] text-ink/30 font-medium">flowora.app/workflows/leave-request</span>
+      </div>
+      <div className="flex rounded-xl bg-base border border-border overflow-hidden">
+        {/* Left nav rail — one dot per module, hidden below sm where
+            there's no room for it without crowding the three columns. */}
+        <div className="hidden sm:flex flex-col items-center gap-3 w-11 shrink-0 bg-white border-r border-border py-4">
+          {SIDEBAR_MODULES.map((m, i) => (
+            <span key={i} className={`text-sm ${m.color}`}>{m.icon}</span>
+          ))}
+        </div>
+        <div className="flex-1 p-5 sm:p-6">
         <div className="grid sm:grid-cols-3 gap-4 text-left items-start">
-          {/* Prompt */}
+          {/* Request — "Prompt" is the progress indicator's label for this
+              same phase (below the demo); this column is named
+              differently ("Request") on purpose so the two don't read as
+              the same concept repeated twice. */}
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Prompt</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Request</p>
             <div className="bg-white rounded-lg border border-border px-3 py-2.5 text-sm text-ink/70 min-h-[52px]">
               &quot;Create an Employee Leave Process&quot;
               {phase === "prompt" && <span className="inline-block w-[2px] h-3.5 bg-primary ml-0.5 align-middle animate-pulse" />}
             </div>
           </div>
 
-          {/* AI creates assets — built once at "assets" and stays visible
-              (as the source of truth) through every later phase. */}
+          {/* Generated Assets — built once at "assets" and stays visible
+              (as the source of truth) through every later phase. Named
+              differently from the progress indicator's "AI Creates
+              Assets" label for the same reason as "Request" above. */}
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">AI Creates Assets</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Generated Assets</p>
             {!at("assets") ? (
               <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
                 <p className="text-xs text-ink/30">Waiting for prompt…</p>
@@ -306,7 +340,7 @@ function HeroMock({ phaseIndex }) {
                 {AI_ASSETS.map((a, i) => (
                   <div
                     key={a.label}
-                    className={`flex items-center gap-1.5 text-xs text-ink/70 ${phase === "assets" ? "opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]" : ""}`}
+                    className={`flex items-center gap-1.5 text-xs font-medium ${a.color} ${phase === "assets" ? "opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]" : ""}`}
                     style={phase === "assets" ? { animationDelay: `${i * 0.5}s` } : undefined}
                   >
                     <span>{a.icon}</span> {a.label}
@@ -316,12 +350,12 @@ function HeroMock({ phaseIndex }) {
             )}
           </div>
 
-          {/* Right panel — swaps from "waiting" to the workflow-execution
-              chain to the business-level outcome. */}
+          {/* Right panel — one fixed column name ("Business Process") for
+              the whole panel's lifecycle instead of swapping the heading
+              itself per phase; its *content* still moves waiting →
+              workflow-execution chain → business-level outcome. */}
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">
-              {phase === "workflow" ? "Workflow Executes" : phase === "business" ? "Business Updates" : "Status"}
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/35 mb-1.5">Business Process</p>
 
             {(phase === "prompt" || phase === "assets") && (
               <div className="bg-white rounded-lg border border-border px-3 py-2.5 min-h-[52px] flex items-center">
@@ -348,7 +382,7 @@ function HeroMock({ phaseIndex }) {
                 {BUSINESS_UPDATES.map((u, i) => (
                   <div
                     key={u.label}
-                    className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]"
+                    className={`flex items-center gap-1.5 text-xs font-medium ${u.color} opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]`}
                     style={{ animationDelay: `${i * 0.8}s` }}
                   >
                     <span>{u.icon}</span> {u.label}
@@ -357,6 +391,7 @@ function HeroMock({ phaseIndex }) {
               </div>
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -526,53 +561,107 @@ export default function Landing() {
         path="/"
         jsonLd={[JSON_LD, FAQ_JSON_LD, ORG_JSON_LD]}
       />
+      <AnnouncementBar />
       <NavBar />
 
-      {/* Hero */}
+      {/* Hero — a faint radial glow behind the headline instead of a flat
+          white background, understated enough not to fight the copy. The
+          glow/circles live in this full-width relative wrapper (not
+          inside the max-w-6xl content section below) so the background
+          spans the entire viewport instead of being clipped to the
+          centered content column; pointer-events-none + -z-10 keep them
+          decorative and never intercepting clicks on the CTA buttons. */}
+      <div className="relative">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[460px] -z-10"
+          style={{ background: "radial-gradient(circle at top, rgba(47,93,80,0.08), transparent 45%), #ffffff" }}
+        />
+        {/* Near-invisible dot grid for texture (Linear-style) — a single
+            repeating radial-gradient tile, not an image asset. Faded out
+            toward the edges via a mask so it doesn't read as a hard-edged
+            pattern. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[460px] -z-10 opacity-[0.4]"
+          style={{
+            backgroundImage: "radial-gradient(rgba(20,23,43,0.08) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+            maskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black 40%, transparent 90%)",
+            WebkitMaskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black 40%, transparent 90%)",
+          }}
+        />
+        {/* Two faint blurred circles for a touch of depth — hidden below
+            md since there's no room for them not to collide with the copy
+            on a narrow viewport. */}
+        <div aria-hidden="true" className="hidden md:block pointer-events-none absolute left-[8%] top-4 w-40 h-40 rounded-full bg-primary/[0.06] blur-3xl -z-10" />
+        <div aria-hidden="true" className="hidden md:block pointer-events-none absolute right-[8%] top-32 w-56 h-56 rounded-full bg-accent/[0.07] blur-3xl -z-10" />
       <section className="max-w-6xl mx-auto px-6 pt-14 pb-8 text-center">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/8 text-primary text-xs font-medium mb-5">
-          <Sparkles size={12} /> AI Form Builder — Import PDFs, Word, Images & Google Forms
+        {/* Tight category tag, not a feature dump — the feature list
+            (import formats, etc.) belongs lower on the page where a
+            visitor is already convinced, not in the first thing they read. */}
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/8 text-primary text-sm font-medium mb-6 shadow-[0_1px_2px_rgba(20,23,43,0.06)]">
+          <Sparkles size={13} className="animate-pulse" /> AI Forms + Business Automation
         </div>
-        <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.05] max-w-3xl mx-auto">
+        <h1 className="font-display font-extrabold text-5xl md:text-6xl leading-[1.02] max-w-5xl mx-auto">
           Build AI Forms. Automate Everything After Submission.
         </h1>
-        <p className="text-ink/60 text-lg max-w-2xl mx-auto mt-4">
-          Create AI forms from prompts, PDFs, Word documents, images, or Google Forms. Every submission can trigger
-          approvals, tasks, meetings, CRM updates, and AI insights automatically.
+        {/* Names the breadth of what a submission triggers (approvals,
+            work, meetings, CRM, AI) in one sentence — the module cards
+            and demo just below back each of these up concretely, so this
+            reads as a preview, not an empty claim. */}
+        <p className="text-ink/60 text-lg leading-relaxed max-w-[760px] mx-auto mt-8">
+          Create AI-powered forms in seconds. Every submission automatically triggers approvals, work, meetings, CRM updates, and AI-powered business automation.
         </p>
-        <div className="flex items-center justify-center gap-3 mt-7">
-          <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary-dark">
-            🚀 Start Free
+        <div className="flex items-center justify-center gap-3 mt-10">
+          <Link
+            href="/signup"
+            className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg bg-primary text-white font-medium shadow-[0_1px_2px_rgba(20,23,43,0.06)] transition-all duration-[250ms] hover:bg-primary-dark hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-[0_12px_35px_rgba(47,93,80,0.3)]"
+          >
+            🚀 Start Building Free
           </Link>
-          <Link href="/signup" className="inline-flex items-center gap-1.5 px-5 py-3 rounded-lg border border-border font-medium hover:bg-base">
-            Import a Form
+          {/* Ghost/text style, not a competing outline button — one
+              unmistakable primary action for a free-forever, no-CC product.
+              Still a real differentiator (migrating off Google Forms), so
+              it keeps a hover underline + arrow rather than disappearing
+              entirely. */}
+          <Link href="/signup" className="group inline-flex items-center gap-1.5 px-5 py-3 rounded-lg font-medium text-ink/60 hover:text-ink">
+            <span className="group-hover:underline">Import Existing Form</span>
+            <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-5 text-xs text-ink/50">
+        {/* Concrete, click-de-risking checkmarks sit closest to the CTA;
+            the softer department/qualitative trust line sits further
+            below it — ordered by how directly each de-risks the click. */}
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-7 text-xs text-ink/50">
           {["Free forever", "No credit card required", "Setup in under 60 seconds", "Cancel anytime"].map((t) => (
             <span key={t} className="flex items-center gap-1">
               <Check size={12} className="text-primary" /> {t}
             </span>
           ))}
         </div>
-        {/* Trust indicators — factual, not fabricated metrics (no customer
-            count or response volume to show honestly yet); swap/supplement
-            with real numbers once there's data to back them. */}
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-8 pt-6 border-t border-border/60 text-sm text-ink/60">
-          {["AI Form Builder", "Google Forms Import", "Approval Workflows", "CRM Integration"].map((t) => (
-            <span key={t} className="flex items-center gap-1.5">
-              <Check size={14} className="text-primary" /> {t}
+        {/* Icon chips instead of a plain text sentence — reuses the same
+            department icons the "Perfect for" section further down the
+            page already uses, so it's a visual echo, not a new icon set. */}
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+          <span className="text-xs font-medium text-ink/40 mr-1">Built for</span>
+          {[
+            { icon: Building2, label: "HR" },
+            { icon: Landmark, label: "Finance" },
+            { icon: Briefcase, label: "Operations" },
+            { icon: TrendingUp, label: "Sales" },
+            { icon: GraduationCap, label: "Education" },
+          ].map(({ icon: Icon, label }) => (
+            <span key={label} className="flex items-center gap-1.5 text-xs font-medium text-ink/60 bg-base border border-border/70 rounded-full px-3 py-1.5">
+              <Icon size={13} className="text-primary" /> {label}
             </span>
           ))}
         </div>
-        {/* Early relevance signal — a fuller "Built for" strip with more
-            context already exists further down (Social proof section);
-            this is just the one-line version right at the top so a
-            visitor knows within seconds whether it's for them. */}
-        <p className="text-xs text-ink/40 mt-4">
-          Perfect for <span className="text-ink/60 font-medium">HR · Finance · Operations · Sales · Education</span>
-        </p>
+        {/* This outcome line moved to sit right above the demo instead of
+            living here too — same idea said twice back-to-back read as
+            filler, not two different points. */}
       </section>
+      </div>
 
       {/* Product preview mock — a small looping animation (prompt → AI
           creates the form/approval/task assets → the workflow executes →
@@ -581,11 +670,67 @@ export default function Landing() {
           without needing a real demo video. A real product screenshot/GIF
           still converts better than a hand-built mock like this — swap
           this block for one once captured. */}
-      <section className="max-w-5xl mx-auto px-6 mb-16">
-        <p className="text-center text-sm font-medium text-ink/50 mb-4">
-          See {APP_NAME} build an approval-ready form in seconds
+      <section id="demo" className="relative max-w-[1320px] mx-auto px-6 mb-16">
+        <p className="text-center text-sm font-medium text-primary mb-4">
+          ⚡ Watch {APP_NAME} build a complete business workflow in seconds
         </p>
-        <HeroMock phaseIndex={heroPhase} />
+        {/* Floating chips — fully OUTSIDE the mock's own box (top corners
+            + bottom-center), not overlapping its edges. The mock is wide
+            enough now (max-w-[1320px]) that there's no real side margin
+            left in the section for chips to float beside it without
+            clipping — hence top/bottom placement instead of left/right.
+            z-20 so they never render underneath the mock regardless of
+            paint order; hidden below lg where there isn't room for either
+            the mock or the chips to breathe. */}
+        <div className="relative mt-8">
+          <div className="hidden lg:block">
+            {[
+              { emoji: "✅", label: "Approval Complete", className: "-top-5 left-10", delay: "0s" },
+              { emoji: "📈", label: "CRM Updated", className: "-top-5 right-10", delay: "3s" },
+              { emoji: "🤖", label: "AI Recommendation Ready", className: "-bottom-5 right-10", delay: "6s" },
+            ].map((c) => (
+              <span
+                key={c.label}
+                className={`absolute z-20 ${c.className} flex items-center gap-1.5 text-xs font-medium text-ink/70 bg-white border border-border rounded-full px-3 py-1.5 shadow-card opacity-0 animate-[floatFade_8s_ease-in-out_infinite]`}
+                style={{ animationDelay: c.delay }}
+              >
+                {c.emoji} {c.label}
+              </span>
+            ))}
+          </div>
+          <HeroMock phaseIndex={heroPhase} />
+        </div>
+      </section>
+
+      {/* Core value props as small icon-cards, right after the demo (not
+          competing with it for hero space) — the full six-module story
+          (Forms → Approval → Work → Meetings → CRM → AI Center), not just
+          the four that shipped first. Same per-module accent colors as
+          the mock's sidebar rail (MODULE_COLOR), so the color coding
+          means the same thing everywhere on the page. Hover: 4px lift,
+          border turns primary-green, icon scales + rotates a touch,
+          shadow deepens, description darkens. */}
+      <section className="max-w-4xl mx-auto px-6 mb-16">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { icon: Sparkles, label: "Forms", desc: "Generate forms from prompts, PDFs and images", color: MODULE_COLOR.Forms },
+            { icon: Workflow, label: "Approval", desc: "Route requests through approval workflows", color: MODULE_COLOR.Approval },
+            { icon: ClipboardList, label: "Work", desc: "Create and track tasks automatically", color: MODULE_COLOR.Work },
+            { icon: Clock, label: "Meetings", desc: "Schedule meetings from submissions", color: MODULE_COLOR.Meetings },
+            { icon: Building2, label: "CRM", desc: "Update pipelines automatically", color: MODULE_COLOR.CRM },
+            { icon: Bot, label: "AI Center", desc: "Receive AI recommendations and insights", color: MODULE_COLOR["AI Center"] },
+          ].map(({ icon: Icon, label, desc, color }, i) => (
+            <div
+              key={label}
+              className="group flex flex-col items-center gap-1 bg-primary/[0.04] border border-border/70 rounded-lg px-3 py-4 transition-all duration-[250ms] hover:-translate-y-1 hover:border-primary/50 hover:shadow-card opacity-0 animate-[fadeIn_0.5s_ease-out_forwards]"
+              style={{ animationDelay: `${i * 0.1}s` }}
+            >
+              <Icon size={18} className={`${color} mb-0.5 transition-transform duration-[250ms] group-hover:scale-110 group-hover:rotate-6`} />
+              <span className="text-xs font-semibold text-ink/80 text-center leading-tight">{label}</span>
+              <span className="text-[10px] text-ink/40 text-center leading-tight transition-colors duration-[250ms] group-hover:text-ink/60">{desc}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* How it works — simplified to the scannable main chain; the fan-out
@@ -615,72 +760,31 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* More Than Forms — the differentiator competitors don't have,
-          called out as a highlighted badge + checklist rather than another
-          chain diagram (there's already two of those on this page). */}
+      {/* More Than Forms — a visual chain instead of a checklist (the
+          checklist repeated what the hero demo already showed); same
+          module colors/icons as the hero mock and feature cards so the
+          color coding means the same thing every time it appears. One
+          sentence of copy instead of two paragraphs — the diagram does
+          the explaining. */}
       <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
-        <h2 className="font-display font-bold text-3xl mb-6">Forms are just the beginning.</h2>
-        <div className="inline-block rounded-2xl border border-primary/25 bg-primary/5 p-6 text-left">
-          <p className="flex items-center gap-1.5 text-sm font-semibold text-primary mb-4">
-            <Sparkles size={14} /> Every submission can automatically:
-          </p>
-          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2">
-            {["Create a CRM Lead", "Assign a Task", "Start an Approval", "Schedule a Meeting", "Update Timeline", "Generate AI Insights"].map((t) => (
-              <div key={t} className="flex items-center gap-2 text-sm text-ink/80">
-                <Check size={14} className="text-primary shrink-0" /> {t}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Social proof — no fabricated customer count, star rating, or
-          "trusted by" claim here (there's no real data to back one yet);
-          swap this for real numbers (companies using Flowora, forms
-          created, responses processed) once there's something honest to
-          show. */}
-      <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
-        <p className="text-ink/70 font-medium">
-          Built for teams that want to spend less time managing forms—and more time getting work done.
-        </p>
-        <p className="text-ink/50 mt-3 mb-6">
-          From HR requests and expense approvals to customer feedback and inspections, {APP_NAME} helps teams
-          replace repetitive manual work with intelligent workflows.
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-medium text-ink/50">
-          {["HR", "Finance", "Operations", "Education", "Healthcare", "Sales"].map((t) => (
-            <span key={t} className="bg-base border border-border rounded-full px-3 py-1.5">{t}</span>
+        <h2 className="font-display font-bold text-3xl mb-2">Forms are just the beginning.</h2>
+        <p className="text-ink/50 mb-8">Every submission becomes an automated business workflow.</p>
+        <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-3">
+          {[
+            { icon: "📄", label: "Form", color: MODULE_COLOR.Form },
+            { icon: "📈", label: "CRM", color: MODULE_COLOR.CRM },
+            { icon: "✅", label: "Approval", color: MODULE_COLOR.Approval },
+            { icon: "📋", label: "Work", color: MODULE_COLOR.Work },
+            { icon: "📅", label: "Meeting", color: MODULE_COLOR.Meetings },
+            { icon: "🤖", label: "AI Center", color: MODULE_COLOR["AI Center"] },
+          ].map((s, i, arr) => (
+            <span key={s.label} className="flex items-center gap-1">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-ink/80 bg-white border border-border rounded-full px-3.5 py-2 shadow-card">
+                <span className={s.color}>{s.icon}</span> {s.label}
+              </span>
+              {i < arr.length - 1 && <ArrowRight size={14} className="text-ink/25 mx-0.5" />}
+            </span>
           ))}
-        </div>
-      </section>
-
-      {/* See the difference */}
-      <section className="max-w-2xl mx-auto px-6 pb-20 text-center">
-        <h2 className="font-display font-bold text-3xl mb-2">See the Difference</h2>
-        <p className="text-ink/50 mb-8">Traditional forms vs. {APP_NAME}</p>
-        <div className="overflow-hidden border border-border rounded-card text-left">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-base/50">
-                <th className="text-left font-medium py-3 px-4 text-ink/50">Traditional</th>
-                <th className="text-left font-display font-semibold py-3 px-4 text-primary">{APP_NAME}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { before: "Create manually", after: "AI generates instantly" },
-                { before: "Email approvals", after: "Approval workflow" },
-                { before: "Download Excel", after: "Live dashboard" },
-                { before: "Update CRM manually", after: "CRM updates automatically" },
-                { before: "Create tasks manually", after: "Tasks created automatically" },
-              ].map((row) => (
-                <tr key={row.before} className="border-b border-border last:border-b-0">
-                  <td className="py-3 px-4 text-ink/50">{row.before}</td>
-                  <td className="py-3 px-4 text-ink/80 font-medium">{row.after}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </section>
 
@@ -701,12 +805,13 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Before vs After */}
+      {/* Traditional vs Flowora — the one comparison section (see the
+          const comment above BEFORE_STEPS for what this replaced). */}
       <section className="max-w-4xl mx-auto px-6 py-20">
-        <h2 className="font-display font-bold text-3xl text-center mb-12">Before vs. After {APP_NAME}</h2>
+        <h2 className="font-display font-bold text-3xl text-center mb-12">Traditional Forms vs. {APP_NAME}</h2>
         <div className="grid sm:grid-cols-2 gap-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink/40 mb-4 text-center">Before {APP_NAME}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink/40 mb-4 text-center">Traditional Forms</p>
             <div className="space-y-2">
               {BEFORE_STEPS.map((s, i) => (
                 <div key={s}>
@@ -727,32 +832,22 @@ export default function Landing() {
                 </div>
               ))}
             </div>
-            <p className="text-center text-xs text-primary font-semibold mt-3">~30 seconds</p>
+            {/* Not "~30 seconds" for the whole chain — approval is a real
+                human decision, not instant. The honest claim is that the
+                form itself takes seconds, and everything after it fires
+                automatically without someone re-keying it by hand. */}
+            <p className="text-center text-xs text-primary font-semibold mt-3">Form: ~30 seconds. Then automatic.</p>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section id="features" className="max-w-6xl mx-auto px-6 py-16">
-        <div className="text-center mb-12">
-          <h2 className="font-display font-bold text-3xl">Why Businesses Switch to {APP_NAME}</h2>
-          <p className="text-ink/50 mt-2">Capture. Manage. Automate. Collaborate.</p>
-        </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="p-5 rounded-card border border-border bg-white shadow-card">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-3">
-                <f.icon size={18} />
-              </div>
-              <h3 className="font-display font-semibold mb-1.5">{f.title}</h3>
-              <p className="text-sm text-ink/60 leading-relaxed">{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* One Platform. Everything Connected. */}
-      <section className="bg-base/40 py-20">
+      {/* One Platform. Everything Connected. — id="features" lives here
+          now (NavBar's "Features" link and the announcement bar both
+          scroll here); the old "Why Businesses Switch" section covered
+          the same ground with a 3-card grid immediately above the feature
+          icon-cards near the top of the page and the checklist below, so
+          it was cut rather than moved intact. */}
+      <section id="features" className="bg-base/40 py-20">
         <div className="max-w-2xl mx-auto px-6 text-center">
           <Workflow size={28} className="mx-auto mb-4 text-primary" />
           <h2 className="font-display font-bold text-3xl mb-2">One Platform.</h2>
@@ -796,50 +891,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Full feature checklist */}
-      <section className="bg-base/40 py-20">
-        <div className="max-w-4xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl text-center mb-10">Everything Your Team Needs</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {FEATURE_CATEGORIES.map((cat) => (
-              <div key={cat.label}>
-                <p className="text-xs font-semibold uppercase tracking-wider text-ink/40 mb-3">{cat.label}</p>
-                <div className="space-y-2">
-                  {cat.items.map((f) => (
-                    <div key={f} className="flex items-center gap-2 bg-white border border-border rounded-lg py-2 px-3 text-sm text-ink/70">
-                      <Check size={13} className="text-primary shrink-0" /> {f}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* AI section */}
-      <section className="bg-primary text-white py-16">
-        <div className="max-w-3xl mx-auto px-6 text-center">
-          <Sparkles size={28} className="mx-auto mb-4 text-accent" />
-          <h2 className="font-display font-bold text-3xl mb-3">Your AI form-building copilot</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-8">
-            Describe the form you need—"Create an employee leave request form"—and Flowora
-            generates the form structure, fields, and validation in seconds.
-          </p>
-          {/* "Detect trends" left out deliberately — there's no response-
-              analytics-over-time feature to back that claim yet. Spotting
-              patterns within one batch of responses (via AI Insights) is
-              real; trend detection across time isn't built. */}
-          <div className="grid sm:grid-cols-2 gap-3 max-w-xl mx-auto text-left">
-            {["AI builds forms", "AI summarizes responses", "AI spots patterns in responses", "AI recommends actions"].map((t) => (
-              <div key={t} className="flex items-center gap-2 bg-white/10 rounded-lg py-2.5 px-3.5 text-sm">
-                <Sparkles size={13} className="text-accent shrink-0" /> {t}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Industries — moved before the comparison table: "who this is for"
           before "how it stacks up," not after. */}
       <section className="max-w-5xl mx-auto px-6 pb-20">
@@ -874,97 +925,6 @@ export default function Landing() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* Comparison table */}
-      <section className="max-w-5xl mx-auto px-6 py-20">
-        <div className="text-center mb-10">
-          <h2 className="font-display font-bold text-3xl">How {APP_NAME} compares</h2>
-        </div>
-        <div className="overflow-x-auto border border-border rounded-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-base/50">
-                <th className="text-left font-medium py-3 px-4">Feature</th>
-                <th className="font-display font-semibold py-3 px-4 text-primary whitespace-nowrap">{APP_NAME}</th>
-                <th className="font-medium py-3 px-4 text-ink/50 whitespace-nowrap">Google Forms</th>
-                <th className="font-medium py-3 px-4 text-ink/50 whitespace-nowrap">Typeform</th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON_ROWS.map((r) => (
-                <tr key={r.feature} className="border-b border-border last:border-b-0">
-                  <td className="py-3 px-4 text-ink/70 whitespace-nowrap">{r.feature}</td>
-                  <td className="py-3 px-4 text-center"><ComparisonCell value={r.flowora} /></td>
-                  <td className="py-3 px-4 text-center"><ComparisonCell value={r.googleForms} /></td>
-                  <td className="py-3 px-4 text-center"><ComparisonCell value={r.typeform} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Not claiming parity with a full CRM suite — just showing what
-            actually happens the moment after someone hits Submit, which is
-            where Google Forms and Typeform stop and Flowora keeps going. */}
-        <div className="mt-10 text-center">
-          <p className="text-sm font-semibold text-ink/60 mb-6">After someone submits a form…</p>
-          <div className="grid sm:grid-cols-2 gap-5 max-w-2xl mx-auto">
-            <div className="p-5 rounded-card border border-border bg-white">
-              <p className="text-xs font-semibold uppercase tracking-wider text-ink/40 mb-3">Google Forms</p>
-              <ul className="space-y-2 text-left">
-                {["Collect response", "Download spreadsheet"].map((s) => (
-                  <li key={s} className="flex items-center gap-2 text-sm text-ink/50">
-                    <XIcon size={13} className="text-ink/25 shrink-0" /> {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="p-5 rounded-card border border-primary/30 bg-primary/5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">{APP_NAME}</p>
-              <ul className="space-y-2 text-left">
-                {["Create Lead", "Assign Task", "Approval", "Meeting", "Timeline", "AI Insight"].map((s) => (
-                  <li key={s} className="flex items-center gap-2 text-sm text-ink/80 font-medium">
-                    <Check size={13} className="text-primary shrink-0" /> {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Save hours every week */}
-      <section className="max-w-4xl mx-auto px-6 pb-20">
-        <h2 className="font-display font-bold text-3xl text-center mb-2 flex items-center justify-center gap-2">
-          <Clock size={26} className="text-primary" /> Save Hours Every Week
-        </h2>
-        <p className="text-ink/50 text-center mb-6">This is the part Typeform, Jotform, and Tally don't talk about.</p>
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
-          {["Save hours every week", "Reduce manual work", "Eliminate spreadsheet handoffs", "Speed up approvals", "Keep everything in one place"].map((t) => (
-            <span key={t} className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/8 rounded-full px-3 py-1.5">
-              <Check size={12} /> {t}
-            </span>
-          ))}
-        </div>
-        <div className="overflow-x-auto border border-border rounded-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-base/50">
-                <th className="text-left font-medium py-3 px-4 text-ink/50">Without {APP_NAME}</th>
-                <th className="text-left font-display font-semibold py-3 px-4 text-primary">With {APP_NAME}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {TIME_SAVED_ROWS.map((r) => (
-                <tr key={r.without} className="border-b border-border last:border-b-0">
-                  <td className="py-3 px-4 text-ink/50">{r.without}</td>
-                  <td className="py-3 px-4 text-ink/80 font-medium">{r.withFlowora}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </section>
 
