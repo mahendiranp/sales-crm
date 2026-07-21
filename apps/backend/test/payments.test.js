@@ -95,4 +95,5 @@ test("resolveGrowthPrice: once launchOfferLimit accounts have used the offer, ne
 test("cleanup: close DB connection", async () => {
   await ready;
   await closeDB();
+  await mongod.stop();
 });
