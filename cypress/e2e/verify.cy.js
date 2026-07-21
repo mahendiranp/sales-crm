@@ -62,18 +62,22 @@ describe("Landing page", () => {
     cy.contains("Create an Employee Leave Process").should("be.visible");
 
     // Generated Assets panel — appears once the loop reaches "assets" and
-    // stays visible through every later phase (10s loop, so a 12s timeout
-    // covers a full cycle either way).
-    cy.contains("Form Created", { timeout: 12000 }).should("be.visible");
-    cy.contains("Approval Added", { timeout: 12000 }).should("be.visible");
-    cy.contains("Task Assigned", { timeout: 12000 }).should("be.visible");
+    // stays visible through every later phase. The loop itself is 10s
+    // (2s+2s+3s+3s), but the business-phase items also fade in with a
+    // staggered per-item delay (up to ~2s for the last one) *after* that
+    // phase starts, so a full cycle can take up to ~12s before the last
+    // item is visible — a 12000ms timeout left zero margin and flaked
+    // under normal run overhead. 16s covers a full cycle plus buffer.
+    cy.contains("Form Created", { timeout: 16000 }).should("be.visible");
+    cy.contains("Approval Added", { timeout: 16000 }).should("be.visible");
+    cy.contains("Task Assigned", { timeout: 16000 }).should("be.visible");
 
     // Right-hand panel — workflow-execution chain then business-outcome
     // content, each within one full loop.
-    cy.contains("Employee submits", { timeout: 12000 }).should("be.visible");
-    cy.contains("Manager approves", { timeout: 12000 }).should("be.visible");
-    cy.contains("CRM updated", { timeout: 12000 }).should("be.visible");
-    cy.contains("Business Process Completed", { timeout: 12000 }).should("be.visible");
+    cy.contains("Employee submits", { timeout: 16000 }).should("be.visible");
+    cy.contains("Manager approves", { timeout: 16000 }).should("be.visible");
+    cy.contains("CRM updated", { timeout: 16000 }).should("be.visible");
+    cy.contains("Business Process Completed", { timeout: 16000 }).should("be.visible");
   });
 });
 
