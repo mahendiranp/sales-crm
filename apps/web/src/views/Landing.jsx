@@ -162,6 +162,22 @@ const FOOTER_COLUMNS = [
     ],
   },
   {
+    // Every link here is a real, working page (apps/web/src/pages/*.jsx) —
+    // the main source of internal links pointing at the SEO feature pages,
+    // since nothing else in the marketing site links to them yet.
+    title: "Explore",
+    links: [
+      { label: "AI Form Builder", href: "/ai-form-builder" },
+      { label: "PDF to Form", href: "/pdf-to-form" },
+      { label: "Word to Form", href: "/word-to-form" },
+      { label: "Image to Form", href: "/image-to-form" },
+      { label: "Google Forms Import", href: "/google-forms-import" },
+      { label: "Approval Workflows", href: "/approval-workflow" },
+      { label: "Workflow Automation", href: "/workflow-automation" },
+      { label: "CRM", href: "/crm" },
+    ],
+  },
+  {
     title: "Resources",
     links: [
       { label: "Help Center", href: null },
