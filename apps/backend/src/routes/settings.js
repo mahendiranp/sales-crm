@@ -95,7 +95,9 @@ function defaults(accountId) {
       events: false,
       marketingAutomation: false,
       surveys: false,
-      forms: false,
+      // Forms is a core, always-marketed feature (landing page, pricing
+      // cards), so unlike the other optional apps here it defaults on.
+      forms: true,
       project: false,
       timesheets: false,
       fieldService: false,
