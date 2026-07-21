@@ -49,6 +49,14 @@ export default {
           "0%": { opacity: "0", transform: "translateY(2px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        // Landing.jsx's floating chips around the hero mock — gently
+        // fades in, holds, fades out, on a loop (staggered per chip via
+        // inline animationDelay).
+        floatFade: {
+          "0%, 100%": { opacity: "0", transform: "translateY(6px)" },
+          "15%, 40%": { opacity: "1", transform: "translateY(0)" },
+          "55%": { opacity: "0", transform: "translateY(-6px)" },
+        },
       },
     },
   },
