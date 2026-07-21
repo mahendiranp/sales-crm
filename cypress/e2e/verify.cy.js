@@ -100,7 +100,7 @@ describe("Signup", () => {
     cy.contains("label", "Company").should("not.exist");
 
     cy.get('input[type="email"]').first().type("not-an-email");
-    cy.contains("button", "Create account").click();
+    cy.contains("button", "Create Free Account").click();
     cy.contains("Enter a valid email address.").should("be.visible");
   });
 });
