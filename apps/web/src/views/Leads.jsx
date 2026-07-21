@@ -253,6 +253,73 @@ function RowActionsMenu({ lead, canManage, onEdit, onAssign, onConvert }) {
   );
 }
 
+// Mobile replacement for the table row — a table forces horizontal
+// scrolling and unreadable column headers on a phone, so below md this
+// renders one self-contained card per lead instead of squeezing the
+// desktop table into a narrow viewport.
+function LeadCard({ lead, canManage, selected, onToggleSelect, onEdit, onAssign, onConvert, aiAllowed, scoringId, onAiScore }) {
+  const SourceIcon = SOURCE_ICON[lead.source];
+  return (
+    <div className="p-4 border-b border-border last:border-0">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {canManage && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              className="shrink-0"
+            />
+          )}
+          <p className="font-medium truncate">{lead.name}</p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <div data-private className="flex items-center gap-1" title={lead.aiScoreReasoning || undefined}>
+            <ScoreBadge score={lead.leadScore} />
+            {canManage && aiAllowed && (
+              <button
+                title="AI-score this lead"
+                disabled={scoringId === lead.id}
+                onClick={onAiScore}
+                className="p-1 text-ink/30 hover:text-primary disabled:opacity-40 rounded"
+              >
+                <Sparkles size={12} className={scoringId === lead.id ? "animate-pulse" : ""} />
+              </button>
+            )}
+          </div>
+          <RowActionsMenu lead={lead} canManage={canManage} onEdit={onEdit} onAssign={onAssign} onConvert={onConvert} />
+        </div>
+      </div>
+
+      {(lead.mobile || lead.email) && (
+        <p data-private className="text-xs text-ink/50 mt-0.5 truncate">
+          {lead.mobile}{lead.mobile && lead.email ? " · " : ""}{lead.email}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2 mt-2.5">
+        <StatusPill status={lead.status} />
+        <PriorityDot priority={lead.priority} />
+      </div>
+
+      <div className="flex items-center justify-between mt-2.5 text-sm text-ink/70">
+        <span className="inline-flex items-center gap-1.5 min-w-0 truncate">
+          {SourceIcon && <SourceIcon size={13} className="text-ink/35 shrink-0" />}
+          {lead.source}
+        </span>
+        <span className="truncate ml-2">{lead.interestedProduct}</span>
+      </div>
+
+      <div className="flex items-center justify-between mt-2">
+        <span className="font-mono text-sm text-ink/80">{formatCompactINR(lead.budget)}</span>
+        <span className="text-xs text-ink/40">{timeAgo(lead.createdAt)}</span>
+      </div>
+
+      <AiInsight score={lead.leadScore} reasoning={lead.aiScoreReasoning} />
+    </div>
+  );
+}
+
 export default function Leads() {
   const router = useRouter();
   const { canManage, isMasterAdmin } = useAuth();
@@ -542,7 +609,25 @@ export default function Leads() {
             action={canManage && <Button onClick={openAdd}><Plus size={15} /> Add Lead</Button>}
           />
         ) : (
-          <table className="w-full text-sm table-fixed">
+          <>
+          <div className="md:hidden">
+            {filtered.map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                canManage={canManage}
+                selected={selected.includes(lead.id)}
+                onToggleSelect={() => toggleSelect(lead.id)}
+                onEdit={() => openEdit(lead)}
+                onAssign={() => { setActiveLead(lead); setAssignSelection(lead.assignedTo || null); setAssignSearch(""); setModal("assign"); }}
+                onConvert={() => { setActiveLead(lead); setModal("convert"); }}
+                aiAllowed={aiAllowed}
+                scoringId={scoringId}
+                onAiScore={() => aiScoreLead(lead)}
+              />
+            ))}
+          </div>
+          <table className="hidden md:table w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-border text-left text-xs text-ink/40 uppercase tracking-wide">
                 <th className="p-3 w-8"></th>
@@ -614,6 +699,7 @@ export default function Leads() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </Card>
 
@@ -621,19 +707,27 @@ export default function Leads() {
       <Modal
         open={modal === "add" || modal === "edit"}
         onClose={() => setModal(null)}
-        title={modal === "add" ? "Add New Lead" : "Edit Lead"}
-        subtitle={modal === "add" ? "Capture a new prospect for your sales pipeline. Only name and a mobile or email are required." : undefined}
+        title={modal === "add" ? "New Lead" : "Edit Lead"}
+        subtitle={modal === "add" ? "Only name and phone or email are required." : undefined}
         wide
       >
         {modal === "add" && aiAllowed && (
           <div className="mb-4">
             {!showAiPaste ? (
+              // A discoverable card, not a small text link buried above the
+              // form — this is the fastest path to filling the form out
+              // (paste once instead of typing 4+ fields), so it earns more
+              // visual weight than "Fill with AI" as plain text did.
               <button
                 type="button"
                 onClick={() => setShowAiPaste(true)}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary-dark"
+                className="w-full flex items-center gap-3 border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 rounded-lg px-3.5 py-3 text-left transition-colors"
               >
-                <Sparkles size={13} /> Fill with AI — paste a message
+                <Sparkles size={18} className="text-primary shrink-0" />
+                <span>
+                  <span className="block text-sm font-medium text-primary">Autofill with AI</span>
+                  <span className="block text-xs text-ink/50">Paste a WhatsApp message or email</span>
+                </span>
               </button>
             ) : (
               <div className="bg-base rounded-lg p-3">
@@ -659,8 +753,11 @@ export default function Leads() {
           </div>
         )}
 
-        <SectionHeading>Contact Information</SectionHeading>
-        <div className="grid grid-cols-2 gap-x-4">
+        <SectionHeading>Contact</SectionHeading>
+        {/* Single column below sm — a 2-col grid of "Name / Mobile / Email
+            / Company" reads as a cramped desktop form squeezed onto a
+            phone, not a mobile-native layout. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
           <Field label="Lead Name" required>
             <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
@@ -705,8 +802,8 @@ export default function Leads() {
           </p>
         )}
 
-        <SectionHeading>Sales Information</SectionHeading>
-        <div className="grid grid-cols-2 gap-x-4">
+        <SectionHeading>Sales</SectionHeading>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
           <Field label="Source">
             <select className={inputCls} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })}>
               {SOURCES.map((s) => <option key={s}>{s}</option>)}
@@ -715,50 +812,92 @@ export default function Leads() {
           <Field label="Interested Product">
             <ProductSearch value={form.interestedProduct} onChange={(v) => setForm({ ...form, interestedProduct: v })} />
           </Field>
-          <Field label="Budget (₹)">
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₹</span>
-              <input
-                type="number"
-                className={`${inputCls} pl-7`}
-                value={form.budget}
-                onChange={(e) => setForm({ ...form, budget: e.target.value })}
-              />
-            </div>
-          </Field>
-          <Field label="Priority">
-            <select className={inputCls} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-              {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_EMOJI[p]} {p}</option>)}
-            </select>
-          </Field>
+        </div>
+        <Field label="Priority">
+          {/* One-tap chips instead of a dropdown — this is a field every
+              lead needs a value for, so it's worth the extra visual weight
+              vs. a <select> the other one-off Sales fields keep. */}
+          <div className="flex gap-2">
+            {PRIORITIES.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setForm({ ...form, priority: p })}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  form.priority === p ? "bg-primary text-white border-primary" : "bg-white border-border text-ink/60 hover:border-ink/20"
+                }`}
+              >
+                {PRIORITY_EMOJI[p]} {p}
+              </button>
+            ))}
+          </div>
+        </Field>
+        {/* Status only matters once a lead already exists somewhere in the
+            pipeline — a brand-new one is always "New", so asking at
+            creation time is a question with only one sane answer. */}
+        {modal === "edit" && (
           <Field label="Status">
             <select className={inputCls} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
               {STATUSES.map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
+        )}
+        {/* Hidden entirely on a single-user account — "who owns this
+            lead" isn't a real question yet if there's nobody else to
+            assign it to. */}
+        {users.length > 1 && (
           <Field label="Owner">
             <select className={inputCls} value={form.assignedTo || ""} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}>
               <option value="">Unassigned</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </Field>
-        </div>
+        )}
 
-        <SectionHeading>Notes</SectionHeading>
-        <textarea
-          className={`${inputCls} mb-1`}
-          rows={2}
-          placeholder="e.g. Looking for ERP implementation, needs demo next week, budget approved"
-          value={form.notes || ""}
-          onChange={(e) => setForm({ ...form, notes: e.target.value })}
-        />
+        {/* Budget + Notes tucked behind a disclosure — neither is needed
+            to create a usable lead record, so they don't compete with the
+            fields that are for initial attention. Open by default when
+            editing an existing lead that likely already has them filled in. */}
+        <details className="mb-3" open={modal === "edit"}>
+          <summary className="text-sm font-medium text-primary cursor-pointer select-none">Additional details (optional)</summary>
+          <div className="mt-3">
+            <Field label="Budget (₹)">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₹</span>
+                <input
+                  type="number"
+                  className={`${inputCls} pl-7`}
+                  value={form.budget}
+                  onChange={(e) => setForm({ ...form, budget: e.target.value })}
+                />
+              </div>
+            </Field>
+            <Field label="Notes">
+              <textarea
+                className={inputCls}
+                rows={2}
+                placeholder="e.g. Looking for ERP implementation, needs demo next week, budget approved"
+                value={form.notes || ""}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              />
+            </Field>
+          </div>
+        </details>
 
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
-          <Button onClick={() => saveLead()}>Save Lead</Button>
+        {/* Spacer reserving room for the sticky footer below — sticky
+            elements don't reserve their own layout space, so without this
+            the stacked mobile button column (3 full-width buttons) covers
+            whatever field happens to be last before it. */}
+        <div className="h-32 sm:h-0" />
+
+        {/* Sticky within the modal's own scroll container — always
+            reachable without scrolling to the bottom of a long form. */}
+        <div className="sticky bottom-0 bg-white pt-3 mt-2 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <Button variant="secondary" onClick={() => setModal(null)} className="justify-center">Cancel</Button>
           {modal === "add" && (
-            <Button variant="secondary" onClick={() => saveLead({ addAnother: true })}>Save & Add Another</Button>
+            <Button variant="secondary" onClick={() => saveLead({ addAnother: true })} className="justify-center">Save & Add Another</Button>
           )}
+          <Button onClick={() => saveLead()} className="justify-center">Save Lead</Button>
         </div>
       </Modal>
 

@@ -38,6 +38,7 @@ import {
   Inbox,
   UploadCloud,
   Command,
+  MoreHorizontal,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
@@ -124,6 +125,26 @@ const NAV_SECTIONS = [
   },
 ];
 
+// Mobile bottom tab bar — the primary way to move between top-level areas
+// on a phone, instead of asking someone to reach for the hamburger drawer
+// for every navigation (Notion/Linear/ClickUp pattern: a handful of
+// one-tap destinations plus a "More" catch-all for everything else). Only
+// the modules with dedicated top-level nav sections get a direct tab;
+// everything else (AI Center, Analytics, Admin, Settings, Apps…) lives
+// behind "More", which just opens the same drawer the header hamburger
+// does rather than duplicating that whole menu here.
+// Flowora has too many modules (CRM, Forms, Work, Meetings, AI Center,
+// Accounting, Settings, Team…) for a bottom bar to expose all of them —
+// only Dashboard/Forms/CRM get a direct tab; everything else (Work,
+// Meetings, AI Center, Settings…) lives behind "More" instead. The
+// center slot is the floating Create action (Instagram-style), not a
+// nav destination — BottomNav below splits this list around it.
+const BOTTOM_NAV_ITEMS = [
+  { to: "/app", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/app/forms", label: "Forms", icon: FileText, isFormsApp: true },
+  { to: "/app/leads", label: "CRM", icon: Users2, module: "leads" },
+];
+
 // Every target here reads `?create=1` on mount and opens its own Add
 // modal (same pattern as Users.jsx's `?add=1`, wired per-page rather than
 // centralized, since each page already owns its own create-modal state).
@@ -132,6 +153,24 @@ const NAV_SECTIONS = [
 // document import) as real menu entries, not just "New Form" then make
 // the user pick again on the next page.
 const CREATE_GROUPS = [
+  {
+    // Every one of these lands on /app/forms/new, which already surfaces
+    // Generate-with-AI, Blank/Templates, and Import (one file picker
+    // handles PDF/Word/image, plus a Google Form URL field) together — see
+    // Forms.jsx's own NewFormMenu for the same reasoning. Distinct entries
+    // here anyway so the menu itself demonstrates the AI/import
+    // capabilities instead of hiding them behind a single "Form" link.
+    // Listed first — Forms is Flowora's own differentiator, not a generic
+    // CRM object.
+    label: "Forms",
+    items: [
+      { label: "AI Form", to: "/app/forms/new", icon: Sparkles },
+      { label: "Blank Form", to: "/app/forms/new", icon: FileText },
+      { label: "Import PDF", to: "/app/forms/new", icon: UploadCloud },
+      { label: "Import Image", to: "/app/forms/new", icon: UploadCloud },
+      { label: "Google Form", to: "/app/forms/new", icon: UploadCloud },
+    ],
+  },
   {
     label: "CRM",
     items: [
@@ -148,27 +187,19 @@ const CREATE_GROUPS = [
       { label: "Meeting", to: "/app/meetings?create=1", icon: CalendarDays, module: "tasks" },
     ],
   },
-  {
-    // Every one of these lands on /app/forms/new, which already surfaces
-    // Generate-with-AI, Blank/Templates, and Import (one file picker
-    // handles PDF/Word/image, plus a Google Form URL field) together — see
-    // Forms.jsx's own NewFormMenu for the same reasoning. Distinct entries
-    // here anyway so the menu itself demonstrates the AI/import
-    // capabilities instead of hiding them behind a single "Form" link.
-    label: "Forms",
-    items: [
-      { label: "Blank Form", to: "/app/forms/new", icon: FileText },
-      { label: "AI Form", to: "/app/forms/new", icon: Sparkles },
-      { label: "Import PDF", to: "/app/forms/new", icon: UploadCloud },
-      { label: "Import Word", to: "/app/forms/new", icon: UploadCloud },
-      { label: "Import Google Form", to: "/app/forms/new", icon: UploadCloud },
-    ],
-  },
 ];
 
 // Global "+ Create" — reaches any module's create action from wherever you
 // currently are, alongside (not replacing) each page's own contextual Add
 // button for someone already working in that module.
+function useCreateGroups(isModuleOn) {
+  return CREATE_GROUPS.map((g) => ({ ...g, items: g.items.filter((a) => isModuleOn(a.module)) })).filter((g) => g.items.length > 0);
+}
+
+// Desktop-only dropdown trigger — on mobile the bottom nav's own raised
+// center button opens CreateSheet instead, so this whole component is
+// hidden below sm (no point offering two different "Create" entry points
+// on the same screen).
 function CreateMenu({ isModuleOn }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -182,16 +213,16 @@ function CreateMenu({ isModuleOn }) {
     return () => document.removeEventListener("mousedown", closeIfOutside);
   }, [open]);
 
-  const groups = CREATE_GROUPS.map((g) => ({ ...g, items: g.items.filter((a) => isModuleOn(a.module)) })).filter((g) => g.items.length > 0);
+  const groups = useCreateGroups(isModuleOn);
   if (groups.length === 0) return null;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative hidden sm:block" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-primary-dark"
+        className="flex items-center justify-center gap-1.5 bg-primary text-white text-sm font-medium rounded-full px-3.5 py-2 hover:bg-primary-dark"
       >
-        <Plus size={15} /> <span className="hidden sm:inline">Create</span>
+        <Plus size={16} /> <span>Create</span>
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-border rounded-lg shadow-card p-1.5 z-30">
@@ -225,6 +256,53 @@ function CreateMenu({ isModuleOn }) {
   );
 }
 
+// Mobile create action — a native-feeling bottom sheet (grouped, big tap
+// targets, explicit Cancel) instead of the same cramped dropdown desktop
+// uses, opened from the bottom nav's raised center "+" button.
+function CreateSheet({ isModuleOn, open, onClose }) {
+  const groups = useCreateGroups(isModuleOn);
+
+  return (
+    <>
+      {open && <div className="fixed inset-0 bg-ink/40 z-50 md:hidden" onClick={onClose} />}
+      <div
+        className={`md:hidden fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-xl transition-transform duration-200 max-h-[80vh] overflow-y-auto ${
+          open ? "translate-y-0" : "translate-y-full pointer-events-none"
+        }`}
+      >
+        <div className="sticky top-0 bg-white flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
+          <h2 className="font-display font-semibold text-lg">Create</h2>
+          <button onClick={onClose} className="text-ink/40 hover:text-ink">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-3 pb-6">
+          {groups.map((g, i) => (
+            <div key={g.label} className={i > 0 ? "mt-2 pt-2 border-t border-border" : ""}>
+              {g.items.map((a) => (
+                <Link
+                  key={a.label}
+                  href={a.to}
+                  onClick={onClose}
+                  className="flex items-center gap-3 w-full px-2.5 py-3 text-[15px] text-left text-ink/80 hover:bg-base rounded-lg"
+                >
+                  <a.icon size={18} className="text-ink/50" /> {a.label}
+                </Link>
+              ))}
+            </div>
+          ))}
+          <button
+            onClick={onClose}
+            className="w-full mt-3 py-3 text-sm font-medium text-ink/50 hover:text-ink text-center border-t border-border pt-4"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 const SEARCH_CATEGORY_META = {
   leads: { label: "Leads", icon: Users2 },
   contacts: { label: "Contacts", icon: Contact },
@@ -239,11 +317,56 @@ const SEARCH_CATEGORY_META = {
 // (those are records; these are pages), shown alongside them so "go to AI
 // Center" works the same way "find lead ABC" does, with nothing typed yet.
 const QUICK_LINKS = [
-  { label: "Go to Dashboard", to: "/app", icon: LayoutDashboard },
-  { label: "Go to AI Center", to: "/app/ai-center", icon: Sparkles },
-  { label: "Go to Timeline", to: "/app/timeline", icon: History },
-  { label: "Go to Settings", to: "/app/settings", icon: Settings },
+  { label: "Dashboard", to: "/app", icon: LayoutDashboard },
+  { label: "AI Center", to: "/app/ai-center", icon: Sparkles },
+  { label: "Timeline", to: "/app/timeline", icon: History },
+  { label: "Settings", to: "/app/settings", icon: Settings },
 ];
+
+// A handful of the most common creates, surfaced directly in search —
+// same destinations as the header/bottom-nav Create menu, not module-gated
+// here since this is a lightweight shortcut list, not the full menu.
+const QUICK_ACTIONS = [
+  { label: "Create Form", to: "/app/forms/new", icon: FileText },
+  { label: "Create Lead", to: "/app/leads?create=1", icon: Users2 },
+  { label: "Create Task", to: "/app/tasks?create=1", icon: ListChecks },
+  { label: "Create Meeting", to: "/app/meetings?create=1", icon: CalendarDays },
+];
+
+const RECENT_PAGES_KEY = "flowora_recent_pages";
+const MAX_RECENT_PAGES = 5;
+// All pages searchable via QUICK_LINKS plus every NAV_SECTIONS entry — a
+// visit only gets tracked as "Recent" if it resolves to a real label here,
+// so a raw record-detail URL doesn't show up as an unlabeled recent item.
+const PAGE_LABELS = Object.fromEntries(
+  [...QUICK_LINKS, ...NAV_SECTIONS.flatMap((s) => s.items)].map((i) => [i.to, { label: i.label, icon: i.icon }])
+);
+
+// Recent-pages tracking is client-only (localStorage), not a backend
+// feature — good enough for "the last few pages I opened on this device"
+// without needing view-history infrastructure.
+function useRecentPages(currentPath) {
+  const [recent, setRecent] = useState([]);
+
+  useEffect(() => {
+    try {
+      setRecent(JSON.parse(localStorage.getItem(RECENT_PAGES_KEY) || "[]"));
+    } catch {
+      setRecent([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!PAGE_LABELS[currentPath]) return;
+    setRecent((prev) => {
+      const next = [currentPath, ...prev.filter((p) => p !== currentPath)].slice(0, MAX_RECENT_PAGES);
+      localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [currentPath]);
+
+  return recent.filter((p) => PAGE_LABELS[p]).map((to) => ({ to, ...PAGE_LABELS[to] }));
+}
 
 function useDebouncedSearch(query) {
   const [results, setResults] = useState(null);
@@ -263,11 +386,27 @@ function useDebouncedSearch(query) {
   return results;
 }
 
-function SearchResultsList({ results, query, onNavigate }) {
+function SearchResultsList({ results, query, onNavigate, recentPages }) {
   if (!query.trim()) {
     return (
       <div className="py-1.5">
-        <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink/35">Go to</p>
+        {recentPages.length > 0 && (
+          <>
+            <p className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink/35">Recent</p>
+            {recentPages.map((p) => (
+              <Link key={p.to} href={p.to} onClick={onNavigate} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left text-ink/70 hover:bg-base">
+                <History size={14} className="text-ink/40 shrink-0" /> {p.label}
+              </Link>
+            ))}
+          </>
+        )}
+        <p className="px-3 pt-1.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink/35">Quick Actions</p>
+        {QUICK_ACTIONS.map((q) => (
+          <Link key={q.label} href={q.to} onClick={onNavigate} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left text-ink/70 hover:bg-base">
+            <q.icon size={14} className="text-ink/40 shrink-0" /> {q.label}
+          </Link>
+        ))}
+        <p className="px-3 pt-1.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink/35">Pages</p>
         {QUICK_LINKS.map((q) => (
           <Link key={q.label} href={q.to} onClick={onNavigate} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left text-ink/70 hover:bg-base">
             <q.icon size={14} className="text-ink/40 shrink-0" /> {q.label}
@@ -311,10 +450,12 @@ function SearchResultsList({ results, query, onNavigate }) {
 // doesn't attempt — no view-history tracking exists to back "recent," and
 // natural-language query parsing needs its own design, not a search bar.
 function GlobalSearch() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const results = useDebouncedSearch(query);
+  const recentPages = useRecentPages(router.pathname);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -349,7 +490,18 @@ function GlobalSearch() {
 
   return (
     <>
-      <div className="relative flex-1 max-w-[200px] sm:max-w-xs md:w-80" ref={ref}>
+      {/* Phones get a bare icon that opens the full-screen palette below —
+          an always-visible input competes with the rest of the header for
+          very little width on a small screen. sm+ keeps the inline box. */}
+      <button
+        onClick={() => setPaletteOpen(true)}
+        className="sm:hidden text-ink/50 hover:text-ink shrink-0"
+        title="Search"
+      >
+        <Search size={20} />
+      </button>
+
+      <div className="hidden sm:block relative flex-1 max-w-xs md:w-80" ref={ref}>
         <div className="flex items-center gap-2 text-ink/40 bg-base rounded-lg px-3 py-2 w-full">
           <Search size={16} className="shrink-0" />
           <input
@@ -363,27 +515,36 @@ function GlobalSearch() {
         </div>
         {open && (
           <div className="absolute left-0 top-full mt-1.5 w-full sm:w-96 bg-white border border-border rounded-lg shadow-card max-h-96 overflow-y-auto z-30">
-            <SearchResultsList results={results} query={query} onNavigate={closeAll} />
+            <SearchResultsList results={results} query={query} onNavigate={closeAll} recentPages={recentPages} />
           </div>
         )}
       </div>
 
       {paletteOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-ink/40" onClick={closeAll}>
-          <div className="bg-white w-full max-w-lg mx-4 rounded-xl shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        // Slides down from the very top on a phone (iOS Spotlight-style)
+        // instead of a centered modal that wastes space above and below it
+        // at narrow widths; sm+ keeps the centered dialog.
+        <div className="fixed inset-0 z-50 flex items-start justify-center sm:pt-24 bg-ink/40" onClick={closeAll}>
+          <div
+            className="bg-white w-full sm:max-w-lg sm:mx-4 rounded-b-2xl sm:rounded-xl shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
               <Search size={16} className="text-ink/40 shrink-0" />
               <input
                 autoFocus
-                placeholder="Search anything, or jump to a page…"
+                placeholder="Search Flowora…"
                 className="bg-transparent outline-none text-sm w-full placeholder:text-ink/40"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              <kbd className="text-[10px] font-medium text-ink/30 border border-border rounded px-1 py-0.5 shrink-0">ESC</kbd>
+              <kbd className="hidden sm:inline text-[10px] font-medium text-ink/30 border border-border rounded px-1 py-0.5 shrink-0">ESC</kbd>
+              <button onClick={closeAll} className="sm:hidden text-ink/40 hover:text-ink shrink-0">
+                <X size={18} />
+              </button>
             </div>
-            <div className="max-h-96 overflow-y-auto">
-              <SearchResultsList results={results} query={query} onNavigate={closeAll} />
+            <div className="max-h-[70vh] sm:max-h-96 overflow-y-auto">
+              <SearchResultsList results={results} query={query} onNavigate={closeAll} recentPages={recentPages} />
             </div>
           </div>
         </div>
@@ -486,6 +647,83 @@ function NavItem({ to, label, icon: Icon, collapsed, comingSoon }) {
   );
 }
 
+function BottomNavLink({ to, label, icon: Icon, active }) {
+  return (
+    <Link
+      href={to}
+      className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[11px] font-medium ${
+        active ? "text-primary" : "text-ink/45"
+      }`}
+    >
+      {/* Active tab gets a filled pill behind the icon, not just a color
+          change — a subtler highlight was easy to miss at a glance. */}
+      <span className={`flex items-center justify-center w-10 h-6 rounded-full ${active ? "bg-primary/12" : ""}`}>
+        <Icon size={19} strokeWidth={active ? 2.4 : 2} />
+      </span>
+      {label}
+    </Link>
+  );
+}
+
+// Fixed, five-item tab bar — the "More" tab opens the same full drawer as
+// the header hamburger instead of a separate menu, so there's exactly one
+// place (not two) that lists everything else (Meetings, AI Center,
+// Settings, Team, Accounting…).
+function BottomNav({ formsRoute, isModuleOn, onMore, moreActive, onCreate, canManage }) {
+  const router = useRouter();
+  const items = BOTTOM_NAV_ITEMS.filter((item) => (item.isFormsApp ? !!formsRoute : isModuleOn(item.module)));
+  // The raised "+" sits after Forms (Instagram-style center action) —
+  // splitting the list here rather than hardcoding an index so a filtered-
+  // out item (e.g. no Forms app enabled) doesn't shift it to the wrong spot.
+  const beforePlus = items.filter((i) => i.to === "/app" || i.isFormsApp);
+  const afterPlus = items.filter((i) => !beforePlus.includes(i));
+
+  return (
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 h-[60px] bg-white border-t border-border flex items-stretch pb-[env(safe-area-inset-bottom)]">
+      {beforePlus.map((item) => (
+        <BottomNavLink
+          key={item.to}
+          to={item.isFormsApp ? formsRoute : item.to}
+          label={item.label}
+          icon={item.icon}
+          active={router.pathname === (item.isFormsApp ? formsRoute : item.to)}
+        />
+      ))}
+      {canManage && (
+        <div className="flex-1 flex items-center justify-center relative">
+          <button
+            onClick={onCreate}
+            aria-label="Create"
+            className="absolute -top-5 w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center shadow-[0_8px_20px_rgba(47,93,80,0.35)] hover:bg-primary-dark"
+          >
+            <Plus size={24} />
+          </button>
+        </div>
+      )}
+      {afterPlus.map((item) => (
+        <BottomNavLink
+          key={item.to}
+          to={item.isFormsApp ? formsRoute : item.to}
+          label={item.label}
+          icon={item.icon}
+          active={router.pathname === (item.isFormsApp ? formsRoute : item.to)}
+        />
+      ))}
+      <button
+        onClick={onMore}
+        className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[11px] font-medium ${
+          moreActive ? "text-primary" : "text-ink/45"
+        }`}
+      >
+        <span className={`flex items-center justify-center w-10 h-6 rounded-full ${moreActive ? "bg-primary/12" : ""}`}>
+          <MoreHorizontal size={19} strokeWidth={moreActive ? 2.4 : 2} />
+        </span>
+        More
+      </button>
+    </nav>
+  );
+}
+
 export default function Layout({ children }) {
   const { user, logout, canManage, isMasterAdmin, isOwner } = useAuth();
   const { releasedModules, releasedApps } = usePlatformFeatures();
@@ -498,6 +736,7 @@ export default function Layout({ children }) {
   const [subscription, setSubscription] = useState(null);
   const [downgradeDismissed, setDowngradeDismissed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [createSheetOpen, setCreateSheetOpen] = useState(false);
   // Which nav section labels are collapsed — persisted so a collapsed
   // "Insights" (say) stays collapsed across page navigations and reloads,
   // not just for the current render.
@@ -553,7 +792,10 @@ export default function Layout({ children }) {
   // Close the mobile drawer whenever navigation happens — otherwise tapping
   // a nav link on a phone leaves the overlay open behind the new page.
   useEffect(() => {
-    const close = () => setMobileOpen(false);
+    const close = () => {
+      setMobileOpen(false);
+      setCreateSheetOpen(false);
+    };
     router.events.on("routeChangeComplete", close);
     return () => router.events.off("routeChangeComplete", close);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -668,7 +910,7 @@ export default function Layout({ children }) {
           sidebarCollapsed ? "md:w-[68px]" : "md:w-60"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className={`h-16 flex items-center gap-2 border-b border-border ${sidebarCollapsed ? "md:justify-center md:px-2 px-5" : "px-5"}`}>
+        <div className={`h-[60px] flex items-center gap-2 border-b border-border ${sidebarCollapsed ? "md:justify-center md:px-2 px-5" : "px-5"}`}>
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <Target size={17} className="text-white" />
           </div>
@@ -739,10 +981,21 @@ export default function Layout({ children }) {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 shrink-0 bg-white border-b border-border flex items-center justify-between px-4 md:px-6 gap-3">
-          <button onClick={() => setMobileOpen(true)} className="text-ink/50 hover:text-ink md:hidden shrink-0">
-            <Menu size={22} />
-          </button>
+        <header className="h-[60px] shrink-0 bg-white border-b border-border flex items-center justify-between px-4 md:px-6 gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button onClick={() => setMobileOpen(true)} className="text-ink/50 hover:text-ink md:hidden shrink-0">
+              <Menu size={22} />
+            </button>
+            {/* App name fills the space the desktop search box occupies —
+                the bottom tab bar is the phone's primary nav, so there's no
+                need to repeat the logo already in the (rarely-opened on
+                mobile) drawer. */}
+            {/* Explicit text-[15px]/text-ink, not text-base — this repo's
+                Tailwind config names a color "base" too, which collides
+                with the text-base font-size utility and silently renders
+                near-white text instead of setting the font size. */}
+            <span className="font-display font-bold text-[15px] text-ink tracking-tight md:hidden truncate">{APP_NAME}</span>
+          </div>
           <GlobalSearch />
           <div className="flex items-center gap-3 shrink-0">
             {!canManage && (
@@ -773,8 +1026,18 @@ export default function Layout({ children }) {
             </button>
           </div>
         )}
-        <main ref={mainRef} className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-4 sm:p-6 pb-[76px] md:pb-6">{children}</main>
       </div>
+
+      <BottomNav
+        formsRoute={formsApp?.route}
+        isModuleOn={isModuleOn}
+        onMore={() => setMobileOpen(true)}
+        moreActive={mobileOpen}
+        onCreate={() => setCreateSheetOpen(true)}
+        canManage={canManage}
+      />
+      <CreateSheet isModuleOn={isModuleOn} open={createSheetOpen} onClose={() => setCreateSheetOpen(false)} />
     </div>
   );
 }
