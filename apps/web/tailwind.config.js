@@ -39,7 +39,9 @@ export default {
         card: "10px",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(20, 23, 43, 0.04), 0 1px 8px rgba(20, 23, 43, 0.04)",
+        // A softer, more visible lift than a hairline border alone — was
+        // faint enough to read as "no shadow" at a glance.
+        card: "0 8px 24px rgba(15, 23, 42, 0.06)",
       },
       // Used by Landing.jsx's hero mock (animate-[fadeIn_0.4s_ease-out_forwards])
       // to stagger the "Creating fields / Adding validation / ..." checklist
@@ -48,6 +50,14 @@ export default {
         fadeIn: {
           "0%": { opacity: "0", transform: "translateY(2px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        // Landing.jsx's floating chips around the hero mock — gently
+        // fades in, holds, fades out, on a loop (staggered per chip via
+        // inline animationDelay).
+        floatFade: {
+          "0%, 100%": { opacity: "0", transform: "translateY(6px)" },
+          "15%, 40%": { opacity: "1", transform: "translateY(0)" },
+          "55%": { opacity: "0", transform: "translateY(-6px)" },
         },
       },
     },

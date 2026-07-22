@@ -76,25 +76,46 @@ export default function Companies() {
           />
         </Card>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {companies.map((c) => (
             <Card key={c.id} className="p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <div className="flex items-center gap-2.5 mb-2">
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
                   <Building2 size={17} />
                 </div>
+                <h4 className="font-display font-semibold">{c.name}</h4>
               </div>
-              <h4 className="font-display font-semibold">{c.name}</h4>
-              <p className="text-xs text-ink/40 mb-3">{c.industry} · {c.employees} employees</p>
-              <div className="text-xs text-ink/60 space-y-1">
-                <div>GST: {c.gst}</div>
-                <div className="flex items-center gap-1"><Globe size={11} /> {c.website}</div>
-                <div>Account Manager: {userName(c.accountManager)}</div>
-                {c.annualRevenue > 0 && <div>Annual Revenue: {formatINR(c.annualRevenue)}</div>}
-                {c.address && (
-                  <div className="flex items-start gap-1"><MapPin size={11} className="mt-0.5 shrink-0" /> {c.address}</div>
+              <p className="text-xs text-ink/40 mb-3">{c.industry}{c.industry && c.employees ? " · " : ""}{c.employees ? `${c.employees} employees` : ""}</p>
+
+              {/* The two numbers worth scanning at a glance — revenue and
+                  who owns the account. GST/website/address are real but
+                  rarely-needed detail, tucked behind a disclosure instead
+                  of competing with these for attention. */}
+              <div className="flex items-center gap-4 mb-2">
+                {c.annualRevenue > 0 && (
+                  <div>
+                    <p className="text-sm font-display font-semibold">{formatINR(c.annualRevenue)}</p>
+                    <p className="text-[11px] text-ink/45">Annual Revenue</p>
+                  </div>
                 )}
+                <div>
+                  <p className="text-sm font-medium">{userName(c.accountManager)}</p>
+                  <p className="text-[11px] text-ink/45">Owner</p>
+                </div>
               </div>
+
+              {(c.gst || c.website || c.address) && (
+                <details className="text-xs text-ink/60">
+                  <summary className="cursor-pointer select-none text-primary font-medium list-none">Details</summary>
+                  <div className="space-y-1 mt-2">
+                    {c.gst && <div>GST: {c.gst}</div>}
+                    {c.website && <div className="flex items-center gap-1"><Globe size={11} /> {c.website}</div>}
+                    {c.address && (
+                      <div className="flex items-start gap-1"><MapPin size={11} className="mt-0.5 shrink-0" /> {c.address}</div>
+                    )}
+                  </div>
+                </details>
+              )}
             </Card>
           ))}
         </div>

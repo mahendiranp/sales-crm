@@ -43,6 +43,13 @@ const PLANS = {
     // $19/month flat (matches the landing page's "/month" display copy).
     currency: "USD",
     priceInMinorUnits: 1900,
+    // Launch offer: 50% off ($9) on an account's first-ever Growth
+    // payment, capped at the first 100 accounts to actually use it (see
+    // routes/payments.js's resolvePrice — checkout is a one-time charge,
+    // not a recurring subscription, so this is a one-time first-payment
+    // discount, not "$9/mo for 3 months then $19/mo").
+    launchOfferPriceInMinorUnits: 900,
+    launchOfferLimit: 100,
   },
   enterprise: {
     label: "Enterprise",

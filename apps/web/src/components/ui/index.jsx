@@ -62,9 +62,13 @@ export function Button({ children, variant = "primary", className = "", ...props
 
 export function PageHeader({ title, subtitle, action }) {
   return (
-    <div className="flex items-center justify-between mb-6">
+    // Wraps instead of squeezing on narrow screens — an `action` with its
+    // own width (a button, a "Last analyzed" block) was fighting the
+    // title/subtitle for space at phone widths under the old plain
+    // justify-between row.
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 sm:mb-6">
       <div>
-        <h1 className="font-display font-bold text-2xl text-ink">{title}</h1>
+        <h1 className="font-display font-bold text-xl sm:text-2xl text-ink">{title}</h1>
         {subtitle && <p className="text-sm text-ink/50 mt-0.5">{subtitle}</p>}
       </div>
       {action}
@@ -172,7 +176,7 @@ export function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onCancel}>
       <div className="bg-white rounded-card shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-display font-semibold text-base mb-1.5">{title}</h3>
+        <h3 className="font-display font-semibold text-[16px] mb-1.5">{title}</h3>
         {message && <p className="text-sm text-ink/60 mb-3">{message}</p>}
         {withReason && (
           <textarea
@@ -203,7 +207,7 @@ export function ErrorModal({ open, title = "Something went wrong", message, onCl
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-card shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-display font-semibold text-base mb-1.5 text-danger">{title}</h3>
+        <h3 className="font-display font-semibold text-[16px] mb-1.5 text-danger">{title}</h3>
         <p className="text-sm text-ink/70 mb-4">{message}</p>
         <div className="flex justify-end">
           <Button onClick={onClose}>OK</Button>

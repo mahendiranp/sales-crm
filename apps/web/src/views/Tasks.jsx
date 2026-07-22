@@ -4,11 +4,12 @@ import { Plus, Check, X, List as ListIcon, LayoutGrid, MessageSquare, Trash2 } f
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
-import { Card, PageHeader, Button, Modal, Field, inputCls } from "../components/ui";
+import { Card, Button, Modal, Field, inputCls } from "../components/ui";
 import { formatDate, timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
 const STATUSES = ["Todo", "In Progress", "Blocked", "Completed"];
+const STATUS_DOT = { Todo: "bg-amber-400", "In Progress": "bg-blue-500", Blocked: "bg-red-500", Completed: "bg-emerald-500" };
 const PRIORITIES = ["Low", "Medium", "High", "Critical"];
 const PRIORITY_META = {
   Critical: { emoji: "🔺", cls: "bg-red-100 text-red-700" },
@@ -324,9 +325,13 @@ function TaskCard({ task, leadName, users, onComplete, onOpen, onDelete, comment
   const priorityMeta = PRIORITY_META[task.priority] || PRIORITY_META.Medium;
   const due = dueMeta(task.dueDate, task.status);
   const assigneeName = users.find((u) => u.id === task.assigneeId)?.name || "Unassigned";
+  const isOverdue = due.label.startsWith("Overdue") && task.status !== "Completed";
 
   return (
-    <div className="group p-4 border-b border-border last:border-0 hover:bg-base/50 cursor-pointer" onClick={() => onOpen(task.id)}>
+    <div
+      className={`group p-4 border-b border-border last:border-0 hover:bg-base/50 cursor-pointer ${isOverdue ? "border-l-4 border-l-danger" : ""}`}
+      onClick={() => onOpen(task.id)}
+    >
       <div className="flex items-start gap-3">
         <button
           onClick={(e) => {
@@ -377,7 +382,10 @@ function TaskCard({ task, leadName, users, onComplete, onOpen, onDelete, comment
             Attach are left out — there's no inline edit modal and no
             attachments subsystem to wire them to. */}
         {canManage && (
-          <div className="hidden group-hover:flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          // Always visible on touch devices (there's no ":hover" to reveal
+          // them on) — only fades in on hover from sm up, where a mouse
+          // makes that discoverable.
+          <div className="flex sm:opacity-0 sm:group-hover:opacity-100 items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
             {task.status !== "Completed" && (
               <button onClick={() => onComplete(task)} title="Complete" className="p-1.5 rounded-lg hover:bg-white text-ink/40 hover:text-emerald-600">
                 <Check size={14} />
@@ -453,6 +461,8 @@ export default function Tasks() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [drawerTaskId, setDrawerTaskId] = useState(null);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
 
   // Landed here from the global "+ Create" menu (Layout.jsx).
   useEffect(() => {
@@ -518,6 +528,8 @@ export default function Tasks() {
   }, [tasks, statusTab, search, priorityFilter, assigneeFilter, dueFilter, createdByMe, sort, leads]);
 
   const counts = Object.fromEntries(STATUSES.map((s) => [s, tasks.filter((t) => t.status === s).length]));
+  const matchesDueTodayCount = tasks.filter((t) => t.status !== "Completed" && matchesDueFilter(t, "today")).length;
+  const activeFilterCount = [priorityFilter, assigneeFilter, dueFilter, createdByMe].filter(Boolean).length;
 
   const complete = async (task) => {
     try {
@@ -575,21 +587,35 @@ export default function Tasks() {
 
   return (
     <div>
-      <PageHeader
-        title="Tasks"
-        subtitle="Follow-ups your team will never forget."
-        action={canManage && <Button onClick={() => setModal(true)}><Plus size={15} /> Add Task</Button>}
-      />
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <h1 className="font-display font-bold text-xl sm:text-2xl text-ink">Tasks</h1>
+        {canManage && (
+          <Button onClick={() => setModal(true)}>
+            <Plus size={15} /> <span className="sm:hidden">Add</span><span className="hidden sm:inline">Add Task</span>
+          </Button>
+        )}
+      </div>
+      {/* Compact stat line replaces the old descriptive subtitle — the
+          count of what's active/due is more useful at a glance than
+          "Follow-ups your team will never forget." */}
+      <p className="text-sm text-secondary mb-3">
+        {tasks.length - (counts.Completed || 0)} Active
+        {matchesDueTodayCount > 0 && <> • {matchesDueTodayCount} Due Today</>}
+      </p>
 
-      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+      <div className="mb-3">
         <input
           type="search"
-          placeholder="Search tasks, descriptions, leads…"
+          placeholder="Search tasks…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className={`${inputCls} w-64`}
+          className={`${inputCls} w-full sm:w-64 mb-2 sm:mb-0 sm:inline-block`}
         />
-        <div className="flex items-center gap-2">
+        {/* Full filter row from sm up; below that, two buttons (Filter/Sort)
+            open sheets instead — four+ inline selects don't fit a phone
+            without crowding, and most mobile apps don't dedicate a whole
+            row to sorting alone. */}
+        <div className="hidden sm:inline-flex items-center gap-2 sm:float-right">
           <select className={inputCls} style={{ width: "auto" }} value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
             <option value="">All Priorities</option>
             {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -617,21 +643,88 @@ export default function Tasks() {
             </button>
           </div>
         </div>
+        <div className="flex sm:hidden items-center gap-2">
+          <button onClick={() => setFilterSheetOpen(true)} className={`${inputCls} flex-1 flex items-center justify-center gap-1.5 text-sm`}>
+            Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          </button>
+          <button onClick={() => setSortSheetOpen(true)} className={`${inputCls} flex-1 flex items-center justify-center gap-1.5 text-sm`}>
+            Sort
+          </button>
+        </div>
       </div>
 
       {view === "list" && (
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible">
           {STATUSES.map((s) => (
             <button
               key={s}
               onClick={() => setStatusTab(s)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+              className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
                 statusTab === s ? "bg-primary text-white border-primary" : "bg-white border-border text-ink/60"
               }`}
             >
+              <span className={`w-1.5 h-1.5 rounded-full ${statusTab === s ? "bg-white" : STATUS_DOT[s]}`} />
               {s} ({counts[s] || 0})
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Mobile Filter sheet — same fields the desktop inline row exposes,
+          just grouped behind one button instead of four+ competing for
+          space. */}
+      {filterSheetOpen && (
+        <div className="sm:hidden fixed inset-0 z-50 bg-ink/40" onClick={() => setFilterSheetOpen(false)}>
+          <div className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-display font-semibold text-lg">Filter</h2>
+              <button onClick={() => setFilterSheetOpen(false)} className="text-ink/40 hover:text-ink"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <Field label="Priority">
+                <select className={inputCls} value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
+                  <option value="">All Priorities</option>
+                  {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </Field>
+              <Field label="Assignee">
+                <select className={inputCls} value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)}>
+                  <option value="">All Assignees</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Due Date">
+                <select className={inputCls} value={dueFilter} onChange={(e) => setDueFilter(e.target.value)}>
+                  {DUE_FILTERS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+              </Field>
+              <label className="flex items-center gap-2 text-sm text-ink/70">
+                <input type="checkbox" checked={createdByMe} onChange={(e) => setCreatedByMe(e.target.checked)} className="w-4 h-4 rounded border-border" />
+                Created by me
+              </label>
+            </div>
+            <Button className="w-full justify-center mt-4" onClick={() => setFilterSheetOpen(false)}>Apply</Button>
+          </div>
+        </div>
+      )}
+
+      {sortSheetOpen && (
+        <div className="sm:hidden fixed inset-0 z-50 bg-ink/40" onClick={() => setSortSheetOpen(false)}>
+          <div className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-display font-semibold text-lg">Sort</h2>
+              <button onClick={() => setSortSheetOpen(false)} className="text-ink/40 hover:text-ink"><X size={20} /></button>
+            </div>
+            {SORT_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => { setSort(o.value); setSortSheetOpen(false); }}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm ${sort === o.value ? "bg-primary/10 text-primary font-medium" : "text-ink/70 hover:bg-base"}`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

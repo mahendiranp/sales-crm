@@ -128,6 +128,9 @@ const PUBLIC_ROUTES = [
   { method: "POST", pattern: /^\/api\/whatsapp-surveys\/webhook$/ },
   // Signup's feature/module pickers need this before any session exists.
   { method: "GET", pattern: /^\/api\/platform$/ },
+  // The public pricing page (landing page, no login yet) shows real
+  // remaining launch-offer slots, not a hardcoded/fabricated count.
+  { method: "GET", pattern: /^\/api\/payments\/launch-offer$/ },
 ];
 
 app.use((req, res, next) => {

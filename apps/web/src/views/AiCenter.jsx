@@ -99,7 +99,7 @@ function HealthStat({ icon, label, value, tone, trend }) {
   return (
     <div>
       <div className="flex items-baseline gap-2">
-        <p className={`text-3xl font-display font-bold ${tone || "text-ink"}`}>{value}</p>
+        <p className={`text-lg sm:text-xl font-display font-bold ${tone || "text-ink"}`}>{value}</p>
         {trend}
       </div>
       <p className="text-xs text-ink/45 mt-0.5">
@@ -394,18 +394,19 @@ function RecommendationCard({ recommendation, onChanged, onViewDetails, selectab
   const actionsDisabled = busyAction !== null || confirmedAction !== null;
 
   return (
-    <Card className="p-5 hover:shadow-md hover:border-ink/10 transition-shadow">
-      <div className="flex items-start justify-between gap-4">
-        {selectable && (
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onToggleSelect(recommendation.id)}
-            className="mt-0.5 w-4 h-4 rounded border-border shrink-0"
-          />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3 mb-1">
+    <Card className="p-4 sm:p-5 hover:shadow-md hover:border-ink/10 transition-shadow">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1 w-full">
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect(recommendation.id)}
+              className="mt-0.5 w-4 h-4 rounded border-border shrink-0"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
             <PriorityPill priority={recommendation.priority} />
             <RiskScoreBar score={recommendation.score} />
           </div>
@@ -413,7 +414,7 @@ function RecommendationCard({ recommendation, onChanged, onViewDetails, selectab
           {typeof payload.ageHours === "number" && <p className="text-sm text-ink/60 mt-1">⏱ Waiting {payload.ageHours} hours</p>}
 
           {(payload.formName || recommendation.createdAt) && (
-            <div className="mt-3 pt-3 border-t border-border grid grid-cols-3 gap-3 text-sm">
+            <div className="mt-3 pt-3 border-t border-border grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 text-sm">
               {payload.formName && (
                 <div>
                   <p className="text-xs text-ink/40">📋 Workflow</p>
@@ -472,9 +473,10 @@ function RecommendationCard({ recommendation, onChanged, onViewDetails, selectab
               </span>
             )}
           </div>
+          </div>
         </div>
         {isOpen && (recommendation.actions?.length ?? 0) > 0 && (
-          <div className="flex flex-col items-stretch gap-1.5 shrink-0 w-36">
+          <div className="flex flex-col items-stretch gap-1.5 shrink-0 w-full sm:w-36">
             {primaryActions.map((action) => {
               const style = ACTION_STYLE[action.id] || DEFAULT_ACTION_STYLE;
               return (
@@ -637,26 +639,22 @@ export default function AiCenter() {
 
   return (
     <div>
-      <PageHeader
-        title="✨ AI Center"
-        subtitle="AI-powered insights that continuously monitor your workflows and surface issues requiring attention."
-        action={
-          health?.lastScanAt && (
-            <div className="text-right">
-              <p className="text-xs text-ink/40">Last analyzed</p>
-              <p className="text-xs font-medium text-ink/60">{timeAgo(health.lastScanAt)}</p>
-            </div>
-          )
-        }
-      />
+      {/* No PageHeader subtitle/action row — "Last analyzed" moved into
+          the Business Health card below and the long descriptive subtitle
+          dropped; between this and the compressed health card, the whole
+          header goes from ~200px to roughly half that. */}
+      <h1 className="font-display font-bold text-xl sm:text-2xl text-ink mb-3">✨ AI Center</h1>
 
-      <div className="flex gap-2 mb-4">
-        <span className="px-3 py-1.5 rounded-full text-xs font-medium border bg-primary text-white border-primary">🏠 Overview</span>
+      {/* Scrollable chip row instead of wrapping — the three locked,
+          future-release tabs are secondary; letting them run off-screen
+          rather than wrap keeps Overview from being pushed down a line. */}
+      <div className="flex gap-2 mb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible">
+        <span className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border bg-primary text-white border-primary">🏠 Overview</span>
         {FUTURE_SECTIONS.map(({ label, icon }) => (
           <span
             key={label}
             title="Available in a future release"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-white border-border text-ink/35 opacity-50 cursor-not-allowed"
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-white border-border text-ink/35 opacity-50 cursor-not-allowed"
           >
             🔒 {icon} {label}
           </span>
@@ -667,35 +665,47 @@ export default function AiCenter() {
           (components/Layout.jsx) is its own overflow-y-auto container, so
           sticky here anchors to that, not the window. */}
       <div className="sticky top-0 z-10 bg-base pb-3">
-        <Card className="p-5">
+        <Card className="p-4 sm:p-5">
           {!health ? (
             <p className="text-ink/40 text-sm">Loading business health…</p>
           ) : (
-            <div className="grid grid-cols-4 gap-4">
-              <div>
-                <p className="text-xs text-ink/45 mb-1">Business Health</p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-3xl font-display font-bold text-ink">{health.score}/100</p>
-                  {health.trend && <TrendBadge delta={health.trend.scoreDelta} />}
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-ink/45 mb-1">Business Health</p>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-2xl sm:text-3xl font-display font-bold text-ink">{health.score}/100</p>
+                    {health.trend && <TrendBadge delta={health.trend.scoreDelta} />}
+                  </div>
+                  <p className={`text-xs font-medium mt-1 ${band.tone}`}>
+                    {band.emoji} {band.label}
+                  </p>
                 </div>
-                <p className={`text-xs font-medium mt-1 ${band.tone}`}>
-                  Status: {band.emoji} {band.label}
-                </p>
+                {health.lastScanAt && (
+                  <p className="text-xs text-ink/40 text-right shrink-0">Last analyzed<br />{timeAgo(health.lastScanAt)}</p>
+                )}
               </div>
-              <HealthStat icon="⚠️" label="Open Issues" value={health.openCount} />
-              <HealthStat icon="🔥" label="Critical" value={health.criticalCount} tone={health.criticalCount > 0 ? "text-red-600" : "text-ink"} />
-              <HealthStat icon="✅" label="Resolved Today" value={health.resolvedTodayCount} tone="text-emerald-600" trend={health.trend && <TrendBadge delta={health.trend.resolvedTodayDelta} />} />
-            </div>
+              <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-border">
+                <HealthStat icon="⚠️" label="Open" value={health.openCount} />
+                <HealthStat icon="🔥" label="Critical" value={health.criticalCount} tone={health.criticalCount > 0 ? "text-red-600" : "text-ink"} />
+                <HealthStat icon="✅" label="Resolved Today" value={health.resolvedTodayCount} tone="text-emerald-600" trend={health.trend && <TrendBadge delta={health.trend.resolvedTodayDelta} />} />
+              </div>
+            </>
           )}
         </Card>
       </div>
 
       {summary.length > 0 && (
         <Card className="p-4 mb-4">
-          <h3 className="font-display font-semibold text-sm mb-2">✨ Today's AI Summary</h3>
-          <ul className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-display font-semibold text-sm">✨ Today</h3>
+            <button onClick={() => setStatus("OPEN")} className="text-xs text-primary font-medium hover:underline shrink-0">
+              See details →
+            </button>
+          </div>
+          <ul className="space-y-1 mt-2">
             {summary.map((line, i) => (
-              <li key={i} className="text-sm text-ink/65">
+              <li key={i} className="text-sm text-ink/65 truncate">
                 • {line}
               </li>
             ))}
@@ -709,13 +719,16 @@ export default function AiCenter() {
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-        <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2">
+        {/* Horizontal scroll instead of wrapping — four tabs plus counts
+            can run wider than a phone screen, and wrapping them wastes a
+            second row for what's still just navigation. */}
+        <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setStatus(tab)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border ${
                 status === tab ? "bg-primary text-white border-primary" : "bg-white border-border text-ink/60 hover:border-ink/20"
               }`}
             >
@@ -730,14 +743,14 @@ export default function AiCenter() {
             placeholder="Search by title, workflow, or reason…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className={`${inputCls} w-56`}
+            className={`${inputCls} flex-1 sm:w-56`}
           />
           {/* Native <select> chrome (border-radius, arrow) ignores most of
               inputCls's styling on its own — appearance-none strips it back
               to plain box styling matching the search input, and the
               chevron here replaces the native dropdown arrow that
               appearance-none also removes. */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value)}

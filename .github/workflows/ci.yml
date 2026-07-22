@@ -12,6 +12,12 @@ on:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    # mongodb-memory-server downloads its mongod binary fresh on every CI
+    # run (that download isn't covered by actions/setup-node's npm cache),
+    # and occasionally hangs against a slow/unresponsive mirror instead of
+    # failing outright. Without this, a hung download blocks the job for
+    # up to GitHub's default 6-hour limit instead of failing fast.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 

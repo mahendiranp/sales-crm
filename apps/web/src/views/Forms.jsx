@@ -8,7 +8,7 @@ import {
   Paperclip, Star, ToggleLeft, CalendarClock, Search, UserPlus, Briefcase, ShoppingBag, Users,
   LifeBuoy, Bug, Plane, UserCheck, LogOut, HeartPulse, Receipt, Home, RotateCcw, GraduationCap,
   TrendingUp, FileText, Palette, Columns3, Navigation as NavigationIcon, Image as FormImageIcon, Target,
-  ArrowRight, ChevronDown, ArrowLeft, UploadCloud, MoreVertical, GitBranch,
+  ArrowRight, ChevronDown, ArrowLeft, UploadCloud, MoreVertical, GitBranch, ArrowUp,
 } from "lucide-react";
 import api from "../api/client";
 import { useToast } from "../components/ui/Toast";
@@ -149,12 +149,10 @@ function newField(type) {
 
 function StatCard({ label, value, delta }) {
   return (
-    <Card className="p-4">
-      <p className="text-xs font-medium text-ink/50">{label}</p>
-      <div className="flex items-baseline gap-2 mt-1.5">
-        <p className="text-2xl font-display font-bold">{value}</p>
-        {delta && <span className="text-xs font-medium text-primary">{delta}</span>}
-      </div>
+    <Card className="p-3 sm:p-4">
+      <p className="text-xl sm:text-2xl font-display font-bold leading-tight">{value}</p>
+      <p className="text-xs font-medium text-ink/50 mt-0.5">{label}</p>
+      {delta && <p className="text-[11px] font-medium text-primary mt-1 flex items-center gap-0.5"><ArrowUp size={10} /> {delta}</p>}
     </Card>
   );
 }
@@ -211,7 +209,7 @@ function NewFormMenu({ disabled, onClickDisabled, onDuplicateExisting }) {
         onClick={() => (disabled ? onClickDisabled() : setOpen((o) => !o))}
         className="flex items-center gap-1.5"
       >
-        <Plus size={15} /> New Form <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        <Plus size={15} /> <span className="sm:hidden">New</span><span className="hidden sm:inline">New Form</span> <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </Button>
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-56 bg-white border border-border rounded-lg shadow-card p-1 z-30">
@@ -2312,7 +2310,7 @@ function AIGenerationStepper({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="border border-[#E7E9EC] rounded-2xl p-6 bg-white">
-          <p className="text-base font-display font-semibold flex items-center gap-1.5 mb-3">
+          <p className="text-[16px] font-display font-semibold flex items-center gap-1.5 mb-3">
             <Sparkles size={16} className="text-primary" /> Generate with AI
           </p>
           <div className="relative">
@@ -2328,7 +2326,7 @@ function AIGenerationStepper({
           </div>
           {ready && (
             <div className="my-3">
-              <Button onClick={onRegenerate} disabled={!prompt.trim()} className="w-full justify-center h-12 rounded-xl text-base">
+              <Button onClick={onRegenerate} disabled={!prompt.trim()} className="w-full justify-center h-12 rounded-xl text-[16px]">
                 <Sparkles size={14} /> Regenerate <ArrowRight size={14} />
               </Button>
             </div>
@@ -2349,7 +2347,7 @@ function AIGenerationStepper({
         </div>
 
         <div className="border border-[#E7E9EC] rounded-2xl p-6 bg-white">
-          <p className="text-base font-display font-semibold flex items-center gap-1.5">
+          <p className="text-[16px] font-display font-semibold flex items-center gap-1.5">
             <Sparkles size={16} className="text-primary" /> AI is creating your form…
           </p>
           <p className="text-xs text-ink/40 mt-1 mb-4">This usually takes less than 10 seconds.</p>
@@ -2660,21 +2658,31 @@ export function AddFormPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-10">
-        <div>
-          <h1 className="font-display font-bold text-4xl leading-tight text-heading">Add Form</h1>
-          <p className="text-base text-secondary mt-1.5">Create a form in the way that works best for you.</p>
+      {/* Compact iOS/Android-style title row on mobile (back arrow + title,
+          no separate button eating vertical space) — the full "Back to
+          Forms" pill returns from lg up, where there's room for it. */}
+      <div className="flex items-center gap-3 mb-6 lg:items-start lg:justify-between lg:mb-10">
+        <button
+          onClick={() => router.push("/app/forms")}
+          aria-label="Back to Forms"
+          className="lg:hidden text-ink/50 hover:text-ink shrink-0 -ml-1 p-1"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-display font-bold text-2xl lg:text-4xl leading-tight text-heading">Add Form</h1>
+          <p className="text-sm lg:text-[16px] text-secondary mt-1 lg:mt-1.5">Create a form that fits your workflow.</p>
         </div>
-        <Button variant="secondary" onClick={() => router.push("/app/forms")}>
+        <Button variant="secondary" onClick={() => router.push("/app/forms")} className="hidden lg:inline-flex">
           <ArrowLeft size={14} /> Back to Forms
         </Button>
       </div>
 
       {genPhase === "idle" ? (
-      <div className={`grid grid-cols-1 gap-5 mb-14 ${aiAllowed ? "lg:grid-cols-[2fr_1fr_1fr]" : "lg:grid-cols-2"}`}>
+      <div className={`grid grid-cols-1 gap-4 lg:gap-5 mb-6 lg:mb-14 ${aiAllowed ? "lg:grid-cols-[2fr_1fr_1fr]" : "lg:grid-cols-2"}`}>
         {aiAllowed && (
         <div
-          className="rounded-[20px] p-7"
+          className="rounded-[20px] p-5 lg:p-7"
           style={{
             background: "#FFFFFF",
             border: "2px solid #2F5D50",
@@ -2720,7 +2728,7 @@ export function AddFormPage() {
             const quotaExhausted = !isMasterAdmin && aiCredits && aiCredits.remaining <= 0;
             return (
               <div className="my-4">
-                <Button onClick={generate} disabled={!prompt.trim() || quotaExhausted} className="h-12 px-6 rounded-xl text-base">
+                <Button onClick={generate} disabled={!prompt.trim() || quotaExhausted} className="h-12 px-6 rounded-xl text-[16px]">
                   Generate Form <ArrowRight size={15} />
                 </Button>
                 {quotaExhausted && (
@@ -2746,13 +2754,21 @@ export function AddFormPage() {
         </div>
         )}
 
-        <div className={`border border-[#E7E9EC] rounded-2xl p-6 flex flex-col bg-white ${CARD_HOVER}`}>
-          <div className={`${ICON_BOX} mb-4`}>
-            <LayoutGrid size={22} className="text-ink/60" />
+        <div className={`border border-[#E7E9EC] rounded-2xl p-4 lg:p-6 flex flex-col items-start bg-white ${CARD_HOVER}`}>
+          {/* Icon sits beside the title on mobile (saves the ~80px a
+              stacked icon-then-title-then-description layout costs);
+              back to stacked from lg up, matching the desktop design. */}
+          <div className="flex items-center gap-3 lg:block">
+            <div className={`${ICON_BOX} lg:mb-4 shrink-0`}>
+              <LayoutGrid size={22} className="text-ink/60" />
+            </div>
+            <p className="text-[16px] lg:text-[22px] font-display font-semibold">Browse Templates</p>
           </div>
-          <p className="text-[22px] font-display font-semibold">Browse Templates</p>
-          <p className="text-[15px] text-secondary mt-1.5 mb-4">Choose from {realTemplates.length}+ professionally designed templates across categories.</p>
-          <div className="flex-1 relative h-24 mb-4 overflow-hidden">
+          <p className="text-sm lg:text-[15px] text-secondary mt-2 lg:mt-1.5 mb-3 lg:mb-4">Choose from {realTemplates.length}+ professionally designed templates across categories.</p>
+          {/* Decorative template-preview stack — desktop-only; it's the
+              tallest part of this card and adds nothing functional on a
+              phone where every extra 96px of scroll counts. */}
+          <div className="hidden lg:block flex-1 relative w-full h-24 mb-4 overflow-hidden">
             {[
               { icon: Calendar, bg: "bg-primary/10", text: "text-primary" },
               { icon: FileText, bg: "bg-accent/10", text: "text-accent" },
@@ -2772,32 +2788,34 @@ export function AddFormPage() {
               </div>
             ))}
           </div>
-          <Button variant="secondary" onClick={jumpToGrid} className="h-12 px-6 rounded-xl text-base">Browse Templates <ArrowRight size={15} /></Button>
+          <Button variant="secondary" onClick={jumpToGrid} className="h-10 lg:h-12 px-5 lg:px-6 rounded-xl text-sm lg:text-[16px]">Browse Templates <ArrowRight size={15} /></Button>
         </div>
 
-        <div className={`border border-[#E7E9EC] rounded-2xl p-6 flex flex-col bg-white ${CARD_HOVER}`}>
-          <div className={`${ICON_BOX} mb-4`}>
-            <Pencil size={22} className="text-ink/60" />
+        <div className={`border border-[#E7E9EC] rounded-2xl p-4 lg:p-6 flex flex-col items-start bg-white ${CARD_HOVER}`}>
+          <div className="flex items-center gap-3 lg:block">
+            <div className={`${ICON_BOX} lg:mb-4 shrink-0`}>
+              <Pencil size={22} className="text-ink/60" />
+            </div>
+            <p className="text-[16px] lg:text-[22px] font-display font-semibold">Start from Scratch</p>
           </div>
-          <p className="text-[22px] font-display font-semibold">Start from Scratch</p>
-          <p className="text-[15px] text-secondary mt-1.5 mb-4">Create a blank form and add fields yourself.</p>
+          <p className="text-sm lg:text-[15px] text-secondary mt-2 lg:mt-1.5 mb-3 lg:mb-4">Create a blank form and add fields yourself.</p>
           <button
             onClick={startFromScratch}
             disabled={creating}
-            className="flex-1 h-24 mb-4 border border-dashed border-border rounded-lg p-3 hover:border-primary/50 hover:bg-base/40 transition-colors disabled:opacity-50 text-left"
+            className="hidden lg:block flex-1 w-full h-24 mb-4 border border-dashed border-border rounded-lg p-3 hover:border-primary/50 hover:bg-base/40 transition-colors disabled:opacity-50 text-left"
           >
             <p className="text-[10px] font-medium text-ink/50 mb-1">Name</p>
             <div className="h-1.5 w-full rounded-full bg-ink/10 mb-2" />
             <p className="text-[10px] font-medium text-ink/50 mb-1">Email</p>
             <div className="h-1.5 w-2/3 rounded-full bg-ink/10" />
           </button>
-          <Button variant="secondary" onClick={startFromScratch} disabled={creating} className="h-12 px-6 rounded-xl text-base">Start Blank Form <ArrowRight size={15} /></Button>
+          <Button variant="secondary" onClick={startFromScratch} disabled={creating} className="h-10 lg:h-12 px-5 lg:px-6 rounded-xl text-sm lg:text-[16px]">Start Blank Form <ArrowRight size={15} /></Button>
         </div>
       </div>
       ) : null}
 
       {genPhase === "idle" && (
-        <div className={`border border-[#E7E9EC] rounded-2xl p-6 bg-white mb-14 ${CARD_HOVER}`}>
+        <div className={`border border-[#E7E9EC] rounded-2xl p-4 lg:p-6 bg-white mb-6 lg:mb-14 ${CARD_HOVER}`}>
           <div className="flex items-center justify-between gap-6 flex-wrap">
             <div className="flex items-center gap-4">
               <div className={ICON_BOX}>
@@ -2820,7 +2838,7 @@ export function AddFormPage() {
                 variant="secondary"
                 onClick={() => importInputRef.current?.click()}
                 disabled={importing}
-                className="h-12 px-6 rounded-xl text-base whitespace-nowrap"
+                className="h-12 px-6 rounded-xl text-[16px] whitespace-nowrap"
               >
                 {importing ? "Importing…" : "Choose File"} {!importing && <ArrowRight size={15} />}
               </Button>
@@ -2838,7 +2856,7 @@ export function AddFormPage() {
               placeholder="https://docs.google.com/forms/d/e/.../viewform"
               className={`${inputCls} flex-1 min-w-[240px]`}
             />
-            <Button type="submit" variant="secondary" disabled={!googleFormUrl.trim() || importingUrl} className="h-12 px-6 rounded-xl text-base whitespace-nowrap">
+            <Button type="submit" variant="secondary" disabled={!googleFormUrl.trim() || importingUrl} className="h-12 px-6 rounded-xl text-[16px] whitespace-nowrap">
               {importingUrl ? "Importing…" : "Import"} {!importingUrl && <ArrowRight size={15} />}
             </Button>
           </form>
@@ -2910,7 +2928,7 @@ export function AddFormPage() {
               >
                 <ArrowLeft size={12} /> All Categories
               </button>
-              <h2 className="font-display font-semibold text-base">
+              <h2 className="font-display font-semibold text-[16px]">
                 {filtered.length} template{filtered.length === 1 ? "" : "s"}
               </h2>
             </div>
@@ -2926,7 +2944,7 @@ export function AddFormPage() {
           </div>
         ) : (
           <div>
-            <h2 className="font-display font-semibold text-base mb-3">Categories</h2>
+            <h2 className="font-display font-semibold text-[16px] mb-3">Categories</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {categories.map((cat) => (
                 <CategoryCard
@@ -3139,29 +3157,34 @@ export default function Forms() {
 
   return (
     <div>
-      <PageHeader
-        title="Forms"
-        subtitle="Build forms with AI and automate approvals."
-        action={
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setApprovalsOpen(true)}>
-              <ClipboardCheck size={15} /> My Approvals{approvalsCount > 0 ? ` (${approvalsCount})` : ""}
-            </Button>
-            {canManage && (
-              <NewFormMenu
-                disabled={atFormLimit}
-                onClickDisabled={blockedByLimit}
-                onDuplicateExisting={() => setDuplicateOpen(true)}
-              />
-            )}
-          </div>
-        }
-      />
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <h1 className="font-display font-bold text-2xl sm:text-[28px] text-heading">Forms</h1>
+        {canManage && (
+          <NewFormMenu
+            disabled={atFormLimit}
+            onClickDisabled={blockedByLimit}
+            onDuplicateExisting={() => setDuplicateOpen(true)}
+          />
+        )}
+      </div>
+      <p className="text-sm text-secondary mb-3">Build forms with AI and automate approvals.</p>
+
+      {/* Small pill instead of a full-width "My Approvals" button — saves
+          the ~80px a second header row cost, and only shows up at all
+          when there's actually something waiting. */}
+      {approvalsCount > 0 && (
+        <button
+          onClick={() => setApprovalsOpen(true)}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-full mb-4"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {approvalsCount} Approval{approvalsCount === 1 ? "" : "s"} waiting
+        </button>
+      )}
 
       <ApprovalsModal open={approvalsOpen} onClose={() => setApprovalsOpen(false)} onDecided={loadApprovalsCount} />
 
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
           <StatCard label="Forms" value={stats.totalForms} delta={stats.newFormsThisWeek > 0 ? `+${stats.newFormsThisWeek} this week` : null} />
           <StatCard label="Responses" value={stats.totalResponses} delta={stats.responsesToday > 0 ? `+${stats.responsesToday} today` : null} />
           <StatCard label="Published" value={stats.publishedCount} delta="Active" />
@@ -3170,9 +3193,9 @@ export default function Forms() {
       )}
 
       {forms.length > 0 && (
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <div className="flex items-center gap-2 bg-base rounded-lg px-3 py-2 flex-1 min-w-[180px]">
-            <Search size={15} className="text-ink/40" />
+        <div className="mb-4">
+          <div className="flex items-center gap-2 bg-base rounded-lg px-3 py-2 mb-2">
+            <Search size={15} className="text-ink/40 shrink-0" />
             <input
               placeholder="Search forms…"
               className="bg-transparent outline-none text-sm w-full"
@@ -3180,20 +3203,24 @@ export default function Forms() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <select className={inputCls} style={{ width: "auto" }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All Statuses</option>
-            <option value="Published">Published</option>
-            <option value="Draft">Draft</option>
-          </select>
-          <select className={inputCls} style={{ width: "auto" }} value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}>
-            <option value="">All Owners</option>
-            <option value="me">Created by me</option>
-          </select>
-          <select className={inputCls} style={{ width: "auto" }} value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="updated">Sort: Recently Updated</option>
-            <option value="name">Sort: Name</option>
-            <option value="responses">Sort: Most Responses</option>
-          </select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select className={inputCls} style={{ width: "auto" }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">All Statuses</option>
+              <option value="Published">Published</option>
+              <option value="Draft">Draft</option>
+            </select>
+            <select className={inputCls} style={{ width: "auto" }} value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}>
+              <option value="">All Owners</option>
+              <option value="me">Created by me</option>
+            </select>
+            {/* Sorting isn't worth a whole row on a phone — still there,
+                just not competing with Status/Owner for space below sm. */}
+            <select className={`hidden sm:block ${inputCls}`} style={{ width: "auto" }} value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="updated">Sort: Recently Updated</option>
+              <option value="name">Sort: Name</option>
+              <option value="responses">Sort: Most Responses</option>
+            </select>
+          </div>
         </div>
       )}
 
@@ -3212,10 +3239,10 @@ export default function Forms() {
       ) : filteredForms.length === 0 ? (
         <Card><EmptyState icon={Search} title="No forms match your filters" subtitle="Try a different search term or clear the filters." /></Card>
       ) : (
-        <Card className="divide-y divide-border">
+        <Card className="divide-y divide-border" style={{ borderColor: "#E7EAF0", boxShadow: "0 2px 8px rgba(0,0,0,.05)" }}>
           {filteredForms.map((f) => (
-            <div key={f.id} className="px-5">
-              <div className="py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div key={f.id} className="px-4 sm:px-5">
+              <div className="py-3 sm:py-4 flex items-center justify-between gap-4 flex-wrap">
                 {/* Left column: name, badges, and the meta line */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -3224,16 +3251,19 @@ export default function Forms() {
                     </Link>
                     <StatusBadge status={f.status} />
                     {f.workflow?.enabled && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary" title="This form has an approval workflow">
+                      <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary" title="This form has an approval workflow">
                         <GitBranch size={11} /> Approval Workflow
                       </span>
                     )}
                   </div>
+                  {/* Only the two facts someone checks at a glance stay
+                      visible on mobile — last-response/created-by are
+                      secondary details, not something needed every time. */}
                   <p className="text-xs text-secondary mt-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
                     <span>{f.responseCount} response{f.responseCount === 1 ? "" : "s"}</span>
-                    <span>Last response: {f.lastResponseAt ? timeAgo(f.lastResponseAt) : "none yet"}</span>
+                    <span className="hidden sm:inline">Last response: {f.lastResponseAt ? timeAgo(f.lastResponseAt) : "none yet"}</span>
                     <span>Updated {timeAgo(f.updatedAt)}</span>
-                    {f.createdBy === user?.id && <span>Created by you</span>}
+                    {f.createdBy === user?.id && <span className="hidden sm:inline">Created by you</span>}
                   </p>
                 </div>
 
@@ -3242,20 +3272,20 @@ export default function Forms() {
                   <button
                     onClick={() => router.push(`/app/forms/${f.id}/responses`)}
                     title="Responses"
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-secondary hover:text-heading hover:border-primary/30"
+                    className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-secondary hover:text-heading hover:border-primary/30"
                   >
-                    <Inbox size={13} /> Responses
+                    <Inbox size={13} /> <span className="hidden sm:inline">Responses</span>
                   </button>
                   <button
                     onClick={() => togglePanel(f, "analytics")}
                     title="Analytics"
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                       active?.id === f.id && tab === "analytics"
                         ? "border-primary bg-primary/5 text-primary"
                         : "border-border text-secondary hover:text-heading hover:border-primary/30"
                     }`}
                   >
-                    <BarChart3 size={13} /> Analytics
+                    <BarChart3 size={13} /> <span className="hidden sm:inline">Analytics</span>
                   </button>
                   <FormMoreMenu
                     form={f}

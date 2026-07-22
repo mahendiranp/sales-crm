@@ -1,23 +1,23 @@
 describe("Landing page", () => {
-  it("renders new hero, social proof, comparison, features, industries, security, pricing, FAQ, final CTA", () => {
+  it("renders new hero, business-workflow diagram, comparison, industries, security, pricing, FAQ, final CTA", () => {
     cy.visit("/");
-    cy.contains("Build AI Forms. Automate Everything After Submission.").should("be.visible");
+    cy.contains("Build AI Forms. Automate Every Submission.").should("be.visible");
     cy.contains("Forms are just the beginning.").should("be.visible");
-    cy.contains("Built for teams that want to spend less time managing forms").should("be.visible");
-    cy.contains("See the Difference").should("be.visible");
-    cy.contains("Create manually").should("be.visible");
-    cy.contains("Why Businesses Switch to Flowora").should("be.visible");
-    cy.contains("One Platform.").should("be.visible");
-    cy.contains("Everything Your Team Needs").should("be.visible");
-    cy.contains("How Flowora compares").should("be.visible");
-    cy.contains("After someone submits a form…").should("be.visible");
+    cy.contains("Every submission becomes an automated business workflow.").should("be.visible");
+    // "See the Difference" / "Why Businesses Switch" / "Everything Your
+    // Team Needs" / "How Flowora compares" / "After someone submits a
+    // form…" / "Save Hours Every Week" were all consolidated into this
+    // one comparison section — each said essentially the same thing.
+    cy.contains("Traditional Forms vs. Flowora").should("be.visible");
+    cy.contains("Manual CRM Entry").should("be.visible");
+    // "One Platform. Everything Connected." and "Common use cases" were
+    // removed entirely — both repeated the Form→CRM→Approval→Work chain
+    // shown three times earlier on the page by this point.
     cy.contains("Google Forms").should("be.visible");
-    cy.contains("Typeform").should("be.visible");
     cy.contains("Perfect for").should("be.visible");
     cy.contains("Administration").should("be.visible");
     cy.contains("Security & Reliability").should("be.visible");
     cy.contains("Encrypted in transit and at rest").should("be.visible");
-    cy.contains("Save Hours Every Week").scrollIntoView().should("be.visible");
     cy.get("#pricing").within(() => {
       cy.contains("Free").should("be.visible");
       cy.contains("Team").should("be.visible");
@@ -28,46 +28,56 @@ describe("Landing page", () => {
     cy.get("#faq").within(() => {
       cy.contains("Is Flowora free?").click();
       cy.contains("no credit card required").should("be.visible");
-      cy.contains("Can AI build my form?").should("be.visible");
+      cy.contains("How does AI work?").should("be.visible");
     });
     cy.contains("Stop Managing Work Across Five Different Tools").scrollIntoView().should("be.visible");
     cy.screenshot("landing-full", { capture: "fullPage" });
   });
 
   // The hero mock and the "How it works" chip row (Landing.jsx) share one
-  // timer (useSyncedStep) cycling Describe → Generate → Publish →
-  // Response → Approval → Done every 1.7s, looping continuously. Rather
-  // than assert exact timing (flaky against real browser/CI speed), just
-  // confirm every step's distinctive content shows up somewhere within
-  // one full loop (6 × 1.7s = 10.2s) — proves the animation actually
+  // timer (useSyncedPhase) cycling Describe (2s) → Generate (2s) →
+  // Execute (3s) → Complete (3s) = 10s/loop, looping continuously.
+  // Rather than assert exact timing (flaky against real browser/CI
+  // speed), just confirm every phase's distinctive content shows up
+  // somewhere within one full loop — proves the animation actually
   // cycles through the real story instead of being stuck on one frame.
-  it("hero mock cycles through Describe → Generate → Publish → Response → Approval → Done", () => {
+  it("hero mock cycles through Describe → Generate → Execute → Complete", () => {
     cy.visit("/");
-    cy.contains("See Flowora build an approval-ready form in seconds").should("be.visible");
+    cy.contains("Live Workflow Demo").should("be.visible");
 
-    // Chip row — all six renamed labels present (not the old
-    // "AI Builds"/"Collect"/"Automate" set).
+    // Chip row — all four phase labels present.
     cy.contains("Describe").should("be.visible");
     cy.contains("Generate").should("be.visible");
-    cy.contains("Publish").should("be.visible");
-    cy.contains("Response").should("be.visible");
-    cy.contains("Approval").should("be.visible");
-    cy.contains("Done").should("be.visible");
+    cy.contains("Execute").should("be.visible");
+    cy.contains("Complete").should("be.visible");
 
-    // Prompt panel — always visible regardless of step.
-    cy.contains("Create an Employee Leave Request Form").should("be.visible");
+    // Demo's own column headers — named differently from the chip row on
+    // purpose (Request/Generated Assets/Business Process), so the same
+    // concept isn't repeated twice on screen.
+    cy.contains("Request").should("be.visible");
+    cy.contains("Generated Assets").should("be.visible");
+    cy.contains("Business Process").should("be.visible");
 
-    // Generated Form panel — the field checklist appears once the loop
-    // reaches "Generate" and stays visible through every later step.
-    cy.contains("Employee Leave Request", { timeout: 12000 }).should("be.visible");
-    cy.contains("Leave Type").should("be.visible");
+    // Request panel — always visible regardless of phase.
+    cy.contains("Create an Employee Leave Process").should("be.visible");
 
-    // Right-hand status panel — each step's distinctive content, in
-    // order, within one full loop.
-    cy.contains("flowora.app/f/leave-request", { timeout: 12000 }).should("be.visible");
-    cy.contains("Priya Sharma", { timeout: 12000 }).should("be.visible");
-    cy.contains("Approved", { timeout: 12000 }).should("be.visible");
-    cy.contains("Workflow Finished", { timeout: 12000 }).should("be.visible");
+    // Generated Assets panel — appears once the loop reaches "assets" and
+    // stays visible through every later phase. The loop itself is 10s
+    // (2s+2s+3s+3s), but the business-phase items also fade in with a
+    // staggered per-item delay (up to ~2s for the last one) *after* that
+    // phase starts, so a full cycle can take up to ~12s before the last
+    // item is visible — a 12000ms timeout left zero margin and flaked
+    // under normal run overhead. 16s covers a full cycle plus buffer.
+    cy.contains("Form Created", { timeout: 16000 }).should("be.visible");
+    cy.contains("Approval Added", { timeout: 16000 }).should("be.visible");
+    cy.contains("Task Assigned", { timeout: 16000 }).should("be.visible");
+
+    // Right-hand panel — workflow-execution chain then business-outcome
+    // content, each within one full loop.
+    cy.contains("Employee submits", { timeout: 16000 }).should("be.visible");
+    cy.contains("Manager approves", { timeout: 16000 }).should("be.visible");
+    cy.contains("CRM updated", { timeout: 16000 }).should("be.visible");
+    cy.contains("Business Process Completed", { timeout: 16000 }).should("be.visible");
   });
 });
 
@@ -259,7 +269,7 @@ describe("Forms — Add Form page", () => {
     cy.contains("a", uniqueName).should("be.visible");
     // Delete now lives inside the row's "⋯ More" menu (Forms.jsx's
     // FormMoreMenu) instead of being its own always-visible button.
-    cy.contains("a", uniqueName).closest("div.px-5").within(() => {
+    cy.contains("a", uniqueName).closest("div[class*='px-4']").within(() => {
       cy.get('[title="More actions"]').click();
       cy.contains("button", "Delete").click();
     });
