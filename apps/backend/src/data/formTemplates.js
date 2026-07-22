@@ -2,12 +2,24 @@
 // with a sensible field set instead of building from scratch. Field `id`s
 // are assigned fresh at creation time (see routes/forms.js), so templates
 // only need to declare everything else.
+//
+// `key` also doubles as the public marketplace URL slug (/templates/:key).
+// `popularity` / `workflowSteps` are hand-set marketing metadata for the
+// public template marketplace (see routes/forms.js's public template
+// endpoints) — `workflowSteps` is illustrative only, not wired to any real
+// execution engine (this app's workflowEngine.js only models a single
+// approval chain, not a general step graph).
 const TEMPLATES = [
   {
     key: "blank",
     name: "Blank Form",
     description: "Start from scratch and add your own fields.",
     category: "General",
+    industry: "General",
+    popularity: 0,
+    estimatedSetupMinutes: 15,
+    tags: ["blank", "custom", "scratch"],
+    workflowSteps: [],
     fields: [],
   },
   {
@@ -15,6 +27,11 @@ const TEMPLATES = [
     name: "Customer Feedback",
     description: "Collect ratings and open-ended feedback after a purchase or service.",
     category: "Feedback",
+    industry: "Customer Support",
+    popularity: 1840,
+    estimatedSetupMinutes: 5,
+    tags: ["feedback", "rating", "survey", "customer"],
+    workflowSteps: ["Customer submits", "Timeline updated", "AI sentiment monitoring"],
     fields: [
       { type: "text", label: "Name", placeholder: "Your full name", required: true },
       { type: "email", label: "Email", placeholder: "you@example.com", required: true },
@@ -32,6 +49,11 @@ const TEMPLATES = [
     name: "NPS / Satisfaction Survey",
     description: "A quick single-question style survey to track satisfaction over time.",
     category: "Feedback",
+    industry: "Customer Support",
+    popularity: 1120,
+    estimatedSetupMinutes: 5,
+    tags: ["nps", "survey", "satisfaction", "feedback"],
+    workflowSteps: ["Customer submits", "Score tracked", "Timeline updated"],
     fields: [
       { type: "rating", label: "How likely are you to recommend us to a friend or colleague?", required: true },
       { type: "longtext", label: "What's the main reason for your score?", required: false },
@@ -43,6 +65,11 @@ const TEMPLATES = [
     name: "Contact Us / Lead Capture",
     description: "Capture inbound leads from your website or a shared link.",
     category: "Sales",
+    industry: "Sales",
+    popularity: 2980,
+    estimatedSetupMinutes: 5,
+    tags: ["lead", "contact", "sales", "crm"],
+    workflowSteps: ["Visitor submits", "Lead created in CRM", "Owner notified", "Task created", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", placeholder: "Your name", required: true },
       { type: "email", label: "Email", placeholder: "you@example.com", required: true },
@@ -57,6 +84,11 @@ const TEMPLATES = [
     name: "Event Registration",
     description: "Register attendees for a webinar, workshop, or in-person event.",
     category: "Marketing",
+    industry: "Marketing",
+    popularity: 940,
+    estimatedSetupMinutes: 8,
+    tags: ["event", "registration", "webinar", "marketing"],
+    workflowSteps: ["Attendee registers", "Confirmation sent", "Timeline updated"],
     fields: [
       { type: "text", label: "Attendee Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -71,6 +103,11 @@ const TEMPLATES = [
     name: "Job Application",
     description: "Collect candidate details and resumes for open roles.",
     category: "HR",
+    industry: "HR",
+    popularity: 1360,
+    estimatedSetupMinutes: 8,
+    tags: ["job", "application", "hiring", "recruitment", "hr"],
+    workflowSteps: ["Candidate applies", "HR notification", "Task created", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -86,6 +123,11 @@ const TEMPLATES = [
     name: "Product Order Form",
     description: "Take simple product orders with delivery details.",
     category: "Sales",
+    industry: "Sales",
+    popularity: 1080,
+    estimatedSetupMinutes: 6,
+    tags: ["order", "sales", "product", "purchase"],
+    workflowSteps: ["Customer submits", "Order task created", "Timeline updated"],
     fields: [
       { type: "text", label: "Customer Name", required: true },
       { type: "phone", label: "Phone Number", required: true },
@@ -100,6 +142,11 @@ const TEMPLATES = [
     name: "Appointment Booking",
     description: "Let customers request a meeting or demo slot.",
     category: "Services",
+    industry: "Services",
+    popularity: 760,
+    estimatedSetupMinutes: 6,
+    tags: ["appointment", "booking", "meeting", "demo"],
+    workflowSteps: ["Customer requests", "Owner notified", "Meeting scheduled", "Timeline updated"],
     fields: [
       { type: "text", label: "Name", required: true },
       { type: "phone", label: "Phone Number", required: true },
@@ -114,6 +161,11 @@ const TEMPLATES = [
     name: "Meeting Request (with live availability)",
     description: "Respondents pick from your actual open slots — powered by the Meeting Booking field, with built-in double-booking prevention and owner approval.",
     category: "Services",
+    industry: "Services",
+    popularity: 610,
+    estimatedSetupMinutes: 6,
+    tags: ["meeting", "booking", "calendar", "availability"],
+    workflowSteps: ["Respondent picks a slot", "Owner approval", "Meeting created", "Timeline updated"],
     fields: [
       { type: "text", label: "Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -126,6 +178,11 @@ const TEMPLATES = [
     name: "IT Support Ticket",
     description: "Let employees or customers report a technical issue with the details support needs.",
     category: "Support",
+    industry: "IT",
+    popularity: 890,
+    estimatedSetupMinutes: 5,
+    tags: ["it", "support", "ticket", "helpdesk"],
+    workflowSteps: ["Employee submits", "Task created", "IT notified", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -140,6 +197,11 @@ const TEMPLATES = [
     name: "Bug Report",
     description: "Structured bug reports from users or QA — reproduction steps, severity, and a screenshot.",
     category: "Support",
+    industry: "IT",
+    popularity: 540,
+    estimatedSetupMinutes: 5,
+    tags: ["bug", "report", "qa", "engineering"],
+    workflowSteps: ["Reporter submits", "Task created", "Timeline updated"],
     fields: [
       { type: "text", label: "Reported By", required: true },
       { type: "email", label: "Email", required: true },
@@ -155,6 +217,11 @@ const TEMPLATES = [
     name: "Leave Request",
     description: "Employees request time off with dates and reason, ready for manager approval.",
     category: "HR",
+    industry: "HR",
+    popularity: 2350,
+    estimatedSetupMinutes: 5,
+    tags: ["leave", "time off", "hr", "approval", "vacation"],
+    workflowSteps: ["Employee submits", "Manager approval", "HR notification", "Task created", "Timeline updated", "AI monitoring"],
     fields: [
       { type: "text", label: "Employee Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -169,6 +236,11 @@ const TEMPLATES = [
     name: "Employee Onboarding",
     description: "Collect new-hire details before their first day.",
     category: "HR",
+    industry: "HR",
+    popularity: 1290,
+    estimatedSetupMinutes: 7,
+    tags: ["onboarding", "new hire", "hr", "employee"],
+    workflowSteps: ["New hire submits", "HR notification", "Task created", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", required: true },
       { type: "email", label: "Personal Email", required: true },
@@ -185,6 +257,11 @@ const TEMPLATES = [
     name: "Exit Interview",
     description: "Structured feedback from a departing employee.",
     category: "HR",
+    industry: "HR",
+    popularity: 470,
+    estimatedSetupMinutes: 6,
+    tags: ["exit", "offboarding", "interview", "hr"],
+    workflowSteps: ["Employee submits", "HR notification", "Timeline updated"],
     fields: [
       { type: "text", label: "Employee Name", required: true },
       { type: "text", label: "Department", required: false },
@@ -200,6 +277,11 @@ const TEMPLATES = [
     name: "Patient Intake Form",
     description: "Collect new-patient details and medical history before a visit.",
     category: "Healthcare",
+    industry: "Healthcare",
+    popularity: 680,
+    estimatedSetupMinutes: 8,
+    tags: ["patient", "intake", "healthcare", "medical", "registration"],
+    workflowSteps: ["Patient submits", "Task created", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", required: true },
       { type: "date", label: "Date of Birth", required: true },
@@ -216,6 +298,11 @@ const TEMPLATES = [
     name: "Expense Reimbursement",
     description: "Employees submit expenses with receipts for approval.",
     category: "Finance",
+    industry: "Finance",
+    popularity: 1510,
+    estimatedSetupMinutes: 6,
+    tags: ["expense", "reimbursement", "finance", "approval"],
+    workflowSteps: ["Employee submits", "Manager approval", "Finance notification", "Timeline updated"],
     fields: [
       { type: "text", label: "Employee Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -231,6 +318,11 @@ const TEMPLATES = [
     name: "Property Inquiry",
     description: "Capture interest from prospective buyers or renters.",
     category: "Real Estate",
+    industry: "Real Estate",
+    popularity: 520,
+    estimatedSetupMinutes: 6,
+    tags: ["property", "real estate", "inquiry", "buyer"],
+    workflowSteps: ["Prospect submits", "Lead created in CRM", "Owner notified", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -246,6 +338,11 @@ const TEMPLATES = [
     name: "Event RSVP",
     description: "A simple yes/no RSVP with guest count for an invite-only event.",
     category: "Marketing",
+    industry: "Events",
+    popularity: 610,
+    estimatedSetupMinutes: 4,
+    tags: ["rsvp", "event", "invite", "guest"],
+    workflowSteps: ["Guest submits", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -259,6 +356,11 @@ const TEMPLATES = [
     name: "Return / Refund Request",
     description: "Let customers request a return or refund with order details.",
     category: "Sales",
+    industry: "Sales",
+    popularity: 730,
+    estimatedSetupMinutes: 6,
+    tags: ["return", "refund", "sales", "order"],
+    workflowSteps: ["Customer submits", "Task created", "Timeline updated"],
     fields: [
       { type: "text", label: "Full Name", required: true },
       { type: "email", label: "Email", required: true },
@@ -274,6 +376,11 @@ const TEMPLATES = [
     name: "Newsletter Signup",
     description: "A minimal signup form to grow an email list.",
     category: "Marketing",
+    industry: "Marketing",
+    popularity: 880,
+    estimatedSetupMinutes: 3,
+    tags: ["newsletter", "signup", "email", "marketing"],
+    workflowSteps: ["Visitor submits", "Timeline updated"],
     fields: [
       { type: "text", label: "Name", required: false },
       { type: "email", label: "Email", required: true },
@@ -285,6 +392,11 @@ const TEMPLATES = [
     name: "Course / Training Feedback",
     description: "Gather feedback after a training session, workshop, or course.",
     category: "Education",
+    industry: "Education",
+    popularity: 410,
+    estimatedSetupMinutes: 5,
+    tags: ["course", "training", "feedback", "education"],
+    workflowSteps: ["Participant submits", "Timeline updated"],
     fields: [
       { type: "text", label: "Participant Name", required: false },
       { type: "text", label: "Course/Session Title", required: true },
@@ -300,6 +412,11 @@ const TEMPLATES = [
     name: "Employee Engagement Survey",
     description: "Anonymous-friendly pulse survey to gauge team morale and engagement.",
     category: "HR",
+    industry: "HR",
+    popularity: 560,
+    estimatedSetupMinutes: 6,
+    tags: ["engagement", "survey", "hr", "morale", "pulse"],
+    workflowSteps: ["Employee submits", "Timeline updated", "AI sentiment monitoring"],
     fields: [
       { type: "dropdown", label: "Department", options: ["Sales", "Engineering", "Support", "Marketing", "HR", "Finance"], required: false },
       { type: "rating", label: "How satisfied are you with your role?", required: true },
@@ -309,20 +426,496 @@ const TEMPLATES = [
       { type: "longtext", label: "What would make things better?", required: false },
     ],
   },
+  {
+    key: "it-software-access",
+    name: "Software Access Request",
+    description: "Employees request access to internal tools and software, routed for IT/manager approval.",
+    category: "IT",
+    industry: "IT",
+    popularity: 480,
+    estimatedSetupMinutes: 5,
+    tags: ["it", "access", "software", "request", "approval"],
+    workflowSteps: ["Employee submits", "Manager approval", "IT notification", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Employee Name", required: true },
+      { type: "email", label: "Email", required: true },
+      { type: "dropdown", label: "Software / Tool", options: ["Slack", "Figma", "GitHub", "Salesforce", "AWS Console", "Other"], required: true },
+      { type: "dropdown", label: "Access Level", options: ["View Only", "Standard", "Admin"], required: true },
+      { type: "longtext", label: "Business Justification", required: true },
+    ],
+  },
+  {
+    key: "it-asset-request",
+    name: "IT Asset Request",
+    description: "Request a laptop, monitor, or other equipment from IT with manager sign-off.",
+    category: "IT",
+    industry: "IT",
+    popularity: 390,
+    estimatedSetupMinutes: 5,
+    tags: ["it", "asset", "equipment", "request"],
+    workflowSteps: ["Employee submits", "Manager approval", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Employee Name", required: true },
+      { type: "dropdown", label: "Department", options: ["Sales", "Engineering", "Support", "Marketing", "HR", "Finance"], required: true },
+      { type: "dropdown", label: "Asset Type", options: ["Laptop", "Monitor", "Keyboard/Mouse", "Headset", "Mobile Phone", "Other"], required: true },
+      { type: "longtext", label: "Reason for Request", required: true },
+      { type: "date", label: "Needed By", required: false },
+    ],
+  },
+  {
+    key: "maintenance-request",
+    name: "Maintenance Request",
+    description: "Report a facilities or equipment issue that needs repair, tracked to resolution.",
+    category: "Operations",
+    industry: "Operations",
+    popularity: 420,
+    estimatedSetupMinutes: 5,
+    tags: ["maintenance", "facilities", "operations", "repair"],
+    workflowSteps: ["Employee submits", "Task created", "Owner notified", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Reported By", required: true },
+      { type: "text", label: "Location / Room", required: true },
+      { type: "dropdown", label: "Issue Type", options: ["Electrical", "Plumbing", "HVAC", "Furniture", "Equipment", "Other"], required: true },
+      { type: "dropdown", label: "Urgency", options: ["Low", "Medium", "High", "Safety Hazard"], required: true },
+      { type: "longtext", label: "Describe the Issue", required: true },
+      { type: "file", label: "Photo (optional)", required: false },
+    ],
+  },
+  {
+    key: "incident-report",
+    name: "Incident Report",
+    description: "Document workplace incidents or safety issues with a consistent, structured record.",
+    category: "Operations",
+    industry: "Operations",
+    popularity: 350,
+    estimatedSetupMinutes: 6,
+    tags: ["incident", "safety", "report", "operations"],
+    workflowSteps: ["Employee submits", "Manager notification", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Reported By", required: true },
+      { type: "date", label: "Date of Incident", required: true },
+      { type: "time", label: "Time of Incident", required: false },
+      { type: "text", label: "Location", required: true },
+      { type: "dropdown", label: "Incident Type", options: ["Injury", "Property Damage", "Near Miss", "Security", "Other"], required: true },
+      { type: "longtext", label: "Description", required: true },
+      { type: "checkbox", label: "Witnesses Present", options: ["Yes", "No", "Unsure"], required: false },
+      { type: "file", label: "Supporting Photo/Document", required: false },
+    ],
+  },
+  {
+    key: "vendor-registration",
+    name: "Vendor Registration",
+    description: "Onboard a new supplier or vendor with the details procurement needs to approve them.",
+    category: "Procurement",
+    industry: "Procurement",
+    popularity: 310,
+    estimatedSetupMinutes: 7,
+    tags: ["vendor", "procurement", "supplier", "onboarding"],
+    workflowSteps: ["Vendor submits", "Manager approval", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Company Name", required: true },
+      { type: "text", label: "Contact Person", required: true },
+      { type: "email", label: "Email", required: true },
+      { type: "phone", label: "Phone Number", required: true },
+      { type: "dropdown", label: "Category of Goods/Services", options: ["Raw Materials", "IT Services", "Logistics", "Professional Services", "Other"], required: true },
+      { type: "text", label: "Tax / Registration ID", required: false },
+      { type: "file", label: "W-9 / Tax Document", required: false },
+    ],
+  },
+  {
+    key: "purchase-requisition",
+    name: "Purchase Requisition",
+    description: "Request approval to purchase goods or services before an order is placed.",
+    category: "Procurement",
+    industry: "Procurement",
+    popularity: 400,
+    estimatedSetupMinutes: 6,
+    tags: ["purchase", "procurement", "approval", "budget"],
+    workflowSteps: ["Employee submits", "Manager approval", "Finance notification", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Requested By", required: true },
+      { type: "text", label: "Item / Service", required: true },
+      { type: "number", label: "Estimated Cost", required: true },
+      { type: "dropdown", label: "Budget Category", options: ["Office Supplies", "Software", "Equipment", "Professional Services", "Other"], required: true },
+      { type: "dropdown", label: "Vendor (if known)", options: ["TBD", "Existing Vendor", "New Vendor"], required: false },
+      { type: "longtext", label: "Justification", required: true },
+    ],
+  },
+  {
+    key: "nda-request",
+    name: "NDA Request",
+    description: "Request a non-disclosure agreement be drawn up before sharing confidential information.",
+    category: "Legal",
+    industry: "Legal",
+    popularity: 240,
+    estimatedSetupMinutes: 5,
+    tags: ["legal", "nda", "contract", "confidentiality"],
+    workflowSteps: ["Employee submits", "Legal review", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Requested By", required: true },
+      { type: "text", label: "Counterparty Name", required: true },
+      { type: "dropdown", label: "NDA Type", options: ["Mutual", "One-Way (We Disclose)", "One-Way (They Disclose)"], required: true },
+      { type: "date", label: "Needed By", required: false },
+      { type: "longtext", label: "Purpose / Context", required: true },
+    ],
+  },
+  {
+    key: "contract-review-request",
+    name: "Contract Review Request",
+    description: "Send a contract to legal for review before it's signed.",
+    category: "Legal",
+    industry: "Legal",
+    popularity: 210,
+    estimatedSetupMinutes: 5,
+    tags: ["legal", "contract", "review", "approval"],
+    workflowSteps: ["Employee submits", "Legal review", "Approval request", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Requested By", required: true },
+      { type: "text", label: "Counterparty Name", required: true },
+      { type: "dropdown", label: "Contract Type", options: ["Vendor Agreement", "Customer Contract", "Employment", "Partnership", "Other"], required: true },
+      { type: "file", label: "Draft Contract", required: true },
+      { type: "date", label: "Needed By", required: false },
+      { type: "longtext", label: "Notes for Legal", required: false },
+    ],
+  },
+  {
+    key: "event-speaker-application",
+    name: "Speaker Application",
+    description: "Collect speaker/session proposals for a conference or event.",
+    category: "Events",
+    industry: "Events",
+    popularity: 260,
+    estimatedSetupMinutes: 6,
+    tags: ["event", "speaker", "application", "conference"],
+    workflowSteps: ["Speaker submits", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Full Name", required: true },
+      { type: "email", label: "Email", required: true },
+      { type: "text", label: "Company / Title", required: false },
+      { type: "text", label: "Session Title", required: true },
+      { type: "longtext", label: "Session Abstract", required: true },
+      { type: "dropdown", label: "Session Format", options: ["Talk", "Workshop", "Panel", "Fireside Chat"], required: true },
+      { type: "file", label: "Headshot / Bio Document", required: false },
+    ],
+  },
+  {
+    key: "event-feedback",
+    name: "Event Feedback",
+    description: "Collect attendee feedback right after an event to gauge what worked.",
+    category: "Events",
+    industry: "Events",
+    popularity: 300,
+    estimatedSetupMinutes: 4,
+    tags: ["event", "feedback", "survey"],
+    workflowSteps: ["Attendee submits", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Name (optional)", required: false },
+      { type: "rating", label: "Overall Event Rating", required: true },
+      { type: "rating", label: "Rate the Content/Sessions", required: true },
+      { type: "rating", label: "Rate the Venue/Logistics", required: true },
+      { type: "yesno", label: "Would you attend again?", required: false },
+      { type: "longtext", label: "What could we improve?", required: false },
+    ],
+  },
+  {
+    key: "student-admission",
+    name: "Student Admission",
+    description: "Collect applicant details for school or program admission.",
+    category: "Education",
+    industry: "Education",
+    popularity: 330,
+    estimatedSetupMinutes: 8,
+    tags: ["education", "admission", "application", "student"],
+    workflowSteps: ["Applicant submits", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Student Full Name", required: true },
+      { type: "date", label: "Date of Birth", required: true },
+      { type: "text", label: "Parent/Guardian Name", required: true },
+      { type: "email", label: "Email", required: true },
+      { type: "phone", label: "Phone Number", required: true },
+      { type: "dropdown", label: "Grade / Program Applying For", options: ["Grade 1-5", "Grade 6-8", "Grade 9-12", "Undergraduate", "Graduate"], required: true },
+      { type: "file", label: "Previous Transcript / Records", required: false },
+      { type: "longtext", label: "Additional Notes", required: false },
+    ],
+  },
+  {
+    key: "course-registration",
+    name: "Course Registration",
+    description: "Let students or employees register for a course or training session.",
+    category: "Education",
+    industry: "Education",
+    popularity: 370,
+    estimatedSetupMinutes: 5,
+    tags: ["education", "course", "registration", "training"],
+    workflowSteps: ["Participant submits", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Full Name", required: true },
+      { type: "email", label: "Email", required: true },
+      { type: "dropdown", label: "Course", options: ["Beginner", "Intermediate", "Advanced"], required: true },
+      { type: "dropdown", label: "Preferred Schedule", options: ["Weekday Mornings", "Weekday Evenings", "Weekends"], required: false },
+      { type: "yesno", label: "Do you have prior experience?", required: false },
+    ],
+  },
+  {
+    key: "telehealth-consultation",
+    name: "Telehealth Consultation Request",
+    description: "Let patients request a virtual consultation with structured intake details.",
+    category: "Healthcare",
+    industry: "Healthcare",
+    popularity: 290,
+    estimatedSetupMinutes: 6,
+    tags: ["healthcare", "telehealth", "consultation", "patient"],
+    workflowSteps: ["Patient submits", "Task created", "Owner notified", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Full Name", required: true },
+      { type: "date", label: "Date of Birth", required: true },
+      { type: "phone", label: "Phone Number", required: true },
+      { type: "email", label: "Email", required: true },
+      { type: "dropdown", label: "Reason for Consultation", options: ["General Checkup", "Follow-up", "New Symptom", "Prescription Refill", "Mental Health", "Other"], required: true },
+      { type: "dropdown", label: "Preferred Consultation Time", options: ["Morning", "Afternoon", "Evening"], required: false },
+      { type: "longtext", label: "Briefly describe your symptoms", required: false },
+    ],
+  },
+  {
+    key: "performance-review",
+    name: "Performance Review",
+    description: "Structured self-assessment or manager review for a performance cycle.",
+    category: "HR",
+    industry: "HR",
+    popularity: 450,
+    estimatedSetupMinutes: 8,
+    tags: ["hr", "performance", "review", "appraisal"],
+    workflowSteps: ["Employee submits", "Manager approval", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Employee Name", required: true },
+      { type: "text", label: "Role / Title", required: true },
+      { type: "dropdown", label: "Review Period", options: ["Q1", "Q2", "Q3", "Q4", "Annual"], required: true },
+      { type: "rating", label: "Overall Self-Rating", required: true },
+      { type: "longtext", label: "Key Achievements", required: true },
+      { type: "longtext", label: "Areas for Growth", required: false },
+      { type: "longtext", label: "Goals for Next Period", required: false },
+    ],
+  },
+  {
+    key: "timesheet-submission",
+    name: "Timesheet Submission",
+    description: "Weekly time tracking submission, ready for manager approval.",
+    category: "HR",
+    industry: "HR",
+    popularity: 520,
+    estimatedSetupMinutes: 5,
+    tags: ["hr", "timesheet", "time tracking", "approval"],
+    workflowSteps: ["Employee submits", "Manager approval", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Employee Name", required: true },
+      { type: "date", label: "Week Starting", required: true },
+      { type: "number", label: "Regular Hours", required: true },
+      { type: "number", label: "Overtime Hours", required: false },
+      { type: "dropdown", label: "Project / Client", options: ["Internal", "Client A", "Client B", "Client C", "Other"], required: false },
+      { type: "longtext", label: "Notes", required: false },
+    ],
+  },
+  {
+    key: "support-ticket-escalation",
+    name: "Support Ticket Escalation",
+    description: "Escalate an unresolved customer support issue to a senior team for faster resolution.",
+    category: "Support",
+    industry: "Customer Support",
+    popularity: 280,
+    estimatedSetupMinutes: 5,
+    tags: ["support", "escalation", "ticket", "customer"],
+    workflowSteps: ["Agent submits", "Manager notification", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Customer Name", required: true },
+      { type: "text", label: "Original Ticket ID", required: false },
+      { type: "dropdown", label: "Escalation Reason", options: ["SLA Breach", "Technical Complexity", "Customer Dissatisfaction", "Billing Dispute", "Other"], required: true },
+      { type: "dropdown", label: "Priority", options: ["High", "Urgent", "Critical"], required: true },
+      { type: "longtext", label: "Summary of Issue", required: true },
+      { type: "longtext", label: "Steps Already Taken", required: false },
+    ],
+  },
+  {
+    key: "budget-approval",
+    name: "Budget Approval Request",
+    description: "Request sign-off on a new budget line item or spending plan.",
+    category: "Finance",
+    industry: "Finance",
+    popularity: 340,
+    estimatedSetupMinutes: 6,
+    tags: ["finance", "budget", "approval"],
+    workflowSteps: ["Employee submits", "Manager approval", "Finance notification", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Requested By", required: true },
+      { type: "text", label: "Department", required: true },
+      { type: "number", label: "Requested Amount", required: true },
+      { type: "dropdown", label: "Budget Category", options: ["Marketing", "Operations", "Headcount", "Technology", "Other"], required: true },
+      { type: "date", label: "Needed By", required: false },
+      { type: "longtext", label: "Justification", required: true },
+    ],
+  },
+  {
+    key: "quote-request",
+    name: "Quote Request",
+    description: "Let prospects request a formal price quote for your product or service.",
+    category: "Sales",
+    industry: "Sales",
+    popularity: 620,
+    estimatedSetupMinutes: 5,
+    tags: ["sales", "quote", "pricing", "lead", "crm"],
+    workflowSteps: ["Visitor submits", "Lead created in CRM", "Owner notified", "Task created", "Timeline updated"],
+    fields: [
+      { type: "text", label: "Full Name", required: true },
+      { type: "email", label: "Email", required: true },
+      { type: "text", label: "Company", required: false },
+      { type: "dropdown", label: "Product / Service", options: ["ERP Suite", "CRM Pro", "Inventory Manager", "HR Toolkit", "Accounting Module"], required: true },
+      { type: "number", label: "Estimated Quantity / Seats", required: false },
+      { type: "longtext", label: "Requirements", required: false },
+    ],
+  },
 ];
 
+// Outcome-focused one-liners for the public marketplace's hero section —
+// kept separate from `description` (which stays a plain, factual summary
+// used elsewhere e.g. as the created form's own description) so the two
+// can read differently without duplicating template entries.
+const TAGLINES = {
+  "customer-feedback": "Collect customer feedback with ratings and comments, automatically tracked over time — in under 5 minutes.",
+  "nps-survey": "Track satisfaction with a single-question survey and see your score trend over time — no spreadsheets required.",
+  "contact-lead": "Turn website visitors into tracked leads with owner alerts and follow-up tasks — all in under 5 minutes.",
+  "event-registration": "Register attendees for your next event with confirmations handled automatically — ready in minutes.",
+  "job-application": "Collect candidate applications and resumes with HR notified the moment someone applies.",
+  "order-form": "Take product orders with delivery details captured cleanly, ready for fulfillment.",
+  "appointment-booking": "Let customers request a meeting or demo slot without the back-and-forth emails.",
+  "meeting-request": "Let respondents book real open slots on your calendar — with built-in double-booking prevention.",
+  "it-support-ticket": "Give employees a clear way to report issues, with IT notified and every ticket tracked.",
+  "bug-report": "Capture structured, reproducible bug reports from users or QA — no more vague one-line reports.",
+  "leave-request": "Collect employee leave requests with a ready-to-use form, built-in approval flow, and automatic tracking — all in under 5 minutes.",
+  "employee-onboarding": "Collect new-hire details before day one, with HR notified and everything tracked in one place.",
+  "exit-interview": "Get structured, honest feedback from departing employees — recorded, not lost in an inbox.",
+  "patient-intake": "Collect new-patient details and history before their visit, ready for your front desk.",
+  "expense-reimbursement": "Employees submit expenses with receipts attached, routed straight to manager approval.",
+  "property-inquiry": "Capture buyer and renter interest with owner alerts, so no inquiry goes unanswered.",
+  rsvp: "Collect yes/no RSVPs and guest counts for your invite-only event — no spreadsheet tracking needed.",
+  "return-refund-request": "Let customers request a return or refund with all the order details captured up front.",
+  "newsletter-signup": "Grow your email list with a minimal, no-friction signup form.",
+  "course-feedback": "Gather structured feedback after every training session or course you run.",
+  "employee-engagement-survey": "Run an anonymous-friendly pulse survey to gauge morale — tracked over time, not a one-off.",
+  "it-software-access": "Route software access requests through manager approval automatically — no more chasing sign-offs over Slack.",
+  "it-asset-request": "Let employees request equipment with manager sign-off built in, tracked from request to delivery.",
+  "maintenance-request": "Report facility issues once and track them to resolution — nothing gets lost in a group chat.",
+  "incident-report": "Document workplace incidents consistently, with managers notified the moment one's filed.",
+  "vendor-registration": "Onboard new vendors with the details procurement needs, approved before they're active.",
+  "purchase-requisition": "Get purchase requests approved before money moves, with finance notified automatically.",
+  "nda-request": "Request an NDA before sharing anything confidential — routed straight to legal.",
+  "contract-review-request": "Send contracts to legal for review with the draft attached, tracked to sign-off.",
+  "event-speaker-application": "Collect speaker proposals for your next event, organized and ready to review.",
+  "event-feedback": "Capture attendee feedback right after your event, while it's still fresh.",
+  "student-admission": "Collect applicant details for admission with records ready for your team to review.",
+  "course-registration": "Let students or employees register for a course in under a minute.",
+  "telehealth-consultation": "Let patients request a virtual consultation with structured intake, ready for your front desk.",
+  "performance-review": "Run a structured performance review cycle — self-assessment, manager approval, all in one place.",
+  "timesheet-submission": "Collect weekly timesheets with manager approval built in — no spreadsheets.",
+  "support-ticket-escalation": "Escalate unresolved support tickets to the right team, with nothing falling through the cracks.",
+  "budget-approval": "Get budget requests approved before spending happens, with finance notified automatically.",
+  "quote-request": "Turn quote requests into tracked leads automatically — no inquiry goes unanswered.",
+};
+
+// How long a template is typically left live, not how long it takes to
+// fill out — "One-time" (a single event/campaign, then done), "Short-term"
+// (days to weeks, e.g. a hiring or admission cycle), "Ongoing" (no natural
+// end date, left running indefinitely). Category gives a reasonable
+// default; specific templates that don't fit their category's norm are
+// listed explicitly.
+const USAGE_DURATION_DEFAULT = {
+  HR: "Ongoing",
+  Sales: "Ongoing",
+  Feedback: "Ongoing",
+  Marketing: "Short-term",
+  Services: "Ongoing",
+  Support: "Ongoing",
+  Healthcare: "Ongoing",
+  Finance: "Ongoing",
+  "Real Estate": "Ongoing",
+  Education: "Short-term",
+  IT: "Ongoing",
+  Operations: "Ongoing",
+  Procurement: "Ongoing",
+  Legal: "Ongoing",
+  Events: "One-time",
+  General: "Ongoing",
+};
+
+const USAGE_DURATION_OVERRIDES = {
+  "event-registration": "One-time",
+  rsvp: "One-time",
+  "event-feedback": "One-time",
+  "event-speaker-application": "Short-term",
+  "exit-interview": "One-time",
+  "performance-review": "Short-term",
+  "employee-onboarding": "Short-term",
+  "job-application": "Short-term",
+  "student-admission": "Short-term",
+  "course-registration": "Short-term",
+  "newsletter-signup": "Ongoing",
+  "vendor-registration": "Short-term",
+};
+
+function usageDurationFor(t) {
+  return USAGE_DURATION_OVERRIDES[t.key] || USAGE_DURATION_DEFAULT[t.category] || "Ongoing";
+}
+
+function withTagline(t) {
+  return { ...t, tagline: TAGLINES[t.key] || t.description };
+}
+
+// Mirrors apps/web/src/lib/formLayout.js's WIDE_FIELD_TYPES — those field
+// types always take the full row width even in a multi-column layout, so
+// only "narrow" fields (short text, email, phone, number, date, dropdown,
+// yesno, rating) actually benefit from more columns. No shared package
+// exists between apps/web and apps/backend in this monorepo, so this list
+// is kept in sync by hand rather than imported.
+const WIDE_FIELD_TYPES = ["longtext", "file", "checkbox", "radio", "booking"];
+
+// A template's default form layout — 1/2/3 columns, same real setting as
+// settings.layoutColumns in the Form Builder (Forms.jsx's LayoutEditor) and
+// the public form-fill page. Derived from the field mix rather than
+// hand-set per template: a form with only 2-3 narrow fields gains nothing
+// from extra columns, while one with 6+ narrow fields (contact/registration
+// -style templates) reads better across 2 or 3.
+function layoutColumnsFor(fields) {
+  const narrowCount = fields.filter((f) => !WIDE_FIELD_TYPES.includes(f.type)).length;
+  if (narrowCount >= 7) return 3;
+  if (narrowCount >= 5) return 2;
+  return 1;
+}
+
 function listTemplates() {
-  return TEMPLATES.map(({ key, name, description, category, fields }) => ({
-    key,
-    name,
-    description,
-    category,
-    fieldCount: fields.length,
-  }));
+  return TEMPLATES.map(({ key, name, description, category, industry, popularity, estimatedSetupMinutes, tags, workflowSteps, fields }) =>
+    withTagline({
+      key,
+      name,
+      description,
+      category,
+      industry,
+      popularity,
+      estimatedSetupMinutes,
+      tags,
+      workflowSteps,
+      fieldCount: fields.length,
+      layoutColumns: layoutColumnsFor(fields),
+      usageDuration: usageDurationFor({ key, category }),
+    })
+  );
 }
 
 function getTemplate(key) {
-  return TEMPLATES.find((t) => t.key === key);
+  const template = TEMPLATES.find((t) => t.key === key);
+  if (!template) return undefined;
+  return withTagline({
+    ...template,
+    layoutColumns: layoutColumnsFor(template.fields),
+    usageDuration: usageDurationFor(template),
+  });
 }
 
 module.exports = { listTemplates, getTemplate };

@@ -261,6 +261,15 @@ router.get("/templates", (req, res) => {
   res.json(listTemplates());
 });
 
+// Full template detail (including fields) for the public marketplace
+// detail page — listTemplates() above intentionally strips fields down to
+// a count for the lightweight gallery list.
+router.get("/templates/:key", (req, res) => {
+  const template = getTemplate(req.params.key);
+  if (!template) return res.status(404).json({ error: "Template not found" });
+  res.json(template);
+});
+
 // Cross-form inbox: every response, in any form owned by this tenant,
 // whose current workflow step this user can act on and hasn't yet voted
 // on. Placed before /:id so "approvals" isn't swallowed as a form id.
@@ -311,21 +320,56 @@ router.post("/workflow/check-escalations", requireManager, async (req, res) => {
   res.json({ checked: allResponses.length, escalated });
 });
 
+// A valid custom `fields` override needs at least a `type` and `label` on
+// every entry — anything else (missing/malformed) falls back to the
+// template's own defaults rather than creating a broken form.
+function isValidFieldOverride(fields) {
+  return (
+    Array.isArray(fields) &&
+    fields.length > 0 &&
+    fields.every((f) => f && typeof f.type === "string" && typeof f.label === "string" && f.label.trim())
+  );
+}
+
+// Only accentColor/logoDataUrl are accepted from the client — everything
+// else in `settings.branding` (theme, background, layout) stays gated
+// behind the authenticated builder, matching the public marketplace
+// preview's deliberately limited customization surface.
+function sanitizedBrandingOverride(branding) {
+  if (!branding || typeof branding !== "object") return null;
+  const out = {};
+  if (typeof branding.accentColor === "string" && branding.accentColor.trim()) out.accentColor = branding.accentColor.trim();
+  if (typeof branding.logoDataUrl === "string" && branding.logoDataUrl.startsWith("data:image/")) {
+    out.logoDataUrl = branding.logoDataUrl;
+    out.logoType = "image";
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 router.post("/from-template", requireManager, async (req, res) => {
   const limitError = await checkFormLimit(req);
   if (limitError) return res.status(403).json({ error: limitError });
-  const { templateKey, name } = req.body;
+  const { templateKey, name, fields: fieldsOverride, branding: brandingOverride } = req.body;
   const template = getTemplate(templateKey);
   if (!template) return res.status(404).json({ error: "Template not found" });
+
+  // Lets the public template marketplace's "customize before you sign up"
+  // preview carry the visitor's edits (relabeled/reordered/added/removed
+  // fields, accent color, logo) into the created form instead of always
+  // using the template's untouched defaults.
+  const sourceFields = isValidFieldOverride(fieldsOverride) ? fieldsOverride : template.fields;
+  const branding = sanitizedBrandingOverride(brandingOverride);
 
   const form = {
     id: uuid(),
     name: name?.trim() || template.name,
     description: template.description,
-    fields: template.fields.map((f) => ({ ...f, id: uuid() })),
+    fields: sourceFields.map((f) => ({ ...f, id: uuid() })),
     settings: {
       submitButtonText: "Submit",
       confirmationMessage: "Thanks for your submission!",
+      layoutColumns: template.layoutColumns || 1,
+      ...(branding ? { branding } : {}),
     },
     status: "Draft",
     createdBy: req.user.id,
