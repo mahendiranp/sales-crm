@@ -7,6 +7,11 @@ import { useRouter } from "next/router";
 // Not sensitive (it'd be visible in client-side JS either way), it's just
 // an env var so a different project/environment can use its own.
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+// Google Ads conversion tracking — shares the same gtag.js loader and
+// dataLayer as GA4 above, so it's a second `gtag('config', ...)` call
+// rather than a second <Script> tag (Google's own recommended pattern for
+// multiple gtag destinations on one page).
+const GOOGLE_ADS_ID = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID;
 
 // Production only, same reasoning as lib/logrocket.js — Next.js sets
 // NODE_ENV to "development" for `next dev`, so without this every local
@@ -46,6 +51,7 @@ export default function Analytics() {
           window.gtag = function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
           gtag('config', '${GA_MEASUREMENT_ID}');
+          ${GOOGLE_ADS_ID ? `gtag('config', '${GOOGLE_ADS_ID}');` : ""}
         `}
       </Script>
     </>
