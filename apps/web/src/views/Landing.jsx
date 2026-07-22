@@ -189,6 +189,7 @@ function NavBar() {
         </div>
         <nav className="hidden md:flex items-center gap-8 text-sm text-ink/60">
           <a href="#features" className="hover:text-ink">Features</a>
+          <Link href="/templates" className="hover:text-ink">Templates</Link>
           <a href="#pricing" className="hover:text-ink">Pricing</a>
           <a href="#faq" className="hover:text-ink">FAQ</a>
         </nav>

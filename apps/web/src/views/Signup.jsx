@@ -84,6 +84,16 @@ export default function Signup() {
     if (router.query.plan === "growth") setSelectedPlan("growth");
   }, [router.query.plan]);
 
+  // ?redirect=/templates/leave-request%3FuseTemplate%3D1 (from the public
+  // template marketplace's "Use Template" button) sends a freshly-signed-up
+  // visitor back to the template page instead of straight into /app, so it
+  // can auto-copy the template — only trusted for a same-origin path.
+  const postAuthDestination = () => {
+    const { redirect } = router.query;
+    if (typeof redirect === "string" && redirect.startsWith("/") && !redirect.startsWith("//")) return redirect;
+    return "/app";
+  };
+
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [selectedModules, setSelectedModules] = useState(recommendedModulesMap);
@@ -172,7 +182,7 @@ export default function Signup() {
       if (selectedPlan === "growth") {
         setStep(4);
       } else {
-        router.push("/app");
+        router.push(postAuthDestination());
       }
     } catch (err) {
       setOtpError(err.response?.data?.error || "Something went wrong.");
@@ -209,7 +219,7 @@ export default function Signup() {
               razorpay_signature: response.razorpay_signature,
               plan: "growth",
             });
-            router.push("/app");
+            router.push(postAuthDestination());
           } catch (err) {
             setPayError(err.response?.data?.error || "Payment succeeded but activating Growth failed — you can retry from Settings.");
           } finally {
@@ -342,7 +352,7 @@ export default function Signup() {
                   <div className="transition-colors rounded-lg [&_button]:hover:bg-[#FAFAFA]">
                     <GoogleSignInButton
                       text="signup_with"
-                      onSuccess={() => router.push("/app")}
+                      onSuccess={() => router.push(postAuthDestination())}
                       onError={(msg) => setFieldErrors((er) => ({ ...er, form: msg }))}
                     />
                   </div>

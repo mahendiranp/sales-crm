@@ -118,6 +118,10 @@ app.use("/api", apiLimiter);
 // and the WhatsApp webhook, which Meta calls directly with no session).
 const PUBLIC_ROUTES = [
   { method: "GET", pattern: /^\/api\/forms\/directory\/[^/]+$/ },
+  // Public template marketplace — browse/preview without a session; using
+  // a template still requires auth (POST /api/forms/from-template).
+  { method: "GET", pattern: /^\/api\/forms\/templates$/ },
+  { method: "GET", pattern: /^\/api\/forms\/templates\/[^/]+$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/public$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-dates$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-slots$/ },

@@ -49,6 +49,15 @@ export default function Login() {
   const { login } = useAuth();
   const router = useRouter();
 
+  // ?redirect=/templates/leave-request%3FuseTemplate%3D1 (from the public
+  // template marketplace) sends a visitor back to the template page after
+  // login instead of straight into /app — only trusted for a same-origin path.
+  const postAuthDestination = () => {
+    const { redirect } = router.query;
+    if (typeof redirect === "string" && redirect.startsWith("/") && !redirect.startsWith("//")) return redirect;
+    return "/app";
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     const nextErrors = { email: "", password: "", form: "" };
@@ -63,7 +72,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email.trim(), password);
-      router.push("/app");
+      router.push(postAuthDestination());
     } catch (err) {
       // Invalid-credentials failures aren't specific to either field
       // individually (it could be either one), so they render under
@@ -163,7 +172,7 @@ export default function Login() {
             </div>
             <div className="transition-colors rounded-lg [&_button]:hover:bg-[#FAFAFA]">
               <GoogleSignInButton
-                onSuccess={() => router.push("/app")}
+                onSuccess={() => router.push(postAuthDestination())}
                 onError={(msg) => setErrors({ email: "", password: "", form: friendlyError(msg) })}
               />
             </div>
