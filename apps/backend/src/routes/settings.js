@@ -1,6 +1,7 @@
 const express = require("express");
 const { collection } = require("../db/store");
-const { requireManager, requireMasterAdmin } = require("../middleware/auth");
+const { requireMasterAdmin } = require("../middleware/auth");
+const { requirePermission } = require("../middleware/permissions");
 const { limitsFor } = require("../utils/plans");
 const { defaultCredits } = require("../utils/aiCredits");
 const emailClient = require("../integrations/emailClient");
@@ -162,7 +163,7 @@ router.get("/accounts", requireMasterAdmin, async (req, res) => {
   res.json(rows);
 });
 
-router.put("/", requireManager, async (req, res) => {
+router.put("/", requirePermission("settings.manage"), async (req, res) => {
   // Feature flags (Admin Portal apps + core module visibility) can be
   // changed by the tenant owner (their own account/plan) or the platform's
   // master admin — but not by a teammate (manager/viewer) they've added.

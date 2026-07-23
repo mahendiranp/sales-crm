@@ -2,7 +2,7 @@ const express = require("express");
 const { randomUUID: uuid } = require("crypto");
 const { scopedCollection } = require("../db/store");
 const { crudRouter } = require("./crudFactory");
-const { requireManager, requireFullAccess, PERMISSION_RANK } = require("../middleware/auth");
+const { requirePermission, roleHasPermission } = require("../middleware/permissions");
 const { isConfigured: aiConfigured, scoreLead, parseLeadText } = require("../integrations/aiClient");
 const { getAiProviderForAccount, getLimitsForAccount } = require("./settings");
 const { hasEnoughCredits, deductCredits, CREDIT_COSTS } = require("../utils/aiCredits");
@@ -43,8 +43,8 @@ async function notifyAssignee(req, lead, assignee) {
 // it sends an incomplete body — the permission failure should win.
 function requireLeadContactInfo(req, res, next) {
   if (req.method === "POST" && req.path === "/") {
-    if (PERMISSION_RANK[req.user?.permission] < PERMISSION_RANK.edit) {
-      return res.status(403).json({ error: "This account is view-only and cannot make changes." });
+    if (!req.user?.isMasterAdmin && !roleHasPermission(req.user?.role, "leads.create")) {
+      return res.status(403).json({ error: "Your role doesn't have permission to do that (leads.create)." });
     }
     const { name, mobile, email } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: "Lead Name is required." });
@@ -63,7 +63,7 @@ router.use("/", requireLeadContactInfo, crudRouter("leads"));
 // account, so there's no active/inactive concept to check beyond "does
 // this row still exist" (a deleted row is already just absent from the
 // list, nothing extra to enforce there).
-router.post("/:id/assign", requireManager, async (req, res) => {
+router.post("/:id/assign", requirePermission("leads.edit"), async (req, res) => {
   const existing = await leads(req).find(req.params.id);
   if (!existing) return res.status(404).json({ error: "Lead not found" });
 
@@ -96,7 +96,7 @@ router.post("/:id/assign", requireManager, async (req, res) => {
 // Lead → Contact + Company flow, links (or creates) the Company that
 // matches the lead's free-text `company` name, so a B2B lead doesn't just
 // become a floating Contact with no organization behind it.
-router.post("/:id/convert", requireManager, async (req, res) => {
+router.post("/:id/convert", requirePermission("leads.edit"), async (req, res) => {
   const lead = await leads(req).find(req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
@@ -146,7 +146,7 @@ router.post("/:id/convert", requireManager, async (req, res) => {
 // AI qualification: scores 0-100 how likely this lead is to convert, using
 // whichever provider the account has configured — gated by plan tier AND
 // AI credit balance (utils/aiCredits.js), same as the Form Builder's AI Assistant.
-router.post("/:id/ai-score", requireManager, async (req, res) => {
+router.post("/:id/ai-score", requirePermission("leads.edit"), async (req, res) => {
   const lead = await leads(req).find(req.params.id);
   if (!lead) return res.status(404).json({ error: "Lead not found" });
 
@@ -195,7 +195,7 @@ router.post("/:id/ai-score", requireManager, async (req, res) => {
 // AI paste-to-autofill: extracts lead fields from an arbitrary pasted
 // message (WhatsApp text, email, call note) — gated by AI credit balance,
 // same as AI lead scoring above.
-router.post("/parse-ai", requireManager, async (req, res) => {
+router.post("/parse-ai", requirePermission("leads.create"), async (req, res) => {
   const text = (req.body.text || "").trim();
   if (!text) return res.status(400).json({ error: "Paste some text to extract a lead from first." });
 
@@ -230,7 +230,7 @@ router.post("/parse-ai", requireManager, async (req, res) => {
 });
 
 // Merge duplicate leads: keep primary, drop the rest
-router.post("/merge", requireFullAccess, async (req, res) => {
+router.post("/merge", requirePermission("leads.delete"), async (req, res) => {
   const { primaryId, duplicateIds } = req.body;
   const primary = await leads(req).find(primaryId);
   if (!primary) return res.status(404).json({ error: "Primary lead not found" });

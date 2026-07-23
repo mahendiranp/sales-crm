@@ -2,7 +2,7 @@ const express = require("express");
 const { randomUUID: uuid } = require("crypto");
 const { collection, nextSequence } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
-const { validateImageAnswer } = require("../utils/fileUploads");
+const { validateImageAnswer, storeFileAnswer, resolveFileAnswer } = require("../utils/fileUploads");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
 
@@ -53,6 +53,16 @@ async function notifySupportInbox(ticket, account, message, { isReply = false } 
   }
 }
 
+// Resolves every message's attachment (r2Key -> fresh presigned dataUrl) in
+// a ticket before it's serialized back to a client — legacy inline records
+// pass through resolveFileAnswer unchanged.
+async function resolveTicketAttachments(ticket) {
+  const messages = await Promise.all(
+    ticket.messages.map(async (m) => ({ ...m, attachment: await resolveFileAnswer(m.attachment) }))
+  );
+  return { ...ticket, messages };
+}
+
 const STATUSES = ["open", "in_progress", "resolved"];
 
 // Same "owner or master admin" check used elsewhere (payments, team
@@ -73,11 +83,15 @@ router.get("/", requireManager, async (req, res) => {
   if (req.user.isMasterAdmin) {
     const allAccounts = await accounts.all();
     const nameFor = (accountId) => allAccounts.find((a) => a.id === accountId)?.company || allAccounts.find((a) => a.id === accountId)?.name || "Unknown";
-    const withCompany = all.map((t) => ({ ...t, companyName: nameFor(t.accountId) }));
+    const withCompany = await Promise.all(
+      all.map(async (t) => ({ ...(await resolveTicketAttachments(t)), companyName: nameFor(t.accountId) }))
+    );
     return res.json(withCompany.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
   }
-  const mine = all.filter((t) => t.accountId === req.user.accountId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  res.json(mine);
+  const mine = await Promise.all(
+    all.filter((t) => t.accountId === req.user.accountId).map(resolveTicketAttachments)
+  );
+  res.json(mine.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
 });
 
 router.post("/", requireManager, async (req, res) => {
@@ -95,6 +109,9 @@ router.post("/", requireManager, async (req, res) => {
   const attachmentError = validateImageAnswer("Attachment", attachment);
   if (attachmentError) return res.status(400).json({ error: attachmentError });
 
+  const storedAttachment = attachment?.dataUrl
+    ? await storeFileAnswer(attachment, { accountId: req.user.accountId, flow: "feedback-attachment" })
+    : null;
   const now = new Date().toISOString();
   const ticketNumber = await nextSequence("feedback_ticket", 1000);
   const ticket = {
@@ -111,7 +128,7 @@ router.post("/", requireManager, async (req, res) => {
       {
         id: uuid(),
         body: message.trim(),
-        attachment: attachment?.dataUrl ? attachment : null,
+        attachment: storedAttachment,
         authorId: req.user.id,
         authorName: req.user.email,
         isMasterAdmin: false,
@@ -144,7 +161,7 @@ router.get("/:id", requireManager, async (req, res) => {
   if (!isOwner(req)) return res.status(403).json({ error: "Only the account owner can view this." });
   const ticket = await loadTicketForRequest(req, res);
   if (!ticket) return;
-  res.json(ticket);
+  res.json(await resolveTicketAttachments(ticket));
 });
 
 router.post("/:id/reply", requireManager, async (req, res) => {
@@ -156,11 +173,14 @@ router.post("/:id/reply", requireManager, async (req, res) => {
   const attachmentError = validateImageAnswer("Attachment", attachment);
   if (attachmentError) return res.status(400).json({ error: attachmentError });
 
+  const storedAttachment = attachment?.dataUrl
+    ? await storeFileAnswer(attachment, { accountId: ticket.accountId, flow: "feedback-attachment" })
+    : null;
   const now = new Date().toISOString();
   const reply = {
     id: uuid(),
     body: message.trim(),
-    attachment: attachment?.dataUrl ? attachment : null,
+    attachment: storedAttachment,
     authorId: req.user.id,
     authorName: req.user.email,
     isMasterAdmin: !!req.user.isMasterAdmin,
@@ -181,7 +201,7 @@ router.post("/:id/reply", requireManager, async (req, res) => {
     await notifySupportInbox(updated, account, reply, { isReply: true });
   }
 
-  res.json(updated);
+  res.json(await resolveTicketAttachments(updated));
 });
 
 router.put("/:id/status", requireManager, async (req, res) => {

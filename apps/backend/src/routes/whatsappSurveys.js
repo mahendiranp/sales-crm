@@ -1,15 +1,26 @@
 const express = require("express");
 const crypto = require("crypto");
-const { collection } = require("../db/store");
+const { collection, scopedCollection } = require("../db/store");
 const { requireManager } = require("../middleware/auth");
 const engine = require("../services/whatsappSurveyEngine");
 const whatsappClient = require("../integrations/whatsappClient");
 
 const router = express.Router();
-const sessions = collection("survey_sessions");
+// survey_sessions records carry accountId, so the enforced scopedCollection
+// wrapper applies cleanly here (defense-in-depth over the manual .filter()
+// this replaces). whatsapp_messages records do NOT carry accountId (logged
+// by the webhook before any tenant is known, keyed only by phone number) —
+// left as the unscoped collection() below; scoping it would need a deeper
+// fix (stamp accountId in whatsappSurveyEngine.js's logInbound/outbound
+// paths first), not just a wrapper swap. Flagged as a real, narrow gap:
+// GET /:id/messages currently has no tenant boundary on the messages
+// collection itself, only on the session that selects the phone/time
+// window to search — a shared phone number with overlapping timestamps
+// across two tenants could theoretically cross-contaminate.
 const forms = collection("forms");
 const messages = collection("whatsapp_messages");
 const settings = collection("settings");
+const sessionsFor = (req) => scopedCollection("survey_sessions", req.user.accountId);
 
 let warnedNoAppSecret = false;
 
@@ -44,7 +55,7 @@ function verifyMetaSignature(req, res, next) {
 
 router.get("/", async (req, res) => {
   const { formId } = req.query;
-  const all = (await sessions.all()).filter((s) => s.accountId === req.user.accountId);
+  const all = await sessionsFor(req).all();
   const filtered = formId ? all.filter((s) => s.formId === formId) : all;
   res.json(filtered.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)));
 });
@@ -72,7 +83,7 @@ router.get("/webhook", (req, res) => {
 // lets the UI render the right input control (buttons, stars, etc.)
 // instead of the user having to know the expected reply format.
 router.get("/:id", async (req, res) => {
-  const session = (await sessions.all()).find((s) => s.id === req.params.id && s.accountId === req.user.accountId);
+  const session = await sessionsFor(req).find(req.params.id);
   if (!session) return res.status(404).json({ error: "Not found" });
   const form = await forms.find(session.formId);
   const currentField = session.status === "in_progress" ? form.fields[session.currentIndex] : null;
@@ -82,7 +93,7 @@ router.get("/:id", async (req, res) => {
 // Chat transcript for a session's phone number, oldest first — powers the
 // chat-bubble UI.
 router.get("/:id/messages", async (req, res) => {
-  const session = (await sessions.all()).find((s) => s.id === req.params.id && s.accountId === req.user.accountId);
+  const session = await sessionsFor(req).find(req.params.id);
   if (!session) return res.status(404).json({ error: "Not found" });
   const all = await messages.all();
   const windowEnd = session.completedAt ? new Date(session.completedAt).getTime() + 1000 : Date.now() + 1000;

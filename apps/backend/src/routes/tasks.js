@@ -15,7 +15,7 @@
 const express = require("express");
 const { randomUUID: uuid } = require("crypto");
 const { collection, scopedCollection } = require("../db/store");
-const { requireManager, requireFullAccess } = require("../middleware/auth");
+const { requirePermission } = require("../middleware/permissions");
 const { recordEvent, EVENT_TYPES, EVENT_SOURCES } = require("../services/eventEngine");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
@@ -154,7 +154,7 @@ function sanitizeChecklist(checklist) {
     .map((item) => ({ id: item.id || uuid(), text: item.text.trim(), done: !!item.done }));
 }
 
-router.post("/", requireManager, async (req, res) => {
+router.post("/", requirePermission("tasks.create"), async (req, res) => {
   const { title, description, assigneeId, priority, dueDate, entityType, entityId, labels, checklist, parentTaskId } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: "Title is required." });
   if (priority && !PRIORITIES.includes(priority)) {
@@ -200,7 +200,7 @@ router.post("/", requireManager, async (req, res) => {
   res.status(201).json({ ...task, accountId: req.user.accountId });
 });
 
-router.put("/:id", requireManager, async (req, res) => {
+router.put("/:id", requirePermission("tasks.edit"), async (req, res) => {
   const existing = await tasksFor(req).find(req.params.id);
   if (!existing || existing.deletedAt) return res.status(404).json({ error: "Not found" });
 
@@ -262,7 +262,7 @@ router.put("/:id", requireManager, async (req, res) => {
 
 // Soft delete — deletedAt is set, the record stays. List/get/timeline
 // endpoints all filter it out; nothing hard-deletes a task.
-router.delete("/:id", requireFullAccess, async (req, res) => {
+router.delete("/:id", requirePermission("tasks.delete"), async (req, res) => {
   const existing = await tasksFor(req).find(req.params.id);
   if (!existing || existing.deletedAt) return res.status(404).json({ error: "Not found" });
 

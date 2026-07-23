@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Root workspace manifest (turbo, shared devDependencies) — package.json
+  # lives at the repo root even though the actual app code is under apps/.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "npm"
+    directory: "/apps/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  # Keeps the actions pinned in ci.yml (actions/checkout, actions/setup-node,
+  # etc.) current — a stale action version is itself a supply-chain risk.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

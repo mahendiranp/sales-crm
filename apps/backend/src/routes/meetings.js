@@ -16,7 +16,7 @@
 const express = require("express");
 const { randomUUID: uuid } = require("crypto");
 const { collection, scopedCollection } = require("../db/store");
-const { requireManager, requireFullAccess } = require("../middleware/auth");
+const { requirePermission } = require("../middleware/permissions");
 const { recordEvent, EVENT_TYPES, EVENT_SOURCES } = require("../services/eventEngine");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
@@ -125,7 +125,7 @@ router.get("/:id", async (req, res) => {
   res.json(meeting);
 });
 
-router.post("/", requireManager, async (req, res) => {
+router.post("/", requirePermission("meetings.create"), async (req, res) => {
   const {
     title,
     description,
@@ -205,7 +205,7 @@ router.post("/", requireManager, async (req, res) => {
   res.status(201).json({ ...meeting, accountId: req.user.accountId });
 });
 
-router.patch("/:id", requireManager, async (req, res) => {
+router.patch("/:id", requirePermission("meetings.edit"), async (req, res) => {
   const existing = await meetingsFor(req).find(req.params.id);
   if (!existing || existing.deletedAt) return res.status(404).json({ error: "Not found" });
 
@@ -280,7 +280,7 @@ router.patch("/:id", requireManager, async (req, res) => {
   res.json(updated);
 });
 
-router.delete("/:id", requireFullAccess, async (req, res) => {
+router.delete("/:id", requirePermission("meetings.delete"), async (req, res) => {
   const existing = await meetingsFor(req).find(req.params.id);
   if (!existing || existing.deletedAt) return res.status(404).json({ error: "Not found" });
 
@@ -307,7 +307,7 @@ router.get("/:id/participants", async (req, res) => {
   res.json(list);
 });
 
-router.post("/:id/participants", requireManager, async (req, res) => {
+router.post("/:id/participants", requirePermission("meetings.edit"), async (req, res) => {
   const meeting = await meetingsFor(req).find(req.params.id);
   if (!meeting) return res.status(404).json({ error: "Not found" });
   const { userId } = req.body;
@@ -332,7 +332,7 @@ router.post("/:id/participants", requireManager, async (req, res) => {
 });
 
 // A participant accepting/declining their own invite — organizer-only
-// actions (adding/removing people) go through requireManager above;
+// actions (adding/removing people) go through requirePermission above;
 // responding to your own invite doesn't need that permission level.
 router.patch("/:id/participants/:participantId", async (req, res) => {
   const participant = await participantsFor(req).find(req.params.participantId);
