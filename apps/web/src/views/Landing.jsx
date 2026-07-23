@@ -384,6 +384,44 @@ function HeroMock({ phaseIndex }) {
   );
 }
 
+// Animated chip row — only the current phase is highlighted (solid
+// green), completed phases get a checkmark + light green, upcoming
+// phases stay white/gray. Driven by the same phaseIndex as HeroMock (see
+// useSyncedPhase above) so both animations move in lockstep instead of
+// two independently-drifting timers. Restored after being mistakenly
+// folded into the How It Works consolidation — it wasn't one of the
+// three overlapping sections that request actually named, and it's the
+// only place the Describe/Generate/Execute/Complete phase labels render
+// as visible text (paired with the Live Workflow Demo mock, not with
+// the separate How It Works section below).
+function WorkflowChips({ phaseIndex }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3 text-sm font-medium">
+      {HERO_PHASES.map((p, i) => {
+        const isLast = i === HERO_PHASES.length - 1;
+        const completed = i < phaseIndex || (isLast && phaseIndex === HERO_PHASES.length - 1);
+        const active = i === phaseIndex;
+        return (
+          <span key={p.key} className="flex items-center gap-2">
+            <span
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-colors ${
+                active
+                  ? "bg-primary text-white border-primary"
+                  : completed
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "bg-white border-border text-ink/60"
+              }`}
+            >
+              {completed && !active && <Check size={12} />} {p.label}
+            </span>
+            {!isLast && <ArrowRight size={13} className={i < phaseIndex ? "text-primary/40" : "text-ink/25"} />}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function FaqItem({ q, a, defaultOpen }) {
   const [open, setOpen] = useState(!!defaultOpen);
   return (
@@ -684,16 +722,13 @@ export default function Landing() {
           </div>
           <HeroMock phaseIndex={heroPhase} />
         </div>
+        {/* Phase chip row — paired with the demo mock right above it,
+            synced to the same timer (useSyncedPhase/heroPhase). */}
+        <div className="mt-8">
+          <WorkflowChips phaseIndex={heroPhase} />
+        </div>
       </section>
 
-      {/* Core value props as small icon-cards, right after the demo (not
-          competing with it for hero space) — the full six-module story
-          (Forms → Approval → Work → Meetings → CRM → AI Center), not just
-          the four that shipped first. Same per-module accent colors as
-          the mock's sidebar rail (MODULE_COLOR), so the color coding
-          means the same thing everywhere on the page. Hover: 4px lift,
-          border turns primary-green, icon scales + rotates a touch,
-          shadow deepens, description darkens. */}
       {/* How It Works — replaces three sections that used to say the same
           thing three different ways (an icon-only feature row, a
           "Forms are just the beginning" chip chain, and a separate "From
