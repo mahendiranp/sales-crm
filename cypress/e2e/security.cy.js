@@ -121,8 +121,14 @@ describe("Feature: Organization Data Isolation", () => {
   let formInOrgB;
 
   before(() => {
-    createIsolatedTenant("org-a").then((t) => (orgA = t));
-    createIsolatedTenant("org-b").then((t) => (orgB = t));
+    // Chained (not two independent top-level cy.request() calls) so Mocha's
+    // hook-completion detection reliably waits for both — two unchained
+    // command queues in one hook raced against the "it" blocks in CI,
+    // leaving orgB unset when the first test ran.
+    createIsolatedTenant("org-a")
+      .then((t) => (orgA = t))
+      .then(() => createIsolatedTenant("org-b"))
+      .then((t) => (orgB = t));
   });
 
   after(() => {
@@ -525,11 +531,25 @@ describe("Feature: Security Regression", () => {
     cy.request("/api/platform").its("headers").should("include.keys", ["x-content-type-options", "strict-transport-security"]);
   });
 
-  it("rate limiting is still wired up (RateLimit-* headers present, even when the request isn't throttled)", () => {
-    // express-rate-limit's standardHeaders:true always attaches these,
-    // regardless of whether NODE_ENV=test is skipping enforcement — their
-    // presence proves the limiter middleware is still mounted, not removed.
-    cy.request({ method: "POST", url: "/api/auth/login", body: { email: "admin@pipeline.com", password: "admin123" } })
+  it("rate limiting is still wired up (RateLimit-* headers present when the limiter actually runs)", () => {
+    // express-rate-limit's standardHeaders:true attaches these whenever the
+    // middleware actually executes — but skip() (see utils/rateLimitSkip.js)
+    // short-circuits the whole middleware under NODE_ENV=test, headers
+    // included, unless this bypass header opts the request back in. Their
+    // presence here proves the limiter middleware is still mounted, not
+    // removed — the same header this suite's own rate-limit tests rely on.
+    // failOnStatusCode:false since the login limiter's rate-limit spec
+    // (above, same suite, same IP) may have already tripped the 5/min
+    // ceiling by the time this runs — a 429 still carries the same
+    // RateLimit-* headers as a 200 (skip() is the only thing that removes
+    // them), so this assertion holds either way.
+    cy.request({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { "x-test-force-rate-limit": "1" },
+      body: { email: "admin@pipeline.com", password: "admin123" },
+      failOnStatusCode: false,
+    })
       .its("headers")
       .should("include.keys", ["ratelimit-limit"]);
   });
