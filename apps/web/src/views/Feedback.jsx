@@ -7,6 +7,7 @@ import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import { collectDiagnostics } from "../lib/feedbackDiagnostics";
 import { APP_VERSION } from "../lib/brand";
+import ImageLightbox from "../components/ImageLightbox";
 
 const STATUS_LABEL = { open: "Open", in_progress: "In Progress", resolved: "Resolved" };
 const STATUS_OPTIONS = ["open", "in_progress", "resolved"];
@@ -357,6 +358,18 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
   const [replyAttachment, setReplyAttachment] = useState(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+
+  // Every attached image across the whole thread, in message order — one
+  // shared gallery so the lightbox can arrow through all of them
+  // regardless of which message's thumbnail was actually clicked.
+  const imageGallery = [];
+  const galleryIndexByMessageId = {};
+  ticket.messages.forEach((m) => {
+    if (!m.attachment?.dataUrl) return;
+    galleryIndexByMessageId[m.id] = imageGallery.length;
+    imageGallery.push({ src: m.attachment.dataUrl, alt: m.attachment.name });
+  });
 
   // A reply with only an attachment (no text) is still meaningful — don't
   // force a caption just to satisfy the "message required" validation.
@@ -446,9 +459,13 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
               <div className={`inline-block text-left rounded-lg px-3 py-2 text-sm ${mine ? "bg-primary text-white" : "bg-base"}`}>
                 {m.body}
                 {m.attachment?.dataUrl && (
-                  <a href={m.attachment.dataUrl} target="_blank" rel="noreferrer" className="block mt-1.5">
-                    <img src={m.attachment.dataUrl} alt={m.attachment.name} className="max-h-48 rounded-md border border-border/50" />
-                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxIndex(galleryIndexByMessageId[m.id])}
+                    className="block mt-1.5 cursor-zoom-in"
+                  >
+                    <img src={m.attachment.dataUrl} alt={m.attachment.name} className="h-20 w-20 object-cover rounded-md border border-border/50" />
+                  </button>
                 )}
               </div>
               <p className="text-[11px] text-ink/35 mt-0.5">
@@ -477,6 +494,10 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
           <ImageAttachButton value={replyAttachment} onChange={setReplyAttachment} />
         </div>
       </div>
+
+      {lightboxIndex !== null && (
+        <ImageLightbox images={imageGallery} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      )}
     </div>
   );
 }

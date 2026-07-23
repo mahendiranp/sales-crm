@@ -86,7 +86,14 @@ function hashClaimToken(token) {
 // submitted (before or after R2 was configured).
 async function resolveAnswersFileFields(answers) {
   const entries = await Promise.all(
-    Object.entries(answers || {}).map(async ([key, value]) => [key, await resolveFileAnswer(value)])
+    Object.entries(answers || {}).map(async ([key, value]) => [
+      key,
+      // "images" answers are arrays of file-answer objects — resolveFileAnswer
+      // only ever looks at a single object's r2Key, so an array needs
+      // resolving item-by-item instead of being handed to it directly
+      // (which would just silently no-op and leave every r2Key unresolved).
+      Array.isArray(value) ? await Promise.all(value.map(resolveFileAnswer)) : await resolveFileAnswer(value),
+    ])
   );
   return Object.fromEntries(entries);
 }
@@ -903,7 +910,11 @@ router.post("/:id/insights", requirePermission("forms.view"), async (req, res) =
       for (const f of form.fields) {
         const value = r.answers?.[f.id];
         answers[f.label] =
-          f.type === "file" && value?.name ? value.name : value;
+          f.type === "file" && value?.name
+            ? value.name
+            : f.type === "images" && Array.isArray(value)
+              ? value.map((v) => v?.name).filter(Boolean).join(", ")
+              : value;
       }
       return answers;
     });
@@ -971,6 +982,59 @@ router.post("/:id/responses", publicFormSubmitLimiter, async (req, res) => {
     if (err) return res.status(400).json({ error: err });
     if (answer) {
       req.body.answers[field.id] = await storeFileAnswer(answer, { accountId: form.accountId, flow: "form-response" });
+    }
+  }
+
+  // "images" is the multi-file sibling of "file" — same re-validation
+  // reasoning, image-only allowlist (ImagesFieldInput never offers
+  // non-image types client-side), array of up to field.maxFiles answers
+  // instead of one. Every limit is clamped to the account's actual plan
+  // tier (utils/plans.js) — a form creator's own field config
+  // (Forms.jsx's "Max images" property) is a UX ceiling only; the real
+  // enforcement is min(field's config, plan's limit), always, regardless
+  // of what the field itself claims. Master admin accounts skip the plan
+  // clamp entirely, same as every other plan-gated check in this app.
+  const imagesFields = form.fields.filter((f) => f.type === "images");
+  if (imagesFields.length > 0) {
+    const account = await accounts.find(form.accountId);
+    const planLimits = account?.isMasterAdmin ? null : await getLimitsForAccount(form.accountId);
+
+    for (const field of imagesFields) {
+      const answers = req.body.answers?.[field.id];
+      if (answers === undefined || answers === null) continue;
+      if (!Array.isArray(answers)) {
+        return res.status(400).json({ error: `"${field.label}": expected a list of images.` });
+      }
+
+      const max = planLimits ? Math.min(field.maxFiles || Infinity, planLimits.maxImageFiles) : field.maxFiles || 10;
+      if (answers.length > max) {
+        return res.status(400).json({ error: `"${field.label}": up to ${max} images allowed.` });
+      }
+
+      const maxFileBytes = planLimits
+        ? Math.min(field.maxFileBytes || Infinity, planLimits.maxImageFileBytes)
+        : field.maxFileBytes || 5 * 1024 * 1024;
+      const maxTotalBytes = planLimits
+        ? Math.min(field.maxTotalBytes || Infinity, planLimits.maxImageTotalBytes)
+        : field.maxTotalBytes || 20 * 1024 * 1024;
+
+      const totalBytes = answers.reduce((sum, a) => {
+        const base64 = (a?.dataUrl || "").slice((a?.dataUrl || "").indexOf(",") + 1);
+        return sum + Math.floor((base64.length * 3) / 4);
+      }, 0);
+      if (totalBytes > maxTotalBytes) {
+        return res.status(400).json({
+          error: `"${field.label}": total upload size exceeds ${(maxTotalBytes / (1024 * 1024)).toFixed(1)} MB.`,
+        });
+      }
+
+      const stored = [];
+      for (const answer of answers) {
+        const err = validateImageAnswer(field.label, answer, maxFileBytes);
+        if (err) return res.status(400).json({ error: err });
+        stored.push(await storeFileAnswer(answer, { accountId: form.accountId, flow: "form-response" }));
+      }
+      req.body.answers[field.id] = stored;
     }
   }
 
@@ -1327,7 +1391,13 @@ function responseRows(form, formResponses) {
       const answer = r.answers?.[f.id];
       // File answers are a { name, type, dataUrl } object — export just the
       // filename, not the (potentially megabytes-long) base64 payload.
-      const cell = f.type === "file" && answer?.name ? answer.name : answer;
+      // "images" is the same idea for an array of them.
+      const cell =
+        f.type === "file" && answer?.name
+          ? answer.name
+          : f.type === "images" && Array.isArray(answer)
+            ? answer.map((v) => v?.name).filter(Boolean).join(", ")
+            : answer;
       row[f.label] = sanitizeCsvCell(cell ?? "");
     });
     return row;

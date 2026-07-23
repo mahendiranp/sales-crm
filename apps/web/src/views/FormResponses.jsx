@@ -10,6 +10,7 @@ import useResizableColumns from "../lib/useResizableColumns";
 import ResizableTh from "../components/ResizableTh";
 import UpgradeCreditsDialog from "../components/UpgradeCreditsDialog";
 import { limitsFor } from "../lib/plans";
+import ImageLightbox from "../components/ImageLightbox";
 
 const INSIGHTS_MIN_RESPONSES = 3;
 
@@ -33,30 +34,71 @@ function formatAnswer(field, value) {
   return String(value ?? "—");
 }
 
-// Richer version for the response detail modal — an uploaded image renders
-// inline, any other file type gets a download link, everything else falls
+// Richer version for the response detail modal — image file answers are
+// deliberately NOT rendered here anymore (see ResponseDetailModal's
+// dedicated "File Uploads" thumbnail grid below this component instead —
+// keeping every image in one place, with a count, reads far better than
+// one thumbnail scattered per field among unrelated answers). A non-image
+// file still gets a plain download link inline; everything else falls
 // back to the plain-text formatAnswer.
 function AnswerValue({ field, value }) {
   if (field?.type === "file" && value?.dataUrl) {
     const isImage = (value.type || "").startsWith("image/");
+    if (isImage) return null; // rendered in the File Uploads section instead
     return (
-      // data-private: respondent-submitted content (a file/image they
-      // uploaded) — hidden from LogRocket session replay regardless of
-      // element type, since inputSanitizer only covers actual form inputs.
-      <div data-private>
-        {isImage && (
-          <a href={value.dataUrl} target="_blank" rel="noreferrer">
-            <img src={value.dataUrl} alt={value.name} className="max-h-64 rounded-lg border border-border mb-1.5" />
-          </a>
-        )}
-        <a href={value.dataUrl} download={value.name} className="text-sm text-primary hover:underline">
-          Download {value.name}
-        </a>
-      </div>
+      // data-private: respondent-submitted content (a file they uploaded)
+      // — hidden from LogRocket session replay regardless of element
+      // type, since inputSanitizer only covers actual form inputs.
+      <a data-private href={value.dataUrl} download={value.name} className="text-sm text-primary hover:underline">
+        Download {value.name}
+      </a>
     );
   }
   // data-private — respondent-submitted answer text, same reasoning as above.
   return <p data-private className="text-sm whitespace-pre-wrap">{formatAnswer(field, value)}</p>;
+}
+
+// Cap the thumbnail grid so a response with a lot of uploads doesn't turn
+// the modal into an endless wall of images — the last visible tile becomes
+// a "+N" overlay for the rest instead, same "see everything's still
+// reachable, just not all rendered at once" idea as pagination elsewhere
+// in this app. Clicking it opens the lightbox already on that image.
+const MAX_VISIBLE_THUMBS = 8;
+
+function FileUploadsSection({ images, onOpen }) {
+  if (images.length === 0) return null;
+  const overflow = images.length > MAX_VISIBLE_THUMBS;
+  const visible = overflow ? images.slice(0, MAX_VISIBLE_THUMBS - 1) : images;
+  const hiddenCount = images.length - visible.length;
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-ink/50 mb-1.5">File Uploads ({images.length})</p>
+      {/* data-private: respondent-uploaded content, same reasoning as AnswerValue above. */}
+      <div data-private className="flex flex-wrap gap-2">
+        {visible.map((img, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onOpen(i)}
+            className="h-20 w-20 rounded-lg overflow-hidden border border-border cursor-zoom-in shrink-0"
+            title={img.alt}
+          >
+            <img src={img.src} alt={img.alt} className="h-full w-full object-cover" />
+          </button>
+        ))}
+        {overflow && (
+          <button
+            type="button"
+            onClick={() => onOpen(visible.length)}
+            className="h-20 w-20 rounded-lg border border-border bg-base flex items-center justify-center text-sm font-medium text-ink/60 hover:bg-hover shrink-0"
+          >
+            +{hiddenCount}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Approval history + (if the current user is an eligible approver of the
@@ -124,11 +166,32 @@ function ResponseDetailModal({ formId, form, response, onClose, onDecided }) {
   const [rejecting, setRejecting] = useState(false);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState(null);
 
   useEffect(() => {
     setCanDecide(false);
     setError("");
   }, [response?.id]);
+
+  // Every image-type file answer across the whole response, pulled out of
+  // the per-field list into the dedicated "File Uploads" grid below —
+  // imageFieldIds is what the main fields loop uses to skip rendering
+  // those fields a second time inline.
+  const imageGallery = [];
+  const imageFieldIds = new Set();
+  (form.fields || []).forEach((f) => {
+    if (f.type === "file") {
+      const v = response?.answers?.[f.id];
+      if (!v?.dataUrl || !(v.type || "").startsWith("image/")) return;
+      imageFieldIds.add(f.id);
+      imageGallery.push({ src: v.dataUrl, alt: v.name });
+    } else if (f.type === "images") {
+      const list = response?.answers?.[f.id];
+      if (!Array.isArray(list) || list.length === 0) return;
+      imageFieldIds.add(f.id);
+      list.forEach((v) => v?.dataUrl && imageGallery.push({ src: v.dataUrl, alt: v.name }));
+    }
+  });
 
   const decide = async (action, comment = "") => {
     setBusy(true);
@@ -150,12 +213,18 @@ function ResponseDetailModal({ formId, form, response, onClose, onDecided }) {
       {response && (
         <div className="space-y-4">
           <p className="text-xs text-ink/40">Submitted {formatDate(response.submittedAt)}</p>
-          {form.fields.map((f) => (
-            <div key={f.id}>
-              <p className="text-xs font-medium text-ink/50 mb-0.5">{f.label}</p>
-              <AnswerValue field={f} value={response.answers?.[f.id]} />
-            </div>
-          ))}
+          {form.fields
+            .filter((f) => !imageFieldIds.has(f.id))
+            .map((f) => (
+              <div key={f.id}>
+                <p className="text-xs font-medium text-ink/50 mb-0.5">{f.label}</p>
+                <AnswerValue field={f} value={response.answers?.[f.id]} />
+              </div>
+            ))}
+          <FileUploadsSection images={imageGallery} onOpen={setLightboxIndex} />
+          {lightboxIndex !== null && (
+            <ImageLightbox images={imageGallery} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+          )}
           <WorkflowPanel formId={formId} response={response} refreshKey={refreshKey} onCanDecideChange={setCanDecide} />
 
           {error && <p className="text-xs text-danger">{error}</p>}

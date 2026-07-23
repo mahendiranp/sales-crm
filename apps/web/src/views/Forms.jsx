@@ -39,6 +39,7 @@ const FIELD_TYPES = [
   { type: "radio", label: "Radio Button", icon: CircleDot },
   { type: "checkbox", label: "Checkbox", icon: CheckSquare },
   { type: "file", label: "File Upload", icon: Paperclip },
+  { type: "images", label: "Upload Images", icon: FormImageIcon },
   { type: "rating", label: "Rating", icon: Star },
   { type: "yesno", label: "Yes/No", icon: ToggleLeft },
   { type: "booking", label: "Meeting Booking", icon: CalendarClock },
@@ -140,6 +141,13 @@ function newField(type) {
     required: false,
     options: OPTION_TYPES.includes(type) ? ["Option 1", "Option 2"] : undefined,
     bookingConfig: type === "booking" ? { ...DEFAULT_BOOKING_CONFIG } : undefined,
+    // Defaults match the "growth" plan tier's server-side limits
+    // (utils/plans.js on the backend) — editable here, but never actually
+    // exceedable past whatever the submitting account's real plan allows;
+    // the server always clamps to min(these, the account's plan limit).
+    maxFiles: type === "images" ? 10 : undefined,
+    maxFileBytes: type === "images" ? 5 * 1024 * 1024 : undefined,
+    maxTotalBytes: type === "images" ? 20 * 1024 * 1024 : undefined,
     validation: {},
     appearance: { width: "auto" },
     logic: { enabled: false, fieldId: "", operator: "equals", value: "" },
@@ -575,6 +583,7 @@ function FieldEditor({ field, fields, onChange, onDelete, bare }) {
   // meeting time) — hiding them instead of leaving irrelevant, empty-
   // looking inputs in the editor.
   const isBooking = field.type === "booking";
+  const isImages = field.type === "images";
   const [openSection, setOpenSection] = useState("General");
   const section = (name) => ({ open: openSection === name, onToggle: () => setOpenSection(openSection === name ? null : name) });
   const body = (
@@ -583,12 +592,12 @@ function FieldEditor({ field, fields, onChange, onDelete, bare }) {
         <Field label="Label">
           <input className={inputCls} value={field.label} onChange={(e) => update({ label: e.target.value })} />
         </Field>
-        {!isBooking && (
+        {!isBooking && !isImages && (
           <Field label="Placeholder">
             <input className={inputCls} value={field.placeholder || ""} onChange={(e) => update({ placeholder: e.target.value })} />
           </Field>
         )}
-        {!isBooking && (
+        {!isBooking && !isImages && (
           <Field label="Default Value">
             <input className={inputCls} value={field.defaultValue || ""} onChange={(e) => update({ defaultValue: e.target.value })} />
           </Field>
@@ -596,6 +605,44 @@ function FieldEditor({ field, fields, onChange, onDelete, bare }) {
         <Field label="Help Text">
           <input className={inputCls} value={field.helpText || ""} onChange={(e) => update({ helpText: e.target.value })} />
         </Field>
+
+        {isImages && (
+          <>
+            <Field label="Max images">
+              <input
+                type="number"
+                min={1}
+                max={20}
+                className={inputCls}
+                value={field.maxFiles ?? 10}
+                onChange={(e) => update({ maxFiles: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })}
+              />
+            </Field>
+            <Field label="Max size per image (MB)">
+              <input
+                type="number"
+                min={1}
+                max={10}
+                className={inputCls}
+                value={Math.round((field.maxFileBytes ?? 5 * 1024 * 1024) / (1024 * 1024))}
+                onChange={(e) => update({ maxFileBytes: Math.max(1, Math.min(10, Number(e.target.value) || 1)) * 1024 * 1024 })}
+              />
+            </Field>
+            <Field label="Max total upload size (MB)">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                className={inputCls}
+                value={Math.round((field.maxTotalBytes ?? 20 * 1024 * 1024) / (1024 * 1024))}
+                onChange={(e) => update({ maxTotalBytes: Math.max(1, Math.min(100, Number(e.target.value) || 1)) * 1024 * 1024 })}
+              />
+            </Field>
+            <p className="text-[11px] text-ink/35 mb-3.5 -mt-2">
+              These are a starting point — the account's actual plan sets the real ceiling at submission time.
+            </p>
+          </>
+        )}
 
         {OPTION_TYPES.includes(field.type) && (
           <Field label="Options (comma-separated)">
