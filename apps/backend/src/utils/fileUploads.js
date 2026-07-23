@@ -5,6 +5,8 @@
 // scanner (there's no AV engine available in plain Node.js) — it stops the
 // common attack shape of "rename a script/executable to look like a safe
 // file", not signature-based malware detection.
+const { randomUUID: uuid } = require("crypto");
+const r2Client = require("../integrations/r2Client");
 
 const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3MB, matches the client-side cap
 
@@ -64,7 +66,12 @@ const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
 // string, or null if it passes every check. `allowedExtensions` narrows
 // the allowlist for contexts that only want a subset (e.g. images for a
 // feedback-ticket attachment) — defaults to every type forms support.
-function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(ALLOWED_EXTENSIONS)) {
+// `maxBytes` defaults to the shared 3MB cap every other upload context
+// uses, but the "images" form field type has its own plan-tiered
+// per-image cap (see routes/forms.js) that can run larger — passed
+// through here instead of every caller needing its own copy of this
+// whole function just to check a different size.
+function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(ALLOWED_EXTENSIONS), maxBytes = MAX_FILE_BYTES) {
   if (!answer || typeof answer !== "object" || !answer.dataUrl) return null; // not a file answer — nothing to check
   const { name = "", type = "", dataUrl } = answer;
 
@@ -82,8 +89,8 @@ function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(
   }
 
   const buffer = Buffer.from(base64, "base64");
-  if (buffer.length > MAX_FILE_BYTES) {
-    return `"${fieldLabel}": file is too large — max ${MAX_FILE_BYTES / (1024 * 1024)}MB.`;
+  if (buffer.length > maxBytes) {
+    return `"${fieldLabel}": file is too large — max ${(maxBytes / (1024 * 1024)).toFixed(1)}MB.`;
   }
   if (!matchesMagicBytes(buffer, declaredMime)) {
     return `"${fieldLabel}": file content doesn't match its extension.`;
@@ -92,9 +99,47 @@ function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(
   return null;
 }
 
-// Convenience wrapper for image-only contexts (feedback ticket attachments).
-function validateImageAnswer(fieldLabel, answer) {
-  return validateFileAnswer(fieldLabel, answer, IMAGE_EXTENSIONS);
+// Convenience wrapper for image-only contexts (feedback ticket attachments,
+// and — with an explicit maxBytes — the "images" form field type).
+function validateImageAnswer(fieldLabel, answer, maxBytes = MAX_FILE_BYTES) {
+  return validateFileAnswer(fieldLabel, answer, IMAGE_EXTENSIONS, maxBytes);
 }
 
-module.exports = { validateFileAnswer, validateImageAnswer, MAX_FILE_BYTES, ALLOWED_EXTENSIONS, IMAGE_EXTENSIONS };
+// Call AFTER validateFileAnswer/validateImageAnswer has already passed —
+// this doesn't re-validate, it just decides where the bytes live. When R2
+// isn't configured, returns the answer completely unchanged (today's
+// inline-base64 behavior); when it is, uploads to R2 and returns a
+// lightweight reference instead of the base64 payload, tenant-namespaced
+// so the bucket stays organized/cleanable per account.
+async function storeFileAnswer(answer, { accountId, flow }) {
+  if (!answer?.dataUrl || !r2Client.isConfigured()) return answer;
+  const match = /^data:([^;]+);base64,(.+)$/.exec(answer.dataUrl);
+  if (!match) return answer; // already invalid — validateFileAnswer should have caught this upstream
+  const [, mime, base64] = match;
+  const buffer = Buffer.from(base64, "base64");
+  const ext = extensionOf(answer.name);
+  const key = `${accountId}/${flow}/${uuid()}${ext ? `.${ext}` : ""}`;
+  await r2Client.uploadBuffer({ key, buffer, contentType: mime });
+  return { name: answer.name, type: answer.type, r2Key: key, size: buffer.length };
+}
+
+// Call whenever a stored file-answer is serialized back to a client. A
+// legacy record (inline base64, no r2Key — everything uploaded before this
+// existed, or anything uploaded while R2 was unconfigured) passes through
+// completely unchanged. Resolves fresh on every call rather than caching,
+// since presigned URLs are meant to be short-lived.
+async function resolveFileAnswer(answer) {
+  if (!answer?.r2Key) return answer;
+  const dataUrl = await r2Client.getSignedReadUrl(answer.r2Key);
+  return { ...answer, dataUrl };
+}
+
+module.exports = {
+  validateFileAnswer,
+  validateImageAnswer,
+  storeFileAnswer,
+  resolveFileAnswer,
+  MAX_FILE_BYTES,
+  ALLOWED_EXTENSIONS,
+  IMAGE_EXTENSIONS,
+};

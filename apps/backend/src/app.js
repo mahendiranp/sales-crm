@@ -6,7 +6,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 
 const leadsRouter = require("./routes/leads");
 const dealsRouter = require("./routes/deals");
@@ -32,6 +32,7 @@ const meetingsRouter = require("./routes/meetings");
 const searchRouter = require("./routes/search");
 const { requireAuth } = require("./middleware/auth");
 const { ensureConnected } = require("./db/store");
+const { skipRateLimit } = require("./utils/rateLimitSkip");
 
 const app = express();
 
@@ -85,8 +86,9 @@ app.use(async (req, res, next) => {
 // Rate limiting is a production/staging concern — under automated tests,
 // every request comes from the same in-process client with no real IP
 // diversity, so a real limit would throttle the test suite itself rather
-// than catching abuse. Skip both limiters when NODE_ENV=test.
-const isTestEnv = process.env.NODE_ENV === "test";
+// than catching abuse. Skipped when NODE_ENV=test, except for a request
+// that explicitly opts in via skipRateLimit's bypass header (used only by
+// the rate-limiting Cypress spec, which needs real limiting to test against).
 
 // Tight limiter on auth — these are the endpoints someone would actually
 // try to brute-force (login) or abuse (repeated signups).
@@ -96,7 +98,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many attempts. Please try again in a few minutes." },
-  skip: () => isTestEnv,
+  skip: skipRateLimit,
 });
 app.use("/api/auth", authLimiter, authRouter);
 
@@ -109,7 +111,7 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   // The WhatsApp webhook is called by Meta's infrastructure, not a single
   // abusive client — don't let it get throttled by a shared limiter.
-  skip: (req) => isTestEnv || req.path.startsWith("/api/whatsapp-surveys/webhook"),
+  skip: (req) => req.path.startsWith("/api/whatsapp-surveys/webhook") || skipRateLimit(req),
 });
 app.use("/api", apiLimiter);
 
@@ -118,6 +120,10 @@ app.use("/api", apiLimiter);
 // and the WhatsApp webhook, which Meta calls directly with no session).
 const PUBLIC_ROUTES = [
   { method: "GET", pattern: /^\/api\/forms\/directory\/[^/]+$/ },
+  // Public template marketplace — browse/preview without a session; using
+  // a template still requires auth (POST /api/forms/from-template).
+  { method: "GET", pattern: /^\/api\/forms\/templates$/ },
+  { method: "GET", pattern: /^\/api\/forms\/templates\/[^/]+$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/public$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-dates$/ },
   { method: "GET", pattern: /^\/api\/forms\/[^/]+\/booking-slots$/ },
@@ -131,6 +137,12 @@ const PUBLIC_ROUTES = [
   // The public pricing page (landing page, no login yet) shows real
   // remaining launch-offer slots, not a hardcoded/fabricated count.
   { method: "GET", pattern: /^\/api\/payments\/launch-offer$/ },
+  // Vercel Cron's daily trigger for the feedback-request email sweep (see
+  // vercel.json) — has no logged-in user to attach a JWT to, so it can't
+  // go through the normal requireAuth gate. Not actually open to the
+  // public: the route itself checks Vercel's CRON_SECRET bearer token
+  // before doing anything (routes/platform.js).
+  { method: "GET", pattern: /^\/api\/platform\/send-feedback-emails$/ },
 ];
 
 app.use((req, res, next) => {
@@ -138,6 +150,22 @@ app.use((req, res, next) => {
   if (isPublic) return next();
   return requireAuth(req, res, next);
 });
+
+// Per-organization ceiling, on top of the per-IP apiLimiter above — a single
+// tenant (e.g. many employees sharing an office IP, or one runaway
+// integration) shouldn't be able to consume the whole API's capacity and
+// degrade every other tenant. Only reaches authenticated requests (req.user
+// is set by requireAuth above), so it can key on accountId directly.
+const orgLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.accountId || ipKeyGenerator(req.ip),
+  message: { error: "Too many requests from your organization. Please try again shortly." },
+  skip: skipRateLimit,
+});
+app.use(orgLimiter);
 
 app.use("/api/leads", leadsRouter);
 app.use("/api/deals", dealsRouter);

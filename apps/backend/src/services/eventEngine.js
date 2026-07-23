@@ -45,6 +45,18 @@ const EVENT_TYPES = Object.freeze({
   MEETING_DELETED: "meeting.deleted",
   MEETING_PARTICIPANT_RESPONDED: "meeting.participant_responded",
   MEETING_NOTE_ADDED: "meeting.note_added",
+  // Security-relevant events — not business activity, but worth the same
+  // durable, tenant-scoped, actor-attributed log rather than a separate
+  // audit system. AUTH_LOGIN_FAILED is only recorded for a *recognized*
+  // email with a wrong password (see routes/auth.js) — a wrong-email
+  // attempt has no accountId to attach it to, so that case only gets a
+  // server-side console log instead of a fabricated/missing tenant record.
+  AUTH_LOGIN_SUCCESS: "auth.login_success",
+  AUTH_LOGIN_FAILED: "auth.login_failed",
+  AUTH_PASSWORD_CHANGED: "auth.password_changed",
+  AUTH_PERMISSION_CHANGED: "auth.permission_changed",
+  AUTH_TEAMMATE_REMOVED: "auth.teammate_removed",
+  ADMIN_ACTION: "admin.action",
 });
 
 // The subsystem an event originated from — lets the AI Observer filter its
@@ -67,6 +79,7 @@ const EVENT_SOURCES = Object.freeze({
   PAYMENTS: "payments",
   MEETINGS: "meetings",
   API: "api",
+  AUTH: "auth",
 });
 
 // How urgently the AI Observer (Phase 2+) should surface this event.

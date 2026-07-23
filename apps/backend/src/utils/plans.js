@@ -27,6 +27,16 @@ const PLANS = {
     whatsappBot: false,
     aiAssistant: false,
     monthlyAiCredits: 0,
+    // "images" form field type (multi-image gallery upload) — the ceiling
+    // a form creator's own field-level config (Forms.jsx's "Max images"
+    // property) can never exceed, checked server-side in
+    // routes/forms.js's POST /:id/responses regardless of what the field
+    // itself claims. Flowora is built for business forms, not media
+    // storage, so even the top tier stays well under what'd meaningfully
+    // strain R2/bandwidth.
+    maxImageFiles: 5,
+    maxImageFileBytes: 2 * 1024 * 1024,
+    maxImageTotalBytes: 10 * 1024 * 1024,
     // Free — never purchasable through checkout, it's just the default.
     currency: null,
     priceInMinorUnits: null,
@@ -40,6 +50,9 @@ const PLANS = {
     whatsappBot: true,
     aiAssistant: true,
     monthlyAiCredits: 500,
+    maxImageFiles: 10,
+    maxImageFileBytes: 5 * 1024 * 1024,
+    maxImageTotalBytes: 20 * 1024 * 1024,
     // $19/month flat (matches the landing page's "/month" display copy).
     currency: "USD",
     priceInMinorUnits: 1900,
@@ -60,6 +73,9 @@ const PLANS = {
     whatsappBot: true,
     aiAssistant: true,
     monthlyAiCredits: 2000,
+    maxImageFiles: 20,
+    maxImageFileBytes: 10 * 1024 * 1024,
+    maxImageTotalBytes: 100 * 1024 * 1024,
     // "Custom" pricing — sales-assisted, not self-serve checkout.
     currency: null,
     priceInMinorUnits: null,

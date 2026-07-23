@@ -22,25 +22,16 @@ const SECURITY_POINTS = [
 ];
 
 const INDUSTRIES = [
-  { icon: Building2, label: "Human Resources", use: "Leave Requests" },
-  { icon: Landmark, label: "Finance", use: "Expense Approvals" },
-  { icon: HeartPulse, label: "Healthcare", use: "Patient Intake" },
+  { icon: Building2, label: "Human Resources", use: "Leave requests" },
+  { icon: Landmark, label: "Finance", use: "Expense approvals" },
+  { icon: HeartPulse, label: "Healthcare", use: "Patient intake" },
   { icon: GraduationCap, label: "Education", use: "Admissions" },
-  { icon: Factory, label: "Manufacturing", use: "Inspection Forms" },
-  { icon: Truck, label: "Logistics", use: "Delivery Confirmations" },
-  { icon: Store, label: "Retail", use: "Customer Feedback" },
-  { icon: Briefcase, label: "Operations", use: "Process Requests" },
-  { icon: TrendingUp, label: "Sales", use: "Lead Capture" },
-  { icon: ClipboardList, label: "Administration", use: "Internal Requests" },
-];
-
-const HOW_IT_WORKS = [
-  { emoji: "💬", label: "Tell AI what you need" },
-  { emoji: "✨", label: "AI creates your form" },
-  { emoji: "🎨", label: "Customize if needed" },
-  { emoji: "🚀", label: "Publish anywhere" },
-  { emoji: "📈", label: "Track responses" },
-  { emoji: "⚡", label: "Automate approvals" },
+  { icon: Factory, label: "Manufacturing", use: "Inspection forms" },
+  { icon: Truck, label: "Logistics", use: "Delivery confirmations" },
+  { icon: Store, label: "Retail", use: "Customer feedback" },
+  { icon: Briefcase, label: "Operations", use: "Process requests" },
+  { icon: TrendingUp, label: "Sales", use: "Lead capture" },
+  { icon: ClipboardList, label: "Administration", use: "Internal requests" },
 ];
 
 // This is now the single comparison section on the homepage — it used to
@@ -63,11 +54,11 @@ const AFTER_STEPS = ["AI Builds Form", "Approval", "CRM Updated", "Task Created"
 // feedback that a 7-question wall reads as filler this far down a page
 // that's already explained most of this in earlier sections.
 const FAQS = [
-  { q: "Is Flowora free?", a: "Yes — the Free plan is free forever, no credit card required. Upgrade to Team or Enterprise when you need approval workflows and more responses." },
-  { q: "Can I import Google Forms?", a: "Yes — paste a Google Form's share link and Flowora imports every question and option automatically." },
-  { q: "Does Flowora support approvals?", a: "Yes — route submissions through multi-step approval chains (e.g. Employee → Manager → HR) with role-based or specific-person approvers." },
-  { q: "Can teams collaborate?", a: "Yes — invite teammates with role-based permissions (Admin, Manager, Viewer) on Team and Enterprise plans." },
-  { q: "How does AI work?", a: "Describe the form you need in plain language and the AI Assistant generates the fields for you — it can also build workflows and route approvals from that same description." },
+  { q: "Is Flowora free?", a: "Yes — the Free plan is free forever, with up to 3 forms and 100 responses a month. No credit card required. Paid plans unlock unlimited forms, approvals, and AI automation." },
+  { q: "Can I import Google Forms?", a: "Yes. Paste in an existing Google Form and Flowora rebuilds it as a smart form — no manual re-entry of fields." },
+  { q: "Does Flowora support approvals?", a: "Yes. Every form can be connected to an approval workflow, so submissions route to the right person automatically instead of sitting in an inbox." },
+  { q: "Can teams collaborate?", a: "Yes. Team and Enterprise plans support multiple users with role-based permissions, shared forms, and a shared audit history." },
+  { q: "How does AI work?", a: "Describe what you need in plain language and Flowora generates the form fields, logic, and validation. AI credits also power the recommendations and insights generated from submissions." },
 ];
 
 // Every line here is checked against utils/plans.js's actual limits, not
@@ -85,7 +76,7 @@ const PLANS = [
     tagline: "For individuals",
     price: "$0",
     period: "forever",
-    features: ["Up to 3 forms", "100 responses/month", "Upgrade to unlock AI features", "CSV export", "1 user"],
+    features: ["Up to 3 forms", "100 responses/month", "CSV export", "1 user", "Upgrade to unlock AI features"],
     cta: "Start Building Free",
     href: "/signup",
   },
@@ -189,6 +180,7 @@ function NavBar() {
         </div>
         <nav className="hidden md:flex items-center gap-8 text-sm text-ink/60">
           <a href="#features" className="hover:text-ink">Features</a>
+          <Link href="/templates" className="hover:text-ink">Templates</Link>
           <a href="#pricing" className="hover:text-ink">Pricing</a>
           <a href="#faq" className="hover:text-ink">FAQ</a>
         </nav>
@@ -396,7 +388,12 @@ function HeroMock({ phaseIndex }) {
 // green), completed phases get a checkmark + light green, upcoming
 // phases stay white/gray. Driven by the same phaseIndex as HeroMock (see
 // useSyncedPhase above) so both animations move in lockstep instead of
-// two independently-drifting timers.
+// two independently-drifting timers. Restored after being mistakenly
+// folded into the How It Works consolidation — it wasn't one of the
+// three overlapping sections that request actually named, and it's the
+// only place the Describe/Generate/Execute/Complete phase labels render
+// as visible text (paired with the Live Workflow Demo mock, not with
+// the separate How It Works section below).
 function WorkflowChips({ phaseIndex }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3 text-sm font-medium">
@@ -425,8 +422,8 @@ function WorkflowChips({ phaseIndex }) {
   );
 }
 
-function FaqItem({ q, a }) {
-  const [open, setOpen] = useState(false);
+function FaqItem({ q, a, defaultOpen }) {
+  const [open, setOpen] = useState(!!defaultOpen);
   return (
     <div className="border-b border-border py-4">
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between text-left gap-4">
@@ -613,24 +610,17 @@ export default function Landing() {
         <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/8 text-primary text-xs font-medium mb-6 shadow-[0_1px_2px_rgba(20,23,43,0.06)]">
           <Sparkles size={12} className="animate-pulse" /> AI Forms + Business Automation
         </div>
-        {/* Shortened ("Everything After Submission" → "Every Submission")
-            and reduced from 60px to a slightly smaller, narrower block —
-            one line shorter reads more balanced at this hero width. */}
+        {/* Leads with the outcome ("get finished work"), not the feature
+            list — the mechanism (approvals/tasks/CRM/AI) now shows up
+            once in the subhead and once in the How It Works section
+            below, not scattered across four separate blocks. */}
         <h1 className="font-display font-extrabold text-4xl md:text-[60px] leading-[1.05] tracking-[-0.04em] max-w-[900px] mx-auto">
-          {"Build AI Forms. "}
+          {"Build a form. "}
           <br />
-          {/* "Automate Every Submission." alone is wider than the 900px
-              box at 60px — nowrap (past sm, where there's room for it to
-              overflow the box width without hitting the viewport edge)
-              keeps it as one line instead of wrapping again mid-line. */}
-          <span className="sm:whitespace-nowrap">Automate Every Submission.</span>
+          <span className="sm:whitespace-nowrap">Get finished work.</span>
         </h1>
-        {/* Names the breadth of what a submission triggers (approvals,
-            work, meetings, CRM, AI) in one sentence — the module cards
-            and demo just below back each of these up concretely, so this
-            reads as a preview, not an empty claim. */}
         <p className="text-ink/60 text-[16px] leading-relaxed max-w-xl mx-auto mt-7">
-          Create AI-powered forms in seconds. Every submission automatically triggers approvals, tasks, meetings, CRM updates, and AI insights.
+          Describe what you need and Flowora builds the form. Every submission that comes in automatically routes for approval, creates tasks, updates your CRM, and surfaces AI insights — no extra setup.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3 mt-9">
           <Link
@@ -659,7 +649,7 @@ export default function Landing() {
             someone starting on the free plan, where there's nothing to
             cancel yet). */}
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-5 text-xs text-ink/50">
-          {["Free forever", "No credit card required", "Setup in under 60 seconds"].map((t) => (
+          {["Free forever", "No credit card required", "Live in under 60 seconds"].map((t) => (
             <span key={t} className="flex items-center gap-1">
               <Check size={12} className="text-primary" /> {t}
             </span>
@@ -732,45 +722,70 @@ export default function Landing() {
           </div>
           <HeroMock phaseIndex={heroPhase} />
         </div>
-      </section>
-
-      {/* Core value props as small icon-cards, right after the demo (not
-          competing with it for hero space) — the full six-module story
-          (Forms → Approval → Work → Meetings → CRM → AI Center), not just
-          the four that shipped first. Same per-module accent colors as
-          the mock's sidebar rail (MODULE_COLOR), so the color coding
-          means the same thing everywhere on the page. Hover: 4px lift,
-          border turns primary-green, icon scales + rotates a touch,
-          shadow deepens, description darkens. */}
-      <section id="features" className="max-w-4xl mx-auto px-6 mb-16">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            { icon: Sparkles, label: "Forms", desc: "Generate forms from prompts, PDFs and images", color: MODULE_COLOR.Forms },
-            { icon: Workflow, label: "Approval", desc: "Route requests through approval workflows", color: MODULE_COLOR.Approval },
-            { icon: ClipboardList, label: "Work", desc: "Create and track tasks automatically", color: MODULE_COLOR.Work },
-            { icon: Clock, label: "Meetings", desc: "Schedule meetings from submissions", color: MODULE_COLOR.Meetings },
-            { icon: Building2, label: "CRM", desc: "Update pipelines automatically", color: MODULE_COLOR.CRM },
-            { icon: Bot, label: "AI Center", desc: "Receive AI recommendations and insights", color: MODULE_COLOR["AI Center"] },
-          ].map(({ icon: Icon, label, desc, color }, i) => (
-            <div
-              key={label}
-              className="group flex flex-col items-center gap-1 bg-primary/[0.04] border border-border/70 rounded-lg px-3 py-4 transition-all duration-[250ms] hover:-translate-y-1 hover:border-primary/50 hover:shadow-card opacity-0 animate-[fadeIn_0.5s_ease-out_forwards]"
-              style={{ animationDelay: `${i * 0.1}s` }}
-            >
-              <Icon size={18} className={`${color} mb-0.5 transition-transform duration-[250ms] group-hover:scale-110 group-hover:rotate-6`} />
-              <span className="text-xs font-semibold text-ink/80 text-center leading-tight">{label}</span>
-              <span className="text-[10px] text-ink/40 text-center leading-tight transition-colors duration-[250ms] group-hover:text-ink/60">{desc}</span>
-            </div>
-          ))}
+        {/* Phase chip row — paired with the demo mock right above it,
+            synced to the same timer (useSyncedPhase/heroPhase). */}
+        <div className="mt-8">
+          <WorkflowChips phaseIndex={heroPhase} />
         </div>
       </section>
 
-      {/* How it works — simplified to the scannable main chain; the fan-out
-          of everything a submission can trigger moved into its own
-          highlighted "Forms are just the beginning" section below instead
-          of being crammed under these chips too. */}
-      <section className="max-w-3xl mx-auto px-6 mb-20">
-        <WorkflowChips phaseIndex={heroPhase} />
+      {/* How It Works — replaces three sections that used to say the same
+          thing three different ways (an icon-only feature row, a
+          "Forms are just the beginning" chip chain, and a separate "From
+          Idea to Live Form" 6-card list). One section, real sentences a
+          skimming visitor can parse in under two seconds instead of
+          icon-plus-fragment labels. */}
+      <section id="features" className="max-w-4xl mx-auto px-6 pb-20">
+        <h2 className="font-display font-bold text-3xl text-center mb-2">From idea to finished work</h2>
+        <div className="grid sm:grid-cols-3 gap-5 mt-10">
+          {[
+            {
+              n: "1",
+              title: "Describe it.",
+              body: 'Tell Flowora what you need — "employee leave request," "vendor onboarding," "expense claim." Or import a PDF, Word doc, image, or existing Google Form.',
+            },
+            {
+              n: "2",
+              title: "AI builds the form.",
+              body: "Fields, logic, and validation are generated in seconds. Adjust anything by hand if you want.",
+            },
+            {
+              n: "3",
+              title: "Publish anywhere.",
+              body: "Share a link, embed it, or drop it into an existing workflow.",
+            },
+          ].map((s) => (
+            <div key={s.n} className="bg-white border border-border rounded-card p-5 shadow-card">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-3">
+                {s.n}
+              </span>
+              <p className="font-semibold text-sm text-ink/90 mb-1">{s.title}</p>
+              <p className="text-sm text-ink/55 leading-relaxed">{s.body}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Step 4 — every submission moves on its own. Same module colors
+            used everywhere else on the page (hero mock, module cards). */}
+        <div className="bg-primary/[0.04] border border-primary/15 rounded-card p-6 mt-5">
+          <p className="font-semibold text-sm text-ink/90 mb-4">4. Every submission moves on its own.</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {[
+              { icon: Workflow, label: "Approval", desc: "routed to the right person automatically", color: MODULE_COLOR.Approval },
+              { icon: ClipboardList, label: "Work", desc: "tasks created and assigned, nothing falls through", color: MODULE_COLOR.Work },
+              { icon: Building2, label: "CRM", desc: "pipelines and records updated without manual entry", color: MODULE_COLOR.CRM },
+              { icon: Clock, label: "Meetings", desc: "scheduled straight from a submission when needed", color: MODULE_COLOR.Meetings },
+              { icon: Bot, label: "AI Center", desc: "gets a recommendation or insight on the data as it comes in", color: MODULE_COLOR["AI Center"] },
+            ].map(({ icon: Icon, label, desc, color }) => (
+              <div key={label} className="flex items-start gap-2.5">
+                <Icon size={16} className={`${color} shrink-0 mt-0.5`} />
+                <p className="text-sm text-ink/65">
+                  <span className="font-medium text-ink/85">{label}</span> — {desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* Imports — the concrete differentiator, as visual cards instead of
@@ -789,51 +804,6 @@ export default function Landing() {
               <p className="text-sm font-medium text-primary">{c.to}</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* More Than Forms — a visual chain instead of a checklist (the
-          checklist repeated what the hero demo already showed); same
-          module colors/icons as the hero mock and feature cards so the
-          color coding means the same thing every time it appears. One
-          sentence of copy instead of two paragraphs — the diagram does
-          the explaining. */}
-      <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
-        <h2 className="font-display font-bold text-3xl mb-2">Forms are just the beginning.</h2>
-        <p className="text-ink/50 mb-8">Every submission becomes an automated business workflow.</p>
-        <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-3">
-          {[
-            { icon: "📄", label: "Form", color: MODULE_COLOR.Form },
-            { icon: "📈", label: "CRM", color: MODULE_COLOR.CRM },
-            { icon: "✅", label: "Approval", color: MODULE_COLOR.Approval },
-            { icon: "📋", label: "Work", color: MODULE_COLOR.Work },
-            { icon: "📅", label: "Meeting", color: MODULE_COLOR.Meetings },
-            { icon: "🤖", label: "AI Center", color: MODULE_COLOR["AI Center"] },
-          ].map((s, i, arr) => (
-            <span key={s.label} className="flex items-center gap-1">
-              <span className="flex items-center gap-1.5 text-sm font-medium text-ink/80 bg-white border border-border rounded-full px-3.5 py-2 shadow-card">
-                <span className={s.color}>{s.icon}</span> {s.label}
-              </span>
-              {i < arr.length - 1 && <ArrowRight size={14} className="text-ink/25 mx-0.5" />}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="bg-base/40 py-20">
-        <div className="max-w-4xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl text-center mb-12">From Idea to Live Form in Under a Minute</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {HOW_IT_WORKS.map((s) => (
-              <div key={s.label} className="flex items-center gap-3 bg-white border border-border rounded-card p-4 shadow-card">
-                <span className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[16px] shrink-0">
-                  {s.emoji}
-                </span>
-                <span className="font-medium text-sm">{s.label}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -987,17 +957,17 @@ export default function Landing() {
       <section id="faq" className="max-w-2xl mx-auto px-6 py-20">
         <h2 className="font-display font-bold text-3xl text-center mb-10">Frequently asked questions</h2>
         <div>
-          {FAQS.map((f) => <FaqItem key={f.q} {...f} />)}
+          {FAQS.map((f, i) => <FaqItem key={f.q} {...f} defaultOpen={i === 0} />)}
         </div>
       </section>
 
       {/* Final CTA */}
       <section className="bg-primary text-white py-20 text-center">
         <div className="max-w-2xl mx-auto px-6">
-          <h2 className="font-display font-bold text-3xl mb-3">Stop Managing Work Across Five Different Tools</h2>
+          <h2 className="font-display font-bold text-3xl mb-3">Stop managing work across five different tools</h2>
           <p className="text-white/70 mb-8">
-            Build forms, automate approvals, manage leads, assign tasks, schedule meetings, and track everything in
-            one platform.
+            Build forms, automate approvals, manage leads, assign tasks, schedule meetings, and track everything —
+            in one platform.
           </p>
           <Link href="/signup" className="inline-flex items-center gap-1.5 px-6 py-3 rounded-lg bg-white text-primary font-medium hover:bg-white/90">
             Start Free <ArrowRight size={16} />

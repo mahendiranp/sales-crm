@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/platform/send-feedback-emails",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}

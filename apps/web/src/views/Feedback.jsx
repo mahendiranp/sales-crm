@@ -1,14 +1,66 @@
 import { useEffect, useState } from "react";
-import { Plus, Send, LifeBuoy, Paperclip, X as XIcon } from "lucide-react";
+import { Plus, Send, LifeBuoy, Paperclip, X as XIcon, Star, Camera } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 import { useToast } from "../components/ui/Toast";
+import { collectDiagnostics } from "../lib/feedbackDiagnostics";
+import { APP_VERSION } from "../lib/brand";
+import ImageLightbox from "../components/ImageLightbox";
 
 const STATUS_LABEL = { open: "Open", in_progress: "In Progress", resolved: "Resolved" };
 const STATUS_OPTIONS = ["open", "in_progress", "resolved"];
+
+// Values match the backend's CATEGORIES allowlist exactly (routes/feedback.js).
+// "bug" is only offered when Report an Issue is selected — everything else
+// is available for both ticket types.
+const CATEGORIES = [
+  { value: "feature_request", label: "💡 Feature Request" },
+  { value: "general_feedback", label: "👍 General Feedback" },
+  { value: "ui_ux", label: "🎨 UI/UX" },
+  { value: "performance", label: "⚡ Performance" },
+  { value: "ai_quality", label: "🤖 AI Quality" },
+  { value: "integrations", label: "🔗 Integrations" },
+  { value: "forms", label: "📋 Forms" },
+];
+const BUG_CATEGORY = { value: "bug", label: "🐞 Bug" };
+
+const SEVERITIES = [
+  { value: "critical", label: "Critical" },
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
+];
+
+// Shared by the modal's stars and the read-only display in a submitted
+// ticket's thread header — `onChange` omitted makes it read-only.
+function StarRating({ value, onChange }) {
+  const [hover, setHover] = useState(0);
+  const readOnly = !onChange;
+  return (
+    <div className="flex items-center gap-1" onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          disabled={readOnly}
+          onMouseEnter={() => !readOnly && setHover(n)}
+          onClick={() => onChange?.(n)}
+          className={readOnly ? "cursor-default" : "cursor-pointer"}
+          aria-label={`${n} star${n === 1 ? "" : "s"}`}
+        >
+          <Star
+            size={20}
+            className={(hover || value) >= n ? "text-amber-400" : "text-ink/15"}
+            fill={(hover || value) >= n ? "currentColor" : "none"}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // Same allowlist/size cap enforced server-side (utils/fileUploads.js's
 // validateImageAnswer) — this is UX only, the real gate is on the backend.
@@ -23,11 +75,51 @@ function fileToDataUrl(file) {
   });
 }
 
-// Small attach-image control shared by the new-ticket form and the reply
-// box — pick a file, get back a { name, type, dataUrl } object (or null),
-// with a thumbnail + remove button once picked.
-function ImageAttachButton({ value, onChange }) {
+// Captures the current tab via the browser's native Screen/Tab Capture
+// API — there's no way to silently screenshot a page from JS (real
+// browsers deliberately require an explicit user gesture + a picker for
+// this, for the obvious reason that silent screenshotting would be a
+// serious privacy hole), so "automatic" here means "one click starts the
+// capture and it resolves as soon as the browser hands back a frame," not
+// "no permission prompt at all" — that prompt is unavoidable by design.
+// Returns a { name, type, dataUrl } object, same shape as a picked file.
+async function captureScreenshot() {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    throw new Error("Screenshot capture isn't supported in this browser.");
+  }
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "browser" } });
+  try {
+    // A <video> element + canvas.drawImage is the broadly-supported path
+    // (Chrome/Edge/Firefox/Safari all support MediaStream -> <video>) —
+    // the ImageCapture API that would skip this step is still Chromium-only.
+    const video = document.createElement("video");
+    video.srcObject = stream;
+    await video.play();
+    // The stream's first frame can arrive a tick after play() resolves —
+    // wait for real dimensions instead of capturing a blank 0x0 frame.
+    if (!video.videoWidth) {
+      await new Promise((resolve) => video.addEventListener("loadedmetadata", resolve, { once: true }));
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL("image/png");
+    return { name: "screenshot.png", type: "image/png", dataUrl };
+  } finally {
+    stream.getTracks().forEach((t) => t.stop());
+  }
+}
+
+// Small attach-screenshot control shared by the new-ticket form and the
+// reply box — pick a file or capture one, get back a
+// { name, type, dataUrl } object (or null), with a thumbnail + remove
+// button once picked. `allowCapture` shows the "Take Screenshot" button
+// (the reply box skips it — capturing mid-conversation is a less common
+// need, and keeps that toolbar simple).
+function ImageAttachButton({ value, onChange, allowCapture }) {
   const [error, setError] = useState("");
+  const [capturing, setCapturing] = useState(false);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -47,6 +139,22 @@ function ImageAttachButton({ value, onChange }) {
     e.target.value = "";
   };
 
+  const handleCapture = async () => {
+    setError("");
+    setCapturing(true);
+    try {
+      onChange(await captureScreenshot());
+    } catch (err) {
+      // AbortError/NotAllowedError just means the user cancelled the
+      // picker or denied the prompt — not a real error worth surfacing.
+      if (err?.name !== "AbortError" && err?.name !== "NotAllowedError") {
+        setError(err.message || "Couldn't capture a screenshot.");
+      }
+    } finally {
+      setCapturing(false);
+    }
+  };
+
   if (value) {
     return (
       <div className="flex items-center gap-2">
@@ -60,43 +168,94 @@ function ImageAttachButton({ value, onChange }) {
 
   return (
     <div>
-      <label className="inline-flex items-center gap-1.5 text-xs text-ink/50 hover:text-primary cursor-pointer">
-        <Paperclip size={13} />
-        Attach image
-        <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
-      </label>
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="inline-flex items-center gap-1.5 text-xs text-ink/50 hover:text-primary cursor-pointer">
+          <Paperclip size={13} />
+          📷 Attach screenshot (optional)
+          <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
+        </label>
+        {allowCapture && (
+          <button
+            type="button"
+            onClick={handleCapture}
+            disabled={capturing}
+            className="inline-flex items-center gap-1.5 text-xs text-ink/50 hover:text-primary disabled:opacity-50"
+          >
+            <Camera size={13} />
+            {capturing ? "Capturing…" : "Take Screenshot"}
+          </button>
+        )}
+      </div>
       {error && <p className="text-xs text-danger mt-1">{error}</p>}
     </div>
   );
 }
 
 function NewTicketModal({ open, onClose, onCreated }) {
+  const { user } = useAuth();
   const [subject, setSubject] = useState("");
   const [type, setType] = useState("feedback");
+  const [category, setCategory] = useState("");
+  const [rating, setRating] = useState(0);
   const [message, setMessage] = useState("");
+  const [severity, setSeverity] = useState("medium");
+  const [whatWereYouDoing, setWhatWereYouDoing] = useState("");
+  const [whatHappened, setWhatHappened] = useState("");
+  const [whatExpected, setWhatExpected] = useState("");
   const [attachment, setAttachment] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const categoryOptions = type === "issue" ? [...CATEGORIES, BUG_CATEGORY] : CATEGORIES;
 
   useEffect(() => {
     if (open) {
       setSubject("");
       setType("feedback");
+      setCategory("");
+      setRating(0);
       setMessage("");
+      setSeverity("medium");
+      setWhatWereYouDoing("");
+      setWhatHappened("");
+      setWhatExpected("");
       setAttachment(null);
       setError("");
     }
   }, [open]);
+
+  // Switching type away from "issue" after picking "bug" would otherwise
+  // leave category pointing at an option no longer offered.
+  const changeType = (next) => {
+    setType(next);
+    if (next !== "issue" && category === "bug") setCategory("");
+  };
 
   const submit = async () => {
     if (!subject.trim() || !message.trim()) {
       setError("Subject and message are both required.");
       return;
     }
+    if (!category) {
+      setError("Please choose a category.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const { data } = await api.post("/feedback", { subject, message, type, attachment });
+      const { data } = await api.post("/feedback", {
+        subject,
+        message,
+        type,
+        category,
+        rating: type === "feedback" && rating ? rating : null,
+        severity: type === "issue" ? severity : null,
+        whatWereYouDoing: type === "issue" ? whatWereYouDoing : null,
+        whatHappened: type === "issue" ? whatHappened : null,
+        whatExpected: type === "issue" ? whatExpected : null,
+        attachment,
+        diagnostics: collectDiagnostics(user, APP_VERSION),
+      });
       onCreated(data);
     } catch (err) {
       setError(err.response?.data?.error || "Couldn't submit that.");
@@ -107,12 +266,12 @@ function NewTicketModal({ open, onClose, onCreated }) {
 
   return (
     <Modal open={open} onClose={onClose} title="New Feedback or Issue">
-      <div className="flex gap-2 mb-3">
+      <div className="flex gap-2 mb-4">
         {[{ key: "feedback", label: "Feedback" }, { key: "issue", label: "Report an Issue" }].map((t) => (
           <button
             key={t.key}
             type="button"
-            onClick={() => setType(t.key)}
+            onClick={() => changeType(t.key)}
             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border ${
               type === t.key ? "bg-primary text-white border-primary" : "border-border text-ink/60"
             }`}
@@ -121,26 +280,74 @@ function NewTicketModal({ open, onClose, onCreated }) {
           </button>
         ))}
       </div>
-      <Field label="Subject">
-        <input className={inputCls} value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Short summary" autoFocus />
+
+      {type === "feedback" && (
+        <Field label="How would you rate your experience?">
+          <StarRating value={rating} onChange={setRating} />
+        </Field>
+      )}
+
+      <Field label="Category" required>
+        <select className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="" disabled>Choose a category…</option>
+          {categoryOptions.map((c) => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
+        </select>
       </Field>
-      <Field label="Message">
-        <textarea
+
+      <Field label="Subject" required>
+        <input
           className={inputCls}
-          rows={5}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder={type === "issue" ? "What went wrong? Steps to reproduce, if any." : "What's on your mind?"}
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder='Brief summary (e.g. "Need more form templates")'
+          autoFocus
         />
       </Field>
+
+      <Field label="Message" required>
+        <textarea
+          className={inputCls}
+          rows={4}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Tell us what happened or what you'd like to see. The more details you provide, the better we can help."
+        />
+      </Field>
+
+      {type === "issue" && (
+        <>
+          <Field label="Severity">
+            <select className={inputCls} value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              {SEVERITIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </Field>
+          <Field label="What were you trying to do?">
+            <textarea className={inputCls} rows={2} value={whatWereYouDoing} onChange={(e) => setWhatWereYouDoing(e.target.value)} />
+          </Field>
+          <Field label="What happened?">
+            <textarea className={inputCls} rows={2} value={whatHappened} onChange={(e) => setWhatHappened(e.target.value)} />
+          </Field>
+          <Field label="What did you expect to happen?">
+            <textarea className={inputCls} rows={2} value={whatExpected} onChange={(e) => setWhatExpected(e.target.value)} />
+          </Field>
+        </>
+      )}
+
       <div className="mb-3">
-        <ImageAttachButton value={attachment} onChange={setAttachment} />
+        <ImageAttachButton value={attachment} onChange={setAttachment} allowCapture />
       </div>
+
+      <p className="text-xs text-ink/40 mb-3">✓ Diagnostic information will be included automatically to help us investigate.</p>
+
       {error && <p className="text-xs text-danger mb-2">{error}</p>}
+
       <div className="flex justify-end gap-2 mt-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
         <Button onClick={submit} disabled={saving}>{saving ? "Sending…" : "Send"}</Button>
       </div>
+      <p className="text-xs text-ink/35 text-right mt-2">We'll review your feedback and usually respond within 1–2 business days.</p>
     </Modal>
   );
 }
@@ -153,6 +360,18 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
   const [replyAttachment, setReplyAttachment] = useState(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+
+  // Every attached image across the whole thread, in message order — one
+  // shared gallery so the lightbox can arrow through all of them
+  // regardless of which message's thumbnail was actually clicked.
+  const imageGallery = [];
+  const galleryIndexByMessageId = {};
+  ticket.messages.forEach((m) => {
+    if (!m.attachment?.dataUrl) return;
+    galleryIndexByMessageId[m.id] = imageGallery.length;
+    imageGallery.push({ src: m.attachment.dataUrl, alt: m.attachment.name });
+  });
 
   // A reply with only an attachment (no text) is still meaningful — don't
   // force a caption just to satisfy the "message required" validation.
@@ -206,6 +425,31 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
         )}
       </div>
 
+      {(ticket.category || ticket.rating || ticket.severity || ticket.diagnostics) && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border bg-base/50 text-xs">
+          {ticket.category && (
+            <Badge>{[...CATEGORIES, BUG_CATEGORY].find((c) => c.value === ticket.category)?.label || ticket.category}</Badge>
+          )}
+          {ticket.severity && <Badge>{SEVERITIES.find((s) => s.value === ticket.severity)?.label || ticket.severity} severity</Badge>}
+          {ticket.rating && <StarRating value={ticket.rating} />}
+          {isMasterAdmin && ticket.diagnostics && (
+            <span className="text-ink/35 truncate">
+              {[ticket.diagnostics.browser, ticket.diagnostics.os, ticket.diagnostics.screenResolution, ticket.diagnostics.appVersion && `v${ticket.diagnostics.appVersion}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+        </div>
+      )}
+
+      {isMasterAdmin && (ticket.whatWereYouDoing || ticket.whatHappened || ticket.whatExpected) && (
+        <div className="px-4 py-2.5 border-b border-border bg-base/30 text-xs space-y-1">
+          {ticket.whatWereYouDoing && <p><span className="font-medium text-ink/60">Trying to do:</span> {ticket.whatWereYouDoing}</p>}
+          {ticket.whatHappened && <p><span className="font-medium text-ink/60">What happened:</span> {ticket.whatHappened}</p>}
+          {ticket.whatExpected && <p><span className="font-medium text-ink/60">Expected:</span> {ticket.whatExpected}</p>}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {ticket.messages.map((m) => {
           // "Mine" is relative to whoever's *looking* at the thread, not a
@@ -221,9 +465,13 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
               <div className={`inline-block text-left rounded-lg px-3 py-2 text-sm ${mine ? "bg-primary text-white" : "bg-base"}`}>
                 {m.body}
                 {m.attachment?.dataUrl && (
-                  <a href={m.attachment.dataUrl} target="_blank" rel="noreferrer" className="block mt-1.5">
-                    <img src={m.attachment.dataUrl} alt={m.attachment.name} className="max-h-48 rounded-md border border-border/50" />
-                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxIndex(galleryIndexByMessageId[m.id])}
+                    className="block mt-1.5 cursor-zoom-in"
+                  >
+                    <img src={m.attachment.dataUrl} alt={m.attachment.name} className="h-20 w-20 object-cover rounded-md border border-border/50" />
+                  </button>
                 )}
               </div>
               <p className="text-[11px] text-ink/35 mt-0.5">
@@ -252,6 +500,10 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
           <ImageAttachButton value={replyAttachment} onChange={setReplyAttachment} />
         </div>
       </div>
+
+      {lightboxIndex !== null && (
+        <ImageLightbox images={imageGallery} startIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      )}
     </div>
   );
 }
@@ -261,6 +513,7 @@ export default function Feedback() {
   const [tickets, setTickets] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
 
   const load = () =>
     api.get("/feedback").then((r) => {
@@ -295,6 +548,12 @@ export default function Feedback() {
           )
         }
       />
+
+      {justSubmitted && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-primary/8 border border-primary/20 text-sm text-primary font-medium">
+          🎉 Thanks for your feedback! Every suggestion helps us improve Flowora.
+        </div>
+      )}
 
       {tickets.length === 0 ? (
         <Card className="p-10">
@@ -351,6 +610,8 @@ export default function Feedback() {
           setModalOpen(false);
           setTickets((ts) => [ticket, ...ts]);
           setActiveId(ticket.id);
+          setJustSubmitted(true);
+          setTimeout(() => setJustSubmitted(false), 6000);
         }}
       />
     </div>

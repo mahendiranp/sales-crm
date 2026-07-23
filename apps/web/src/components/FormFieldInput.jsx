@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, X as XIcon } from "lucide-react";
 import api from "../api/client";
 import { inputCls } from "./ui";
+import ImageLightbox from "./ImageLightbox";
 
 // Uploaded files are stored inline as base64 (same approach as branding
 // logos/backgrounds — see Forms.jsx's ImageUploadField) rather than to a
@@ -69,6 +71,192 @@ function FileFieldInput({ value, onChange }) {
       )}
       {error && <p className="text-xs text-danger mt-1">{error}</p>}
       <p className="text-[11px] text-ink/35 mt-1">Max 3MB. Allowed: images, PDF, Office docs, csv, txt, zip.</p>
+    </div>
+  );
+}
+
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
+// Matches the "growth" plan tier's server-side limits (utils/plans.js) —
+// a sensible default for a field a form creator hasn't customized, not a
+// hard ceiling: the real enforcement is server-side and clamped to
+// whatever the submitting account's actual plan allows, which may be
+// lower (starter) or higher (enterprise) than these.
+const DEFAULT_MAX_IMAGES = 10;
+const DEFAULT_MAX_FILE_BYTES_IMAGES = 5 * 1024 * 1024;
+const DEFAULT_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+
+// Base64 encodes ~4/3 the original byte count (3 bytes -> 4 chars, plus up
+// to 2 chars of trailing "=" padding) — decoding to a real Blob just to
+// measure size would work too, but this is exact and synchronous.
+function base64Size(dataUrl) {
+  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  const padding = (base64.match(/=+$/)?.[0] || "").length;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+function formatMB(bytes) {
+  return (bytes / (1024 * 1024)).toFixed(1);
+}
+
+// Multi-image gallery upload — "images" field type. Answer shape is an
+// array of { name, type, dataUrl }, unlike "file" (single object) above.
+// The Add-Image tile lives inside the same grid as the thumbnails rather
+// than a separate "+ Add another image" link below it — it's where a user
+// instinctively looks for the next slot once they've already uploaded a
+// few, and naturally disappears once the field's own max is reached
+// instead of needing a separate disabled-state explanation.
+//
+// Two independent limits apply — count (field.maxFiles) and total size
+// across every image combined (field.maxTotalBytes) — surfaced together
+// in one status line/bar so a rejected upload is never a mystery ("why
+// won't this next image upload when it's well under the per-file cap?"
+// is answered by seeing the total is already nearly at its own limit).
+function ImagesFieldInput({ field, value, onChange }) {
+  const [error, setError] = useState("");
+  const [converting, setConverting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(null);
+  const inputRef = useRef(null);
+  const images = Array.isArray(value) ? value : [];
+  const max = field.maxFiles || DEFAULT_MAX_IMAGES;
+  const maxFileBytes = field.maxFileBytes || DEFAULT_MAX_FILE_BYTES_IMAGES;
+  const maxTotalBytes = field.maxTotalBytes || DEFAULT_MAX_TOTAL_BYTES;
+  const atMax = images.length >= max;
+  const totalBytes = images.reduce((sum, img) => sum + (img.dataUrl ? base64Size(img.dataUrl) : 0), 0);
+  const sizePct = Math.min(100, Math.round((totalBytes / maxTotalBytes) * 100));
+
+  const addFiles = async (fileList) => {
+    const all = Array.from(fileList || []);
+    const remaining = max - images.length;
+    if (all.length > remaining) {
+      // A hard stop rather than silently accepting the first `remaining`
+      // and dropping the rest — the user picked a specific batch and
+      // should get to choose which ones to drop, not have that decided
+      // for them.
+      setError(`You can upload up to ${max} images.`);
+      return;
+    }
+    const files = all;
+    if (files.length === 0) return;
+    setError("");
+    const rejected = [];
+    const accepted = [];
+    for (const file of files) {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (!IMAGE_EXTENSIONS.includes(ext)) {
+        rejected.push(`"${file.name}" isn't an image.`);
+        continue;
+      }
+      if (file.size > maxFileBytes) {
+        rejected.push(`"${file.name}" exceeds the ${formatMB(maxFileBytes)} MB limit.`);
+        continue;
+      }
+      accepted.push(file);
+    }
+    const acceptedBytes = accepted.reduce((sum, f) => sum + f.size, 0);
+    if (accepted.length > 0 && totalBytes + acceptedBytes > maxTotalBytes) {
+      setError(
+        `Adding these files would exceed the ${formatMB(maxTotalBytes)} MB total upload limit. ` +
+          `Please remove some files or upload smaller images.`
+      );
+      return;
+    }
+    if (rejected.length) setError(rejected.join(" "));
+    if (accepted.length === 0) return;
+
+    setConverting(true);
+    try {
+      const converted = await Promise.all(
+        accepted.map(async (file) => ({ name: file.name, type: file.type, dataUrl: await fileToDataUrl(file) }))
+      );
+      onChange([...images, ...converted]);
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const removeAt = (i) => onChange(images.filter((_, idx) => idx !== i));
+
+  return (
+    <div>
+      <div
+        onDragOver={(e) => { e.preventDefault(); if (!atMax) setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (!atMax) addFiles(e.dataTransfer.files);
+        }}
+        className={`flex flex-wrap gap-2 p-2 rounded-lg ${dragOver ? "bg-primary/5 ring-2 ring-primary/30" : ""}`}
+      >
+        {images.map((img, i) => (
+          <div key={i} className="relative w-20 shrink-0">
+            <button
+              type="button"
+              onClick={() => setPreviewIndex(i)}
+              className="block h-20 w-20 rounded-lg overflow-hidden border border-border cursor-zoom-in"
+            >
+              <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
+            </button>
+            <button
+              type="button"
+              onClick={() => removeAt(i)}
+              aria-label={`Remove ${img.name}`}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-ink text-white flex items-center justify-center hover:bg-danger"
+            >
+              <XIcon size={11} />
+            </button>
+            <p className="text-[11px] text-ink/45 mt-1 truncate" title={img.name}>{img.name}</p>
+          </div>
+        ))}
+
+        {!atMax && (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={converting}
+            className="h-20 w-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-0.5 text-ink/40 hover:border-primary hover:text-primary shrink-0"
+          >
+            <Plus size={16} />
+            <span className="text-[10px] leading-none text-center">{converting ? "Uploading…" : "Add Image"}</span>
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+        className="hidden"
+      />
+
+      {/* Status bar — count and total-size usage together, so a rejected
+          upload is explained even when every individual file was under
+          the per-file cap. */}
+      <div className="mt-2 max-w-[280px]">
+        <div className="h-1.5 rounded-full bg-base overflow-hidden">
+          <div
+            className={`h-full transition-all ${sizePct >= 100 ? "bg-danger" : "bg-primary"}`}
+            style={{ width: `${sizePct}%` }}
+          />
+        </div>
+        <p className="text-[11px] text-ink/40 mt-1">
+          {images.length}/{max} files · {formatMB(totalBytes)} MB / {formatMB(maxTotalBytes)} MB
+        </p>
+      </div>
+
+      {atMax && <p className="text-[11px] text-ink/35 mt-1">Maximum files reached. You can upload up to {max} images.</p>}
+      {error && <p className="text-xs text-danger mt-1">{error}</p>}
+
+      {previewIndex !== null && (
+        <ImageLightbox
+          images={images.map((img) => ({ src: img.dataUrl, alt: img.name }))}
+          startIndex={previewIndex}
+          onClose={() => setPreviewIndex(null)}
+        />
+      )}
     </div>
   );
 }
@@ -297,6 +485,8 @@ export default function FormFieldInput({ field, value, onChange, invalid, accent
     }
     case "file":
       return <FileFieldInput value={value} onChange={onChange} />;
+    case "images":
+      return <ImagesFieldInput field={field} value={value} onChange={onChange} />;
     case "rating":
       return (
         <div className="flex gap-1.5">

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { ArrowLeft, Eye, Copy, Trash2, Pencil } from "lucide-react";
-import AppShell from "../../../../components/AppShell";
 import RequireApp from "../../../../components/RequireApp";
 import api from "../../../../api/client";
 import { useAuth } from "../../../../context/AuthContext";
@@ -172,10 +171,8 @@ export default function AppFormBuildPage() {
   const { id } = router.query;
 
   return (
-    <AppShell>
-      <RequireApp appKey="forms">
-        {id && <BuildPageContent id={id} />}
-      </RequireApp>
-    </AppShell>
+    <RequireApp appKey="forms">
+      {id && <BuildPageContent id={id} />}
+    </RequireApp>
   );
 }

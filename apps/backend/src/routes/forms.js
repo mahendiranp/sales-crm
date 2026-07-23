@@ -2,10 +2,12 @@ const express = require("express");
 const dayjs = require("dayjs");
 const XLSX = require("xlsx");
 const crypto = require("crypto");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 const { randomUUID: uuid } = crypto;
 const { collection, scopedCollection } = require("../db/store");
 const { tenantAccountsFor: tenantAccountsForId } = require("../utils/tenantAccounts");
 const { requireManager, requireFullAccess } = require("../middleware/auth");
+const { requirePermission } = require("../middleware/permissions");
 const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
 const {
@@ -32,8 +34,10 @@ const {
   slotsForDate,
   extractBookedTimes,
 } = require("../utils/bookingSlots");
-const { validateFileAnswer } = require("../utils/fileUploads");
+const { validateFileAnswer, validateImageAnswer, storeFileAnswer, resolveFileAnswer } = require("../utils/fileUploads");
 const { validateSubmission } = require("../utils/formValidation");
+const turnstile = require("../integrations/turnstileClient");
+const r2Client = require("../integrations/r2Client");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
 const {
@@ -43,6 +47,7 @@ const {
   SEVERITY,
 } = require("../services/eventEngine");
 const { evaluateRules } = require("../services/ruleEngine");
+const { skipRateLimit } = require("../utils/rateLimitSkip");
 
 // There's no scheduled job running the Rule Engine on a timer (see
 // ruleEngine.js's doc comment) — recommendations are only ever (re)computed
@@ -76,7 +81,64 @@ function hashClaimToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+// Resolves every R2-backed file answer in a decrypted answers object to a
+// fresh presigned URL before it goes out over the API — a legacy inline-
+// base64 answer (no r2Key) passes through resolveFileAnswer unchanged, so
+// this is safe to call on every response regardless of when it was
+// submitted (before or after R2 was configured).
+async function resolveAnswersFileFields(answers) {
+  const entries = await Promise.all(
+    Object.entries(answers || {}).map(async ([key, value]) => [
+      key,
+      // "images" answers are arrays of file-answer objects — resolveFileAnswer
+      // only ever looks at a single object's r2Key, so an array needs
+      // resolving item-by-item instead of being handed to it directly
+      // (which would just silently no-op and leave every r2Key unresolved).
+      Array.isArray(value) ? await Promise.all(value.map(resolveFileAnswer)) : await resolveFileAnswer(value),
+    ])
+  );
+  return Object.fromEntries(entries);
+}
+
+// Same idea as resolveAnswersFileFields, but for a form's branding logo —
+// `logoR2Key` (set when R2 is configured) resolves to a fresh presigned
+// `logoDataUrl` so every existing render site (`<img src={branding.logoDataUrl}>`
+// in Forms.jsx / forms/[id].jsx / TemplateCustomizeEditor.jsx) keeps working
+// unchanged. A form with no logo, or a legacy inline logoDataUrl, passes
+// through untouched.
+async function resolveBrandingLogo(settings) {
+  const key = settings?.branding?.logoR2Key;
+  if (!key) return settings;
+  const logoDataUrl = await r2Client.getSignedReadUrl(key);
+  return { ...settings, branding: { ...settings.branding, logoDataUrl } };
+}
+
 const router = express.Router();
+
+// Public form submission is the one unauthenticated write in this file — no
+// session, so IP is the only thing to key on. AI build runs behind auth
+// (requirePermission), so it's keyed per-organization instead of per-IP: one
+// tenant hammering the AI assistant shouldn't get a free pass just because
+// its users share an office IP, and shouldn't throttle unrelated tenants
+// either. Both skipped in NODE_ENV=test, same reasoning as app.js's limiters.
+const publicFormSubmitLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many submissions. Please try again in a minute." },
+  skip: skipRateLimit,
+});
+const aiBuildLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.accountId || ipKeyGenerator(req.ip),
+  message: { error: "Too many AI requests. Please try again in a minute." },
+  skip: skipRateLimit,
+});
+
 // Public routes (/public, /responses POST) bypass auth entirely (see
 // index.js's PUBLIC_ROUTES allowlist), so they use the raw, unscoped
 // collection — there's no req.user to scope by. Every admin-facing route
@@ -147,7 +209,12 @@ async function withResponseCount(form, allResponses) {
         .sort()
         .at(-1)
     : undefined;
-  return { ...form, responseCount: responses.length, lastResponseAt };
+  return {
+    ...form,
+    responseCount: responses.length,
+    lastResponseAt,
+    settings: await resolveBrandingLogo(form.settings),
+  };
 }
 
 router.get("/stats", async (req, res) => {
@@ -259,6 +326,15 @@ router.get("/templates", (req, res) => {
   res.json(listTemplates());
 });
 
+// Full template detail (including fields) for the public marketplace
+// detail page — listTemplates() above intentionally strips fields down to
+// a count for the lightweight gallery list.
+router.get("/templates/:key", (req, res) => {
+  const template = getTemplate(req.params.key);
+  if (!template) return res.status(404).json({ error: "Template not found" });
+  res.json(template);
+});
+
 // Cross-form inbox: every response, in any form owned by this tenant,
 // whose current workflow step this user can act on and hasn't yet voted
 // on. Placed before /:id so "approvals" isn't swallowed as a form id.
@@ -293,7 +369,7 @@ router.get("/approvals/pending", async (req, res) => {
 // Manual trigger since this repo has no cron infra wired up — call this
 // from an external scheduler (Vercel Cron, etc.) on whatever cadence makes
 // sense, or run it by hand. Advances overdue steps' escalation.
-router.post("/workflow/check-escalations", requireManager, async (req, res) => {
+router.post("/workflow/check-escalations", requirePermission("workflow.publish"), async (req, res) => {
   const allResponses = await responsesFor(req).all();
   let escalated = 0;
   for (const r of allResponses) {
@@ -309,21 +385,64 @@ router.post("/workflow/check-escalations", requireManager, async (req, res) => {
   res.json({ checked: allResponses.length, escalated });
 });
 
-router.post("/from-template", requireManager, async (req, res) => {
+// A valid custom `fields` override needs at least a `type` and `label` on
+// every entry — anything else (missing/malformed) falls back to the
+// template's own defaults rather than creating a broken form.
+function isValidFieldOverride(fields) {
+  return (
+    Array.isArray(fields) &&
+    fields.length > 0 &&
+    fields.every((f) => f && typeof f.type === "string" && typeof f.label === "string" && f.label.trim())
+  );
+}
+
+// Only accentColor/logoDataUrl are accepted from the client — everything
+// else in `settings.branding` (theme, background, layout) stays gated
+// behind the authenticated builder, matching the public marketplace
+// preview's deliberately limited customization surface. A malformed/
+// invalid logo is silently dropped (not a hard error) — this is a
+// nice-to-have carried over from a public preview, not a required field,
+// so a bad image shouldn't block the whole "use this template" action.
+async function sanitizedBrandingOverride(branding, { accountId }) {
+  if (!branding || typeof branding !== "object") return null;
+  const out = {};
+  if (typeof branding.accentColor === "string" && branding.accentColor.trim()) out.accentColor = branding.accentColor.trim();
+  if (typeof branding.logoDataUrl === "string" && branding.logoDataUrl.startsWith("data:image/")) {
+    const err = validateImageAnswer("Logo", { name: "logo", dataUrl: branding.logoDataUrl });
+    if (!err) {
+      const stored = await storeFileAnswer({ name: "logo", dataUrl: branding.logoDataUrl }, { accountId, flow: "branding-logo" });
+      if (stored.r2Key) out.logoR2Key = stored.r2Key;
+      else out.logoDataUrl = branding.logoDataUrl;
+      out.logoType = "image";
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+router.post("/from-template", requirePermission("forms.create"), async (req, res) => {
   const limitError = await checkFormLimit(req);
   if (limitError) return res.status(403).json({ error: limitError });
-  const { templateKey, name } = req.body;
+  const { templateKey, name, fields: fieldsOverride, branding: brandingOverride } = req.body;
   const template = getTemplate(templateKey);
   if (!template) return res.status(404).json({ error: "Template not found" });
+
+  // Lets the public template marketplace's "customize before you sign up"
+  // preview carry the visitor's edits (relabeled/reordered/added/removed
+  // fields, accent color, logo) into the created form instead of always
+  // using the template's untouched defaults.
+  const sourceFields = isValidFieldOverride(fieldsOverride) ? fieldsOverride : template.fields;
+  const branding = await sanitizedBrandingOverride(brandingOverride, { accountId: req.user.accountId });
 
   const form = {
     id: uuid(),
     name: name?.trim() || template.name,
     description: template.description,
-    fields: template.fields.map((f) => ({ ...f, id: uuid() })),
+    fields: sourceFields.map((f) => ({ ...f, id: uuid() })),
     settings: {
       submitButtonText: "Submit",
       confirmationMessage: "Thanks for your submission!",
+      layoutColumns: template.layoutColumns || 1,
+      ...(branding ? { branding } : {}),
     },
     status: "Draft",
     createdBy: req.user.id,
@@ -366,7 +485,7 @@ router.get("/:id/public", async (req, res) => {
     name: form.name,
     description: form.description,
     fields: form.fields,
-    settings: form.settings,
+    settings: await resolveBrandingLogo(form.settings),
   });
 });
 
@@ -440,8 +559,9 @@ router.get("/claim", async (req, res) => {
       .json({ error: "This link is invalid or has expired." });
 
   const form = await rawForms.find(response.formId);
+  const decrypted = decryptResponse(response);
   res.json({
-    response: decryptResponse(response),
+    response: { ...decrypted, answers: await resolveAnswersFileFields(decrypted.answers) },
     form: form
       ? {
           id: form.id,
@@ -455,7 +575,7 @@ router.get("/claim", async (req, res) => {
 
 // Manager-only: same shape as /public but works regardless of publish
 // status, so Draft forms can be previewed before going live.
-router.get("/:id/preview", requireManager, async (req, res) => {
+router.get("/:id/preview", requirePermission("forms.view"), async (req, res) => {
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
   res.json({
@@ -478,7 +598,7 @@ router.get("/:id", async (req, res) => {
 // to local state, and the user still has to hit Save. 503 (not a crash)
 // when no API key is configured yet, so the frontend can fall back to its
 // local "add a field for X" pattern-matcher instead of erroring out.
-router.post("/:id/ai/build", requireManager, async (req, res) => {
+router.post("/:id/ai/build", requirePermission("forms.edit"), aiBuildLimiter, async (req, res) => {
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
   if (!req.user.isMasterAdmin) {
@@ -528,7 +648,7 @@ router.post("/:id/ai/build", requireManager, async (req, res) => {
   }
 });
 
-router.post("/", requireManager, async (req, res) => {
+router.post("/", requirePermission("forms.create"), async (req, res) => {
   const limitError = await checkFormLimit(req);
   if (limitError) return res.status(403).json({ error: limitError });
   const form = {
@@ -562,7 +682,7 @@ router.post("/", requireManager, async (req, res) => {
   res.status(201).json({ ...form, accountId: req.user.accountId });
 });
 
-router.put("/:id", requireManager, async (req, res) => {
+router.put("/:id", requirePermission("forms.edit"), async (req, res) => {
   if (req.body.workflow?.enabled && !req.user.isMasterAdmin) {
     const limits = await getLimitsForAccount(req.user.accountId);
     if (!limits.workflows) {
@@ -572,6 +692,27 @@ router.put("/:id", requireManager, async (req, res) => {
           error: `Approval workflows require the Growth plan or higher. Your account is on ${limits.label}.`,
         });
     }
+  }
+  // Re-check the branding logo server-side (same allowlist/size/magic-byte
+  // validation as form file-answers and feedback attachments) — this path
+  // previously accepted whatever the client sent with no check at all.
+  // Only runs when the client actually sent a fresh inline data URL (an
+  // unchanged logo already stored via R2 comes back through as `dataUrl`
+  // too — see resolveFileAnswer — but that's a resolved read-only URL, not
+  // a new upload, so it's left untouched here to avoid re-uploading it).
+  const incomingLogo = req.body.settings?.branding?.logoDataUrl;
+  if (typeof incomingLogo === "string" && incomingLogo.startsWith("data:")) {
+    const err = validateImageAnswer("Logo", { name: "logo", dataUrl: incomingLogo });
+    if (err) return res.status(400).json({ error: err });
+    const stored = await storeFileAnswer({ name: "logo", dataUrl: incomingLogo }, { accountId: req.user.accountId, flow: "branding-logo" });
+    if (stored.r2Key) {
+      // Uploaded to R2 — store the reference, not the raw base64.
+      req.body.settings.branding.logoR2Key = stored.r2Key;
+      delete req.body.settings.branding.logoDataUrl;
+    }
+    // else: R2 isn't configured, storeFileAnswer returned the answer
+    // unchanged — logoDataUrl already holds the validated inline base64,
+    // nothing left to do (today's exact pre-R2 behavior).
   }
   const updated = await formsFor(req).update(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: "Not found" });
@@ -588,7 +729,7 @@ router.put("/:id", requireManager, async (req, res) => {
   res.json(updated);
 });
 
-router.delete("/:id", requireFullAccess, async (req, res) => {
+router.delete("/:id", requirePermission("forms.delete"), async (req, res) => {
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
   const formResponses = await responsesFor(req).query(
@@ -609,7 +750,7 @@ router.delete("/:id", requireFullAccess, async (req, res) => {
   res.status(204).end();
 });
 
-router.post("/:id/duplicate", requireManager, async (req, res) => {
+router.post("/:id/duplicate", requirePermission("forms.create"), async (req, res) => {
   const limitError = await checkFormLimit(req);
   if (limitError) return res.status(403).json({ error: limitError });
   const form = await formsFor(req).find(req.params.id);
@@ -627,7 +768,7 @@ router.post("/:id/duplicate", requireManager, async (req, res) => {
   res.status(201).json({ ...copy, accountId: req.user.accountId });
 });
 
-router.put("/:id/publish", requireManager, async (req, res) => {
+router.put("/:id/publish", requirePermission("forms.publish"), async (req, res) => {
   const updated = await formsFor(req).update(req.params.id, {
     status: "Published",
   });
@@ -635,7 +776,7 @@ router.put("/:id/publish", requireManager, async (req, res) => {
   res.json(updated);
 });
 
-router.put("/:id/unpublish", requireManager, async (req, res) => {
+router.put("/:id/unpublish", requirePermission("forms.publish"), async (req, res) => {
   const updated = await formsFor(req).update(req.params.id, {
     status: "Draft",
   });
@@ -687,8 +828,9 @@ router.get("/:id/responses", async (req, res) => {
       Math.max(1, parseInt(req.query.limit, 10) || 50),
     );
     const start = (page - 1) * limit;
+    const pageItems = sorted.slice(start, start + limit);
     return res.json({
-      items: sorted.slice(start, start + limit),
+      items: await Promise.all(pageItems.map(async (r) => ({ ...r, answers: await resolveAnswersFileFields(r.answers) }))),
       total: sorted.length,
       page,
       limit,
@@ -696,7 +838,7 @@ router.get("/:id/responses", async (req, res) => {
     });
   }
 
-  res.json(sorted);
+  res.json(await Promise.all(sorted.map(async (r) => ({ ...r, answers: await resolveAnswersFileFields(r.answers) }))));
 });
 
 // Cap on how many responses go into a single AI Insights call — unbounded
@@ -711,7 +853,7 @@ const INSIGHTS_MIN_RESPONSES = 3;
 // AI Insights: summarizes themes/trends across a form's most recent
 // responses instead of making someone read every submission by hand.
 // Gated the same way as every other AI action — plan tier, then credits.
-router.post("/:id/insights", requireManager, async (req, res) => {
+router.post("/:id/insights", requirePermission("forms.view"), async (req, res) => {
   const form = await formsFor(req).find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
 
@@ -767,7 +909,11 @@ router.post("/:id/insights", requireManager, async (req, res) => {
       for (const f of form.fields) {
         const value = r.answers?.[f.id];
         answers[f.label] =
-          f.type === "file" && value?.name ? value.name : value;
+          f.type === "file" && value?.name
+            ? value.name
+            : f.type === "images" && Array.isArray(value)
+              ? value.map((v) => v?.name).filter(Boolean).join(", ")
+              : value;
       }
       return answers;
     });
@@ -798,9 +944,19 @@ router.post("/:id/insights", requireManager, async (req, res) => {
 // Public submission — anonymous form-fillers and the WhatsApp survey engine
 // have no session, so the response inherits the *form's* tenant, not a
 // (nonexistent) requester's.
-router.post("/:id/responses", async (req, res) => {
+router.post("/:id/responses", publicFormSubmitLimiter, async (req, res) => {
   const form = await rawForms.find(req.params.id);
   if (!form) return res.status(404).json({ error: "Not found" });
+
+  // Blocks automated spam submissions on public forms — same opt-in-by-
+  // config pattern as the signup route above, so accounts/environments
+  // without a Turnstile secret key configured aren't broken.
+  if (turnstile.isConfigured()) {
+    const human = await turnstile.verifyToken(req.body.turnstileToken, req.ip);
+    if (!human) {
+      return res.status(400).json({ error: "Verification failed — please try again." });
+    }
+  }
 
   const responseLimitError = await checkResponseLimit(form);
   if (responseLimitError)
@@ -815,10 +971,70 @@ router.post("/:id/responses", async (req, res) => {
 
   // Re-check every file field server-side — same reasoning, see
   // utils/fileUploads.js for what's enforced (allowlisted types, size cap,
-  // magic-byte sniff).
+  // magic-byte sniff). Once validated, the answer is handed to R2 (or left
+  // inline if R2 isn't configured) before the whole answers object is
+  // encrypted below — storeFileAnswer() is a no-op passthrough either way
+  // when there's nothing to upload.
   for (const field of form.fields.filter((f) => f.type === "file")) {
-    const err = validateFileAnswer(field.label, req.body.answers?.[field.id]);
+    const answer = req.body.answers?.[field.id];
+    const err = validateFileAnswer(field.label, answer);
     if (err) return res.status(400).json({ error: err });
+    if (answer) {
+      req.body.answers[field.id] = await storeFileAnswer(answer, { accountId: form.accountId, flow: "form-response" });
+    }
+  }
+
+  // "images" is the multi-file sibling of "file" — same re-validation
+  // reasoning, image-only allowlist (ImagesFieldInput never offers
+  // non-image types client-side), array of up to field.maxFiles answers
+  // instead of one. Every limit is clamped to the account's actual plan
+  // tier (utils/plans.js) — a form creator's own field config
+  // (Forms.jsx's "Max images" property) is a UX ceiling only; the real
+  // enforcement is min(field's config, plan's limit), always, regardless
+  // of what the field itself claims. Master admin accounts skip the plan
+  // clamp entirely, same as every other plan-gated check in this app.
+  const imagesFields = form.fields.filter((f) => f.type === "images");
+  if (imagesFields.length > 0) {
+    const account = await accounts.find(form.accountId);
+    const planLimits = account?.isMasterAdmin ? null : await getLimitsForAccount(form.accountId);
+
+    for (const field of imagesFields) {
+      const answers = req.body.answers?.[field.id];
+      if (answers === undefined || answers === null) continue;
+      if (!Array.isArray(answers)) {
+        return res.status(400).json({ error: `"${field.label}": expected a list of images.` });
+      }
+
+      const max = planLimits ? Math.min(field.maxFiles || Infinity, planLimits.maxImageFiles) : field.maxFiles || 10;
+      if (answers.length > max) {
+        return res.status(400).json({ error: `"${field.label}": up to ${max} images allowed.` });
+      }
+
+      const maxFileBytes = planLimits
+        ? Math.min(field.maxFileBytes || Infinity, planLimits.maxImageFileBytes)
+        : field.maxFileBytes || 5 * 1024 * 1024;
+      const maxTotalBytes = planLimits
+        ? Math.min(field.maxTotalBytes || Infinity, planLimits.maxImageTotalBytes)
+        : field.maxTotalBytes || 20 * 1024 * 1024;
+
+      const totalBytes = answers.reduce((sum, a) => {
+        const base64 = (a?.dataUrl || "").slice((a?.dataUrl || "").indexOf(",") + 1);
+        return sum + Math.floor((base64.length * 3) / 4);
+      }, 0);
+      if (totalBytes > maxTotalBytes) {
+        return res.status(400).json({
+          error: `"${field.label}": total upload size exceeds ${(maxTotalBytes / (1024 * 1024)).toFixed(1)} MB.`,
+        });
+      }
+
+      const stored = [];
+      for (const answer of answers) {
+        const err = validateImageAnswer(field.label, answer, maxFileBytes);
+        if (err) return res.status(400).json({ error: err });
+        stored.push(await storeFileAnswer(answer, { accountId: form.accountId, flow: "form-response" }));
+      }
+      req.body.answers[field.id] = stored;
+    }
   }
 
   // Re-check every booking field server-side — the slot list the
@@ -975,7 +1191,8 @@ router.post("/:id/responses", async (req, res) => {
     });
   }
 
-  res.status(201).json(decryptResponse(response));
+  const decryptedResponse = decryptResponse(response);
+  res.status(201).json({ ...decryptedResponse, answers: await resolveAnswersFileFields(decryptedResponse.answers) });
 });
 
 // Public, unauthenticated — same reasoning as POST /:id/responses: a
@@ -1136,7 +1353,7 @@ router.post("/:id/responses/:responseId/workflow/decide", async (req, res) => {
 
 router.delete(
   "/:id/responses/:responseId",
-  requireFullAccess,
+  requirePermission("forms.delete"),
   async (req, res) => {
     const removed = await responsesFor(req).remove(req.params.responseId);
     if (!removed) return res.status(404).json({ error: "Not found" });
@@ -1173,7 +1390,13 @@ function responseRows(form, formResponses) {
       const answer = r.answers?.[f.id];
       // File answers are a { name, type, dataUrl } object — export just the
       // filename, not the (potentially megabytes-long) base64 payload.
-      const cell = f.type === "file" && answer?.name ? answer.name : answer;
+      // "images" is the same idea for an array of them.
+      const cell =
+        f.type === "file" && answer?.name
+          ? answer.name
+          : f.type === "images" && Array.isArray(answer)
+            ? answer.map((v) => v?.name).filter(Boolean).join(", ")
+            : answer;
       row[f.label] = sanitizeCsvCell(cell ?? "");
     });
     return row;

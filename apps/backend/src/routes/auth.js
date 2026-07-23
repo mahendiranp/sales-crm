@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { randomUUID: uuid } = require("crypto");
+const rateLimit = require("express-rate-limit");
 const { collection } = require("../db/store");
 const { tenantAccountsFor } = require("../utils/tenantAccounts");
 const { signToken, requireAuth, requireFullAccess, effectivePermission } = require("../middleware/auth");
@@ -9,11 +10,52 @@ const { defaults: settingsDefaults, getLimitsForAccount } = require("./settings"
 const emailClient = require("../integrations/emailClient");
 const { APP_NAME } = require("../utils/brand");
 const { emailLayout } = require("../utils/emailTemplate");
+const { recordEvent, EVENT_TYPES, EVENT_SOURCES } = require("../services/eventEngine");
+const turnstile = require("../integrations/turnstileClient");
+const { ROLES, ROLE_TO_RANK, roleFor } = require("../middleware/permissions");
+const { skipRateLimit } = require("../utils/rateLimitSkip");
+
+// Teammates can be assigned any real role except "owner" — that one is
+// reserved for the tenant creator (authRole "admin") and isn't something an
+// owner can hand to (or revoke from) someone else via this endpoint.
+const ASSIGNABLE_ROLES = ROLES.filter((r) => r !== "owner");
 
 const router = express.Router();
 const accounts = collection("accounts");
 const settings = collection("settings");
 const signupOtps = collection("signup_otps");
+
+// Tighter than app.js's blanket /api/auth limiter (20/15min, a broad
+// backstop) — these three routes are the ones actually worth brute-forcing
+// or spamming (credential guessing, OTP-email flooding, token guessing), so
+// each gets its own per-IP ceiling on top of that backstop. Skipped in
+// NODE_ENV=test for the same reason app.js's limiters are: the test suite
+// hits these from one in-process client with no real IP diversity — see
+// utils/rateLimitSkip.js for the one opt-in exception (the rate-limit spec).
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please try again in a minute." },
+  skip: skipRateLimit,
+});
+const otpRequestLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many OTP requests. Please try again in 10 minutes." },
+  skip: skipRateLimit,
+});
+const passwordResetLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many password reset attempts. Please try again in 10 minutes." },
+  skip: skipRateLimit,
+});
 
 const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -30,7 +72,7 @@ function publicAccount(acc) {
   // Always computed, never trusted from the stored field alone — admin/
   // master-admin accounts don't store a `permission` value (they're
   // implicitly "full"), so the client needs the resolved value, not the raw field.
-  return { ...rest, permission: effectivePermission(acc) };
+  return { ...rest, permission: effectivePermission(acc), role: roleFor(acc) };
 }
 
 // Actually creates the account + initial settings once an OTP has been
@@ -108,10 +150,20 @@ router.get("/check-email", async (req, res) => {
 // yet. verify-otp checks the code and only then actually creates the
 // account. This confirms the signup email is real/reachable before it
 // becomes the tenant owner's login.
-router.post("/signup/request-otp", async (req, res) => {
-  const { name, email, password, company, apps, modules } = req.body;
+router.post("/signup/request-otp", otpRequestLimiter, async (req, res) => {
+  const { name, email, password, company, apps, modules, turnstileToken } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Name, email, and password are required." });
+  }
+  // Blocks automated signup spam before it ever burns an OTP email — only
+  // enforced when a secret key is actually configured (see turnstileClient's
+  // isConfigured()), same opt-in-by-config pattern as Razorpay elsewhere in
+  // this app, so a dev/test environment without Cloudflare keys isn't broken.
+  if (turnstile.isConfigured()) {
+    const human = await turnstile.verifyToken(turnstileToken, req.ip);
+    if (!human) {
+      return res.status(400).json({ error: "Verification failed — please try again." });
+    }
   }
   if (password.length < 8) {
     return res.status(400).json({ error: "Password must be at least 8 characters." });
@@ -196,13 +248,41 @@ router.post("/signup/verify-otp", async (req, res) => {
   res.status(201).json({ user: publicAccount(account), token: signToken(account) });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   const account = (await accounts.all()).find((a) => a.email.toLowerCase() === (email || "").trim().toLowerCase());
   const valid = account && (await bcrypt.compare(password || "", account.password));
   if (!valid) {
+    // A wrong-email attempt has no known account/tenant to attach an audit
+    // event to (recordEvent requires accountId) — logged server-side only,
+    // not silently dropped, but not fabricated onto some other tenant either.
+    if (account) {
+      await recordEvent({
+        accountId: account.accountId || account.id,
+        type: EVENT_TYPES.AUTH_LOGIN_FAILED,
+        entityType: "account",
+        entityId: account.id,
+        actorId: account.id,
+        actorName: account.email,
+        source: EVENT_SOURCES.AUTH,
+        payload: { email: account.email },
+      });
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(`Failed login attempt for unrecognized email: ${email}`);
+    }
     return res.status(401).json({ error: "Invalid email or password." });
   }
+  await recordEvent({
+    accountId: account.accountId || account.id,
+    type: EVENT_TYPES.AUTH_LOGIN_SUCCESS,
+    entityType: "account",
+    entityId: account.id,
+    actorId: account.id,
+    actorName: account.email,
+    source: EVENT_SOURCES.AUTH,
+    payload: { email: account.email },
+  });
   res.json({ user: publicAccount(account), token: signToken(account) });
 });
 
@@ -271,7 +351,7 @@ router.post("/google", async (req, res) => {
 });
 
 // ---------------- PASSWORD RESET ----------------
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   const { email } = req.body;
   const account = (await accounts.all()).find((a) => a.email.toLowerCase() === (email || "").trim().toLowerCase());
 
@@ -311,7 +391,7 @@ router.post("/forgot-password", async (req, res) => {
   res.json(genericResponse);
 });
 
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", passwordResetLimiter, async (req, res) => {
   const { email, token, password } = req.body;
   if (!email || !token || !password) {
     return res.status(400).json({ error: "Email, token, and new password are required." });
@@ -334,6 +414,17 @@ router.post("/reset-password", async (req, res) => {
     password: await bcrypt.hash(password, BCRYPT_ROUNDS),
     resetTokenHash: null,
     resetTokenExpiresAt: null,
+  });
+
+  await recordEvent({
+    accountId: account.accountId || account.id,
+    type: EVENT_TYPES.AUTH_PASSWORD_CHANGED,
+    entityType: "account",
+    entityId: account.id,
+    actorId: account.id,
+    actorName: account.email,
+    source: EVENT_SOURCES.AUTH,
+    payload: { via: "reset-link" },
   });
 
   // Confirms the change actually happened, and doubles as an alert if the
@@ -371,16 +462,24 @@ router.get("/team", requireAuth, requireOwner, async (req, res) => {
 });
 
 router.post("/team", requireAuth, requireOwner, async (req, res) => {
-  const { name, email, password, permission } = req.body;
+  const { name, email, password, permission, role } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Name, email, and password are required." });
   }
   if (password.length < 8) {
     return res.status(400).json({ error: "Password must be at least 8 characters." });
   }
-  if (!["view", "edit", "full"].includes(permission)) {
+  // `role` (owner/admin/manager/employee/viewer) is the real RBAC field;
+  // `permission` (view/edit/full) still works for any caller that hasn't
+  // switched over yet — a role always wins and keeps permission in sync.
+  if (role && !ASSIGNABLE_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Role must be one of: ${ASSIGNABLE_ROLES.join(", ")}.` });
+  }
+  if (!role && !["view", "edit", "full"].includes(permission)) {
     return res.status(400).json({ error: "Permission must be view, edit, or full." });
   }
+  const resolvedRole = role || null;
+  const resolvedPermission = role ? ROLE_TO_RANK[role] : permission;
   if (!req.user.isMasterAdmin) {
     const limits = await getLimitsForAccount(req.user.accountId);
     if (limits.maxUsers !== Infinity) {
@@ -403,7 +502,8 @@ router.post("/team", requireAuth, requireOwner, async (req, res) => {
     password: await bcrypt.hash(password, BCRYPT_ROUNDS),
     authRole: "manager",
     isMasterAdmin: false,
-    permission,
+    permission: resolvedPermission,
+    role: resolvedRole,
     isDemo: false,
     createdAt: new Date().toISOString(),
   };
@@ -416,16 +516,38 @@ router.put("/team/:id", requireAuth, requireOwner, async (req, res) => {
   if (!teammate || (teammate.accountId || teammate.id) !== req.user.accountId || teammate.id === req.user.id) {
     return res.status(404).json({ error: "Not found" });
   }
-  const { permission, name } = req.body;
+  const { permission, role, name } = req.body;
   const patch = {};
-  if (permission) {
+  if (role) {
+    if (!ASSIGNABLE_ROLES.includes(role)) {
+      return res.status(400).json({ error: `Role must be one of: ${ASSIGNABLE_ROLES.join(", ")}.` });
+    }
+    patch.role = role;
+    patch.permission = ROLE_TO_RANK[role];
+  } else if (permission) {
     if (!["view", "edit", "full"].includes(permission)) {
       return res.status(400).json({ error: "Permission must be view, edit, or full." });
     }
     patch.permission = permission;
+    // A caller updating via the legacy `permission` field clears any
+    // previously-assigned real role — otherwise the two would disagree
+    // about what this teammate can do (role always wins at auth time).
+    patch.role = null;
   }
   if (name) patch.name = name;
   const updated = await accounts.update(req.params.id, patch);
+  if ((role && role !== teammate.role) || (permission && !role && permission !== teammate.permission)) {
+    await recordEvent({
+      accountId: req.user.accountId,
+      type: EVENT_TYPES.AUTH_PERMISSION_CHANGED,
+      entityType: "account",
+      entityId: teammate.id,
+      actorId: req.user.id,
+      actorName: req.user.email,
+      source: EVENT_SOURCES.AUTH,
+      payload: { teammateEmail: teammate.email, from: role ? teammate.role : teammate.permission, to: role || permission },
+    });
+  }
   res.json(publicAccount(updated));
 });
 
@@ -435,6 +557,16 @@ router.delete("/team/:id", requireAuth, requireOwner, requireFullAccess, async (
     return res.status(404).json({ error: "Not found" });
   }
   await accounts.remove(req.params.id);
+  await recordEvent({
+    accountId: req.user.accountId,
+    type: EVENT_TYPES.AUTH_TEAMMATE_REMOVED,
+    entityType: "account",
+    entityId: teammate.id,
+    actorId: req.user.id,
+    actorName: req.user.email,
+    source: EVENT_SOURCES.AUTH,
+    payload: { teammateEmail: teammate.email },
+  });
   res.status(204).end();
 });
 

@@ -17,3 +17,11 @@ coverage/
 cypress/screenshots/
 cypress/videos/
 cypress/downloads/
+
+# A separate, unrelated git repository some local checkouts have sitting in
+# this directory — it got committed once by accident as a broken gitlink
+# (git add on a dir containing its own .git records a submodule pointer,
+# not real content), with no .gitmodules ever created for it. That's what
+# caused every CI run's post-checkout cleanup to warn "No url found for
+# submodule path 'titanCRM'". Ignored here so it can't happen again.
+/titanCRM/
