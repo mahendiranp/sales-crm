@@ -103,17 +103,19 @@ export function initLogRocket() {
 // child effects before parent ones, so AuthProvider's effect can actually
 // run before MyApp's.
 //
-// Deliberately doesn't send name/email — LogRocket.identify() ties a
-// session to a real person by design (that's the point of identifying at
-// all), but that also means email ends up sitting in a third-party tool's
-// dashboard. user.id + accountId is enough to find "this specific person's
-// session in this specific tenant" from internal records without handing
-// LogRocket PII it doesn't need.
+// Deliberately doesn't send the real name/email — LogRocket.identify()
+// ties a session to a person by design (that's the point of identifying
+// at all), but that also means whatever's in `name`/`email` sits in a
+// third-party tool's dashboard. `name` is set to accountId instead of the
+// real name — still gives every session a stable, human-searchable label
+// in LogRocket's UI (which surfaces the `name` trait prominently) tied to
+// a specific tenant, without handing LogRocket actual PII.
 export function identifyLogRocketUser(user) {
   if (!isLogRocketConfigured() || !user?.id || typeof window === "undefined") return;
   initLogRocket();
   loadLogRocket().then((LogRocket) => {
     LogRocket.identify(user.id, {
+      name: user.accountId,
       accountId: user.accountId,
       authRole: user.authRole,
       isMasterAdmin: !!user.isMasterAdmin,
