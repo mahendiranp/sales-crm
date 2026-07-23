@@ -72,15 +72,13 @@ function feedbackRequestEmailHtml(firstName) {
   });
 }
 
-// Manual trigger since this repo has no cron infra wired up (same
-// reasoning as forms.js's /workflow/check-escalations) — call this from
-// an external scheduler (Vercel Cron, etc.) once a day, or run it by
-// hand. Only ever emails an account's actual owner (authRole "admin" —
-// the person who signed up), never invited teammates, never demo/master-
-// admin accounts, and never the same account twice (feedbackEmailSentAt
-// gates that). The 2-3 day window means a daily run catches every owner
-// exactly once, whichever day of that window the job happens to run on.
-router.post("/send-feedback-emails", requireMasterAdmin, async (req, res) => {
+// Shared by both trigger routes below — only ever emails an account's
+// actual owner (authRole "admin" — the person who signed up), never
+// invited teammates, never demo/master-admin accounts, and never the same
+// account twice (feedbackEmailSentAt gates that). The 2-3 day window
+// means a daily run catches every owner exactly once, whichever day of
+// that window the job happens to run on.
+async function runFeedbackEmailSweep() {
   const now = Date.now();
   const minAgeMs = FEEDBACK_EMAIL_MIN_DAYS * 24 * 60 * 60 * 1000;
   const maxAgeMs = FEEDBACK_EMAIL_MAX_DAYS * 24 * 60 * 60 * 1000;
@@ -113,7 +111,32 @@ router.post("/send-feedback-emails", requireMasterAdmin, async (req, res) => {
     }
   }
 
-  res.json({ checked: allAccounts.length, eligible: eligible.length, sent });
+  return { checked: allAccounts.length, eligible: eligible.length, sent };
+}
+
+// Manual trigger for an admin to run on demand — same underlying sweep the
+// scheduled route below uses.
+router.post("/send-feedback-emails", requireMasterAdmin, async (req, res) => {
+  res.json(await runFeedbackEmailSweep());
+});
+
+// The actual scheduled trigger — see vercel.json's `crons` entry (fires
+// daily). Vercel Cron only ever sends GET requests and has no logged-in
+// user session to attach a JWT to, so this can't go through
+// requireMasterAdmin like the route above; instead it's listed in
+// app.js's PUBLIC_ROUTES (bypassing requireAuth entirely) and gated here
+// on Vercel's own documented cron-auth convention instead: when a
+// CRON_SECRET env var is set on the project, Vercel automatically sends
+// `Authorization: Bearer <CRON_SECRET>` on every cron-triggered request,
+// which nothing else can forge without knowing that secret. If
+// CRON_SECRET isn't set (e.g. local dev), this route refuses every
+// request rather than silently running unauthenticated.
+router.get("/send-feedback-emails", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.header("authorization") !== `Bearer ${secret}`) {
+    return res.status(401).json({ error: "Unauthorized." });
+  }
+  res.json(await runFeedbackEmailSweep());
 });
 
 module.exports = router;
