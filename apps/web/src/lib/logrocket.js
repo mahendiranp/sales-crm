@@ -102,13 +102,18 @@ export function initLogRocket() {
 // effects (this one, or _app.jsx's) happens to run first — React fires
 // child effects before parent ones, so AuthProvider's effect can actually
 // run before MyApp's.
+//
+// Deliberately doesn't send name/email — LogRocket.identify() ties a
+// session to a real person by design (that's the point of identifying at
+// all), but that also means email ends up sitting in a third-party tool's
+// dashboard. user.id + accountId is enough to find "this specific person's
+// session in this specific tenant" from internal records without handing
+// LogRocket PII it doesn't need.
 export function identifyLogRocketUser(user) {
   if (!isLogRocketConfigured() || !user?.id || typeof window === "undefined") return;
   initLogRocket();
   loadLogRocket().then((LogRocket) => {
     LogRocket.identify(user.id, {
-      name: user.name,
-      email: user.email,
       accountId: user.accountId,
       authRole: user.authRole,
       isMasterAdmin: !!user.isMasterAdmin,
