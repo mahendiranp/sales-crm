@@ -40,7 +40,16 @@ function createIsolatedTenant(prefix) {
         body: { email, otp },
       });
     })
-    .then((res) => ({ token: res.body.token, accountId: res.body.user.accountId, email }));
+    .then((res) => ({
+      token: res.body.token,
+      // A fresh owner account never has `accountId` set on the stored
+      // record itself (only invited teammates do) — the real tenant id is
+      // `accountId || id`, the exact same fallback signToken() uses when
+      // computing the JWT's own accountId claim. publicAccount() doesn't
+      // back-fill this into the response, so it has to be done here too.
+      accountId: res.body.user.accountId || res.body.user.id,
+      email,
+    }));
 }
 
 describe("Feature: API Rate Limiting", () => {
@@ -121,10 +130,10 @@ describe("Feature: Organization Data Isolation", () => {
   let formInOrgB;
 
   before(() => {
-    // Chained (not two independent top-level cy.request() calls) so Mocha's
-    // hook-completion detection reliably waits for both — two unchained
-    // command queues in one hook raced against the "it" blocks in CI,
-    // leaving orgB unset when the first test ran.
+    // Chained rather than two independent top-level cy.request() calls —
+    // not required for correctness (Cypress does serialize both onto one
+    // command queue either way), but keeps the two tenant creations in a
+    // single readable sequence.
     createIsolatedTenant("org-a")
       .then((t) => (orgA = t))
       .then(() => createIsolatedTenant("org-b"))
