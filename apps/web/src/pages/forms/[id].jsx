@@ -7,6 +7,7 @@ import FormFieldInput from "../../components/FormFieldInput";
 import Seo from "../../components/Seo";
 import { LAYOUT_GRID_COLS_CLASS, fieldColSpanClass, isFieldVisible } from "../../lib/formLayout";
 import { getLayoutStyleClasses, getFieldRowClasses, findPresentationTemplate } from "../../lib/formLayouts";
+import Turnstile from "../../components/Turnstile";
 
 function validateField(field, value) {
   const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
@@ -74,6 +75,7 @@ export default function PublicFormPage() {
   const [submitError, setSubmitError] = useState("");
   const [step, setStep] = useState(0);
   const [saveEmail, setSaveEmail] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState(null);
   const [saveState, setSaveState] = useState("idle"); // idle | sending | sent | error
   // Fields hidden by a "Logic" rule (see FieldEditor's Logic section in the
   // builder) are skipped entirely here — not just visually hidden — so they
@@ -105,7 +107,7 @@ export default function PublicFormPage() {
     setSubmitting(true);
     try {
       if (!isPreview) {
-        const { data } = await api.post(`/forms/${id}/responses`, { answers });
+        const { data } = await api.post(`/forms/${id}/responses`, { answers, turnstileToken });
         setSubmittedResponse(data);
       }
       setSubmitted(true);
@@ -337,6 +339,8 @@ export default function PublicFormPage() {
 
             {submitError && <p className="text-sm text-danger mt-4">{submitError}</p>}
 
+            {step === visibleFields.length - 1 && <Turnstile onVerify={setTurnstileToken} className="flex justify-center mt-4" />}
+
             {presentationTemplate.nav === "arrows" ? (
               <div className="flex items-center justify-center gap-4 mt-6">
                 <button
@@ -387,6 +391,8 @@ export default function PublicFormPage() {
             ))}
 
             {submitError && <p className="text-sm text-danger sm:col-span-full">{submitError}</p>}
+
+            <Turnstile onVerify={setTurnstileToken} className="flex justify-center sm:col-span-full" />
 
             <button
               type="submit"
