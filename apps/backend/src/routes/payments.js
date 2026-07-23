@@ -1,7 +1,7 @@
 const express = require("express");
 const { randomUUID: uuid } = require("crypto");
 const { collection } = require("../db/store");
-const { requireManager } = require("../middleware/auth");
+const { requirePermission } = require("../middleware/permissions");
 const { PLANS } = require("../utils/plans");
 const razorpay = require("../integrations/razorpayClient");
 const { topUpCreditsForPlan } = require("../utils/aiCredits");
@@ -69,7 +69,7 @@ router.get("/launch-offer", async (req, res) => {
   });
 });
 
-router.post("/create-order", requireManager, async (req, res) => {
+router.post("/create-order", requirePermission("billing.manage"), async (req, res) => {
   if (!isOwner(req)) {
     return res.status(403).json({ error: "Only the account owner can change the billing plan." });
   }
@@ -133,7 +133,7 @@ router.post("/create-order", requireManager, async (req, res) => {
 // be reached without ever actually paying (e.g. by calling it directly).
 // Only a signature that verifies against RAZORPAY_KEY_SECRET (which the
 // browser never has) proves the payment is real.
-router.post("/verify", requireManager, async (req, res) => {
+router.post("/verify", requirePermission("billing.manage"), async (req, res) => {
   if (!isOwner(req)) {
     return res.status(403).json({ error: "Only the account owner can change the billing plan." });
   }

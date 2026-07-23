@@ -117,7 +117,7 @@ jobs:
           exit 1
 
       - name: Run Cypress
-        run: npx cypress run --spec cypress/e2e/verify.cy.js
+        run: npx cypress run --spec cypress/e2e/verify.cy.js,cypress/e2e/security.cy.js
 
       - name: Upload Cypress screenshots on failure
         if: failure()

@@ -13,6 +13,7 @@ import { APP_NAME } from "../lib/brand";
 import { loadRazorpayScript } from "../lib/razorpay";
 import Seo from "../components/Seo";
 import GoogleSignInButton from "../components/GoogleSignInButton";
+import Turnstile from "../components/Turnstile";
 
 const recommendedAppsMap = () => Object.fromEntries(RECOMMENDED_APP_KEYS.map((k) => [k, true]));
 const recommendedModulesMap = () => Object.fromEntries(RECOMMENDED_MODULE_KEYS.map((k) => [k, true]));
@@ -109,6 +110,7 @@ export default function Signup() {
   const [otp, setOtp] = useState("");
   const [otpError, setOtpError] = useState("");
   const [devOtp, setDevOtp] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState(null);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState("");
   const { requestSignupOtp, verifySignupOtp } = useAuth();
@@ -157,7 +159,7 @@ export default function Signup() {
       // else can still be turned on later from the Admin Portal.
       const modules = Object.fromEntries(CORE_MODULES.map((m) => [m.key, !!selectedModules[m.key]]));
       const appsToEnable = Object.fromEntries(Object.entries(selectedApps).filter(([, v]) => v));
-      const result = await requestSignupOtp({ ...form, modules, apps: appsToEnable });
+      const result = await requestSignupOtp({ ...form, modules, apps: appsToEnable, turnstileToken });
       setDevOtp(result.devOtp || "");
       setOtp("");
       setOtpError("");
@@ -401,6 +403,8 @@ export default function Signup() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-ink/35 mb-2">Add-on Apps</p>
                   <FeaturePicker selected={selectedApps} onToggle={toggleApp} />
                 </div>
+
+                <Turnstile onVerify={setTurnstileToken} className="flex justify-center" />
 
                 {error && <p className="text-sm text-danger">{error}</p>}
                 <Button type="submit" className="w-full justify-center" disabled={loading}>

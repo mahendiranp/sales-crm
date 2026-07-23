@@ -5,6 +5,8 @@
 // scanner (there's no AV engine available in plain Node.js) — it stops the
 // common attack shape of "rename a script/executable to look like a safe
 // file", not signature-based malware detection.
+const { randomUUID: uuid } = require("crypto");
+const r2Client = require("../integrations/r2Client");
 
 const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3MB, matches the client-side cap
 
@@ -97,4 +99,41 @@ function validateImageAnswer(fieldLabel, answer) {
   return validateFileAnswer(fieldLabel, answer, IMAGE_EXTENSIONS);
 }
 
-module.exports = { validateFileAnswer, validateImageAnswer, MAX_FILE_BYTES, ALLOWED_EXTENSIONS, IMAGE_EXTENSIONS };
+// Call AFTER validateFileAnswer/validateImageAnswer has already passed —
+// this doesn't re-validate, it just decides where the bytes live. When R2
+// isn't configured, returns the answer completely unchanged (today's
+// inline-base64 behavior); when it is, uploads to R2 and returns a
+// lightweight reference instead of the base64 payload, tenant-namespaced
+// so the bucket stays organized/cleanable per account.
+async function storeFileAnswer(answer, { accountId, flow }) {
+  if (!answer?.dataUrl || !r2Client.isConfigured()) return answer;
+  const match = /^data:([^;]+);base64,(.+)$/.exec(answer.dataUrl);
+  if (!match) return answer; // already invalid — validateFileAnswer should have caught this upstream
+  const [, mime, base64] = match;
+  const buffer = Buffer.from(base64, "base64");
+  const ext = extensionOf(answer.name);
+  const key = `${accountId}/${flow}/${uuid()}${ext ? `.${ext}` : ""}`;
+  await r2Client.uploadBuffer({ key, buffer, contentType: mime });
+  return { name: answer.name, type: answer.type, r2Key: key, size: buffer.length };
+}
+
+// Call whenever a stored file-answer is serialized back to a client. A
+// legacy record (inline base64, no r2Key — everything uploaded before this
+// existed, or anything uploaded while R2 was unconfigured) passes through
+// completely unchanged. Resolves fresh on every call rather than caching,
+// since presigned URLs are meant to be short-lived.
+async function resolveFileAnswer(answer) {
+  if (!answer?.r2Key) return answer;
+  const dataUrl = await r2Client.getSignedReadUrl(answer.r2Key);
+  return { ...answer, dataUrl };
+}
+
+module.exports = {
+  validateFileAnswer,
+  validateImageAnswer,
+  storeFileAnswer,
+  resolveFileAnswer,
+  MAX_FILE_BYTES,
+  ALLOWED_EXTENSIONS,
+  IMAGE_EXTENSIONS,
+};

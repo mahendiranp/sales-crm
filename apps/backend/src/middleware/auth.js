@@ -3,6 +3,7 @@
 // attach the decoded, trusted payload as req.user. Nothing downstream
 // trusts anything the client merely *claims* about its own identity.
 const jwt = require("jsonwebtoken");
+const { roleFor } = require("./permissions");
 
 if (!process.env.JWT_SECRET) {
   if (process.env.NODE_ENV === "production") {
@@ -33,6 +34,7 @@ function signToken(account) {
       authRole: account.authRole,
       isMasterAdmin: !!account.isMasterAdmin,
       permission: effectivePermission(account),
+      role: roleFor(account),
       // The tenant this account's data lives under. A signup's own id is
       // its tenant root; invited teammates (seeded demo manager/viewer,
       // or ones created via Settings → Team) share the owner's id here
@@ -55,6 +57,7 @@ function verifyToken(token) {
     authRole: payload.authRole,
     isMasterAdmin: payload.isMasterAdmin,
     permission: payload.permission || "view",
+    role: payload.role || "viewer",
     accountId: payload.accountId,
   };
 }
@@ -110,4 +113,5 @@ module.exports = {
   verifyToken,
   effectivePermission,
   PERMISSION_RANK,
+  requirePermission: require("./permissions").requirePermission,
 };
