@@ -33,6 +33,34 @@ async function notifySupportInbox(ticket, account, message, { isReply = false } 
     // db/store.js). Older tickets created before this existed won't have
     // one — fall back to the UUID so the email still has *some* reference.
     const ref = ticket.ticketNumber ? `#${ticket.ticketNumber}` : ticket.id;
+    // Only present on the opening message (a new ticket), never a reply —
+    // category/rating/severity/diagnostics are ticket-level fields set
+    // once at creation, not per-message.
+    const metaRows = isReply
+      ? ""
+      : [
+          ticket.category ? `<p><strong>Category:</strong> ${escapeHtml(ticket.category)}</p>` : "",
+          ticket.rating ? `<p><strong>Rating:</strong> ${"⭐".repeat(ticket.rating)} (${ticket.rating}/5)</p>` : "",
+          ticket.severity ? `<p><strong>Severity:</strong> ${escapeHtml(ticket.severity)}</p>` : "",
+          ticket.whatWereYouDoing ? `<p><strong>Trying to do:</strong> ${escapeHtml(ticket.whatWereYouDoing)}</p>` : "",
+          ticket.whatHappened ? `<p><strong>What happened:</strong> ${escapeHtml(ticket.whatHappened)}</p>` : "",
+          ticket.whatExpected ? `<p><strong>Expected:</strong> ${escapeHtml(ticket.whatExpected)}</p>` : "",
+          ticket.diagnostics
+            ? `<p><strong>Diagnostics:</strong> ${escapeHtml(
+                [
+                  ticket.diagnostics.browser,
+                  ticket.diagnostics.os,
+                  ticket.diagnostics.screenResolution,
+                  ticket.diagnostics.url,
+                  ticket.diagnostics.appVersion ? `v${ticket.diagnostics.appVersion}` : null,
+                  ticket.diagnostics.language,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              )}</p>`
+            : "",
+        ].join("");
+
     await emailClient.sendMail({
       to: SUPPORT_INBOX,
       subject: `[Flowora ${typeLabel} ${ref}] ${ticket.subject}`,
@@ -43,6 +71,7 @@ async function notifySupportInbox(ticket, account, message, { isReply = false } 
           <p><strong>Ticket:</strong> ${escapeHtml(ref)} <span style="color:#9CA3AF;">(${escapeHtml(ticket.id)})</span></p>
           <p><strong>From:</strong> ${escapeHtml(message.authorName)} (${escapeHtml(company)})</p>
           <p><strong>Subject:</strong> ${escapeHtml(ticket.subject)}</p>
+          ${metaRows}
           <p style="white-space:pre-wrap;">${escapeHtml(message.body)}</p>
           ${message.attachment ? "<p><em>(Includes an image attachment — view it in the Admin Portal.)</em></p>" : ""}
         `,
@@ -64,6 +93,21 @@ async function resolveTicketAttachments(ticket) {
 }
 
 const STATUSES = ["open", "in_progress", "resolved"];
+
+// "bug" is only ever set when type === "issue" (the client only offers it
+// there) — kept in the same list rather than a separate one so category
+// validation doesn't need to branch on type.
+const CATEGORIES = [
+  "feature_request",
+  "general_feedback",
+  "ui_ux",
+  "performance",
+  "ai_quality",
+  "integrations",
+  "forms",
+  "bug",
+];
+const SEVERITIES = ["critical", "high", "medium", "low"];
 
 // Same "owner or master admin" check used elsewhere (payments, team
 // management) — a teammate shouldn't be able to open support tickets or
@@ -94,18 +138,54 @@ router.get("/", requireManager, async (req, res) => {
   res.json(mine.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
 });
 
+// `diagnostics` is entirely client-collected (browser/OS/screen/url/app
+// version/language/timestamp — see Feedback.jsx's collectDiagnostics()) —
+// trusted as informational context for support, not as anything a
+// permission or business-logic decision is ever made from, so it's stored
+// as-is without server-side validation beyond capping its size implicitly
+// via the request body limit already enforced in app.js.
+function sanitizedDiagnostics(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== "object") return null;
+  const { browser, os, screenResolution, url, appVersion, userId, workspaceId, time, language } = diagnostics;
+  return { browser, os, screenResolution, url, appVersion, userId, workspaceId, time, language };
+}
+
 router.post("/", requireManager, async (req, res) => {
   if (!isOwner(req)) {
     return res.status(403).json({ error: "Only the account owner can submit feedback or report an issue." });
   }
-  const { subject, message, type, attachment } = req.body;
+  const {
+    subject,
+    message,
+    type,
+    attachment,
+    category,
+    rating,
+    severity,
+    whatWereYouDoing,
+    whatHappened,
+    whatExpected,
+    diagnostics,
+  } = req.body;
+  const ticketType = type === "issue" ? "issue" : "feedback";
+
   if (!subject?.trim() || !message?.trim()) {
     return res.status(400).json({ error: "Subject and message are required." });
+  }
+  if (!CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `Category must be one of: ${CATEGORIES.join(", ")}.` });
+  }
+  if (rating !== undefined && rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
+    return res.status(400).json({ error: "Rating must be an integer from 1 to 5." });
+  }
+  if (ticketType === "issue" && severity !== undefined && !SEVERITIES.includes(severity)) {
+    return res.status(400).json({ error: `Severity must be one of: ${SEVERITIES.join(", ")}.` });
   }
   // Same allowlist/size/magic-byte re-check pattern as form file uploads
   // (utils/fileUploads.js) — the client's checks are UX only, not a
   // security boundary, and this is an image-only attachment (not the full
-  // file-type allowlist forms support).
+  // file-type allowlist forms support). Covers both a picked file and a
+  // captured screenshot — both arrive as the same { name, type, dataUrl } shape.
   const attachmentError = validateImageAnswer("Attachment", attachment);
   if (attachmentError) return res.status(400).json({ error: attachmentError });
 
@@ -119,7 +199,20 @@ router.post("/", requireManager, async (req, res) => {
     ticketNumber,
     accountId: req.user.accountId,
     subject: subject.trim(),
-    type: type === "issue" ? "issue" : "feedback",
+    type: ticketType,
+    category,
+    // Only meaningful for type "feedback" (the client only shows the star
+    // rating there) — stored as given either way rather than force-nulled
+    // for "issue", since a caller hitting the API directly isn't wrong to
+    // send one and there's no harm keeping it.
+    rating: rating ?? null,
+    // Issue-only structured fields — null for type "feedback" since the
+    // client never collects them there.
+    severity: ticketType === "issue" ? severity || null : null,
+    whatWereYouDoing: ticketType === "issue" ? (whatWereYouDoing || "").trim() || null : null,
+    whatHappened: ticketType === "issue" ? (whatHappened || "").trim() || null : null,
+    whatExpected: ticketType === "issue" ? (whatExpected || "").trim() || null : null,
+    diagnostics: sanitizedDiagnostics(diagnostics),
     status: "open",
     createdBy: { id: req.user.id, name: req.user.email },
     createdAt: now,
