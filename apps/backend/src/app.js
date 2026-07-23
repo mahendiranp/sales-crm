@@ -137,6 +137,12 @@ const PUBLIC_ROUTES = [
   // The public pricing page (landing page, no login yet) shows real
   // remaining launch-offer slots, not a hardcoded/fabricated count.
   { method: "GET", pattern: /^\/api\/payments\/launch-offer$/ },
+  // Vercel Cron's daily trigger for the feedback-request email sweep (see
+  // vercel.json) — has no logged-in user to attach a JWT to, so it can't
+  // go through the normal requireAuth gate. Not actually open to the
+  // public: the route itself checks Vercel's CRON_SECRET bearer token
+  // before doing anything (routes/platform.js).
+  { method: "GET", pattern: /^\/api\/platform\/send-feedback-emails$/ },
 ];
 
 app.use((req, res, next) => {
