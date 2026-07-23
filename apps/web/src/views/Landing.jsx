@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Target, Sparkles, ArrowRight, Check, Mail, ChevronDown, UploadCloud,
-  Workflow, Bot, Clock, Lock,
+  Workflow, Bot, Clock, Lock, Menu as MenuIcon, X as XIcon,
   Building2, HeartPulse, GraduationCap, Factory, Landmark, Truck, Store,
   Briefcase, TrendingUp, ClipboardList, ShieldCheck, History, DatabaseBackup, Globe, Activity,
 } from "lucide-react";
@@ -168,7 +168,24 @@ function AnnouncementBar() {
   );
 }
 
+// Mobile-only nav items — Features/Templates/Pricing/FAQ were previously
+// only reachable on md+ (the desktop <nav> below is hidden entirely under
+// that breakpoint, with nothing replacing it), so a phone visitor had no
+// way to jump to any section without scrolling past it manually. "Sign up
+// free" stays visible outside the menu (the highest-converting button
+// shouldn't need an extra tap to reveal), "Log in" moves inside — the
+// pattern most SaaS marketing sites use on mobile.
+const MOBILE_MENU_LINKS = [
+  { label: "Features", href: "#features" },
+  { label: "Templates", href: "/templates" },
+  { label: "Pricing", href: "#pricing" },
+  { label: "FAQ", href: "#faq" },
+];
+
 function NavBar() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const closeMobile = () => setMobileOpen(false);
+
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-border">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -184,7 +201,8 @@ function NavBar() {
           <a href="#pricing" className="hover:text-ink">Pricing</a>
           <a href="#faq" className="hover:text-ink">FAQ</a>
         </nav>
-        <div className="flex items-center gap-2">
+        {/* Desktop actions — unchanged, md+ only. */}
+        <div className="hidden md:flex items-center gap-2">
           <Link href="/login" className="px-3.5 py-2 rounded-lg text-sm font-medium text-ink/70 hover:bg-base">
             Log in
           </Link>
@@ -192,7 +210,49 @@ function NavBar() {
             Sign up free
           </Link>
         </div>
+        {/* Mobile actions — Sign up stays visible (highest-converting
+            button), Log in + section links move into the hamburger menu. */}
+        <div className="flex md:hidden items-center gap-2">
+          <Link href="/signup" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary-dark">
+            Sign up
+          </Link>
+          <button
+            type="button"
+            onClick={() => setMobileOpen((o) => !o)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+            className="p-2 -mr-2 text-ink/70 hover:text-ink"
+          >
+            {mobileOpen ? <XIcon size={22} /> : <MenuIcon size={22} />}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile menu panel — sits directly under the header (not a
+          full-screen overlay), high z-index so it can't render behind
+          page content regardless of any stacking context lower on the
+          page, and the header itself has no overflow:hidden ancestor
+          that would clip it. */}
+      {mobileOpen && (
+        <div className="md:hidden border-t border-border bg-white z-50 relative">
+          <nav className="max-w-6xl mx-auto px-6 py-3 flex flex-col text-sm">
+            {MOBILE_MENU_LINKS.map((l) =>
+              l.href.startsWith("#") ? (
+                <a key={l.label} href={l.href} onClick={closeMobile} className="py-3 text-ink/70 hover:text-ink border-b border-border/60 last:border-0">
+                  {l.label}
+                </a>
+              ) : (
+                <Link key={l.label} href={l.href} onClick={closeMobile} className="py-3 text-ink/70 hover:text-ink border-b border-border/60 last:border-0">
+                  {l.label}
+                </Link>
+              )
+            )}
+            <Link href="/login" onClick={closeMobile} className="py-3 text-ink/70 hover:text-ink">
+              Log in
+            </Link>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }
