@@ -1,9 +1,9 @@
 describe("Landing page", () => {
   it("renders new hero, business-workflow diagram, comparison, industries, security, pricing, FAQ, final CTA", () => {
     cy.visit("/");
-    cy.contains("Build AI Forms. Automate Every Submission.").should("be.visible");
-    cy.contains("Forms are just the beginning.").should("be.visible");
-    cy.contains("Every submission becomes an automated business workflow.").should("be.visible");
+    cy.contains("Build a form. Get finished work.").should("be.visible");
+    cy.contains("From idea to finished work").should("be.visible");
+    cy.contains("Every submission moves on its own.").should("be.visible");
     // "See the Difference" / "Why Businesses Switch" / "Everything Your
     // Team Needs" / "How Flowora compares" / "After someone submits a
     // form…" / "Save Hours Every Week" were all consolidated into this
@@ -26,11 +26,12 @@ describe("Landing page", () => {
       cy.contains("For growing businesses").should("be.visible");
     });
     cy.get("#faq").within(() => {
-      cy.contains("Is Flowora free?").click();
-      cy.contains("no credit card required").should("be.visible");
+      // First FAQ item is expanded by default now — no click needed to see its answer.
+      cy.contains("Is Flowora free?").should("be.visible");
+      cy.contains("No credit card required").should("be.visible");
       cy.contains("How does AI work?").should("be.visible");
     });
-    cy.contains("Stop Managing Work Across Five Different Tools").scrollIntoView().should("be.visible");
+    cy.contains("Stop managing work across five different tools").scrollIntoView().should("be.visible");
     cy.screenshot("landing-full", { capture: "fullPage" });
   });
 
