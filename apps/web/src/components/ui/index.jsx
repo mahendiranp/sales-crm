@@ -77,6 +77,19 @@ export function PageHeader({ title, subtitle, action }) {
 }
 
 export function Modal({ open, onClose, title, subtitle, children, wide, xl }) {
+  // Applies to every modal in the app (this is the one shared component
+  // — nothing here is FormResponses-specific) — only listens while this
+  // particular instance is actually open, so a closed-but-mounted modal
+  // elsewhere on the page can't steal Escape from whatever's on top.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>

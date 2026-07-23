@@ -66,7 +66,12 @@ const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp"];
 // string, or null if it passes every check. `allowedExtensions` narrows
 // the allowlist for contexts that only want a subset (e.g. images for a
 // feedback-ticket attachment) — defaults to every type forms support.
-function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(ALLOWED_EXTENSIONS)) {
+// `maxBytes` defaults to the shared 3MB cap every other upload context
+// uses, but the "images" form field type has its own plan-tiered
+// per-image cap (see routes/forms.js) that can run larger — passed
+// through here instead of every caller needing its own copy of this
+// whole function just to check a different size.
+function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(ALLOWED_EXTENSIONS), maxBytes = MAX_FILE_BYTES) {
   if (!answer || typeof answer !== "object" || !answer.dataUrl) return null; // not a file answer — nothing to check
   const { name = "", type = "", dataUrl } = answer;
 
@@ -84,8 +89,8 @@ function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(
   }
 
   const buffer = Buffer.from(base64, "base64");
-  if (buffer.length > MAX_FILE_BYTES) {
-    return `"${fieldLabel}": file is too large — max ${MAX_FILE_BYTES / (1024 * 1024)}MB.`;
+  if (buffer.length > maxBytes) {
+    return `"${fieldLabel}": file is too large — max ${(maxBytes / (1024 * 1024)).toFixed(1)}MB.`;
   }
   if (!matchesMagicBytes(buffer, declaredMime)) {
     return `"${fieldLabel}": file content doesn't match its extension.`;
@@ -94,9 +99,10 @@ function validateFileAnswer(fieldLabel, answer, allowedExtensions = Object.keys(
   return null;
 }
 
-// Convenience wrapper for image-only contexts (feedback ticket attachments).
-function validateImageAnswer(fieldLabel, answer) {
-  return validateFileAnswer(fieldLabel, answer, IMAGE_EXTENSIONS);
+// Convenience wrapper for image-only contexts (feedback ticket attachments,
+// and — with an explicit maxBytes — the "images" form field type).
+function validateImageAnswer(fieldLabel, answer, maxBytes = MAX_FILE_BYTES) {
+  return validateFileAnswer(fieldLabel, answer, IMAGE_EXTENSIONS, maxBytes);
 }
 
 // Call AFTER validateFileAnswer/validateImageAnswer has already passed —

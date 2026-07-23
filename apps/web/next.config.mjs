@@ -6,6 +6,13 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:4000";
 
 const nextConfig = {
   reactStrictMode: true,
+  // Inlined at build time into process.env.NEXT_PUBLIC_APP_VERSION for
+  // client code (lib/brand.js) — shown in diagnostic info attached to
+  // feedback/issue reports, so support can tell which deployed version a
+  // report came from without asking.
+  env: {
+    NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || "0.0.0",
+  },
   async rewrites() {
     return [
       {
