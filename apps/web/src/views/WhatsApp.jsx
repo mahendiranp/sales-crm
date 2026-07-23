@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Send, Sparkles, Check, CheckCheck } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, Button, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
 
 export default function WhatsApp() {
   const { canManage } = useAuth();
+  const toast = useToast();
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [suggestion, setSuggestion] = useState("");
@@ -28,16 +30,24 @@ export default function WhatsApp() {
 
   const getAiSuggestion = async () => {
     const text = lastInbound?.message || draft;
-    const r = await api.post("/whatsapp/ai-suggest", { message: text });
-    setSuggestion(r.data.suggestion);
+    try {
+      const r = await api.post("/whatsapp/ai-suggest", { message: text });
+      setSuggestion(r.data.suggestion);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't get an AI suggestion.");
+    }
   };
 
   const send = async (message) => {
     if (!message) return;
-    await api.post("/whatsapp/send", { leadId: lastInbound?.leadId, contactName: lastInbound?.contactName || "Customer", message });
-    setDraft("");
-    setSuggestion("");
-    load();
+    try {
+      await api.post("/whatsapp/send", { leadId: lastInbound?.leadId, contactName: lastInbound?.contactName || "Customer", message });
+      setDraft("");
+      setSuggestion("");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't send that message.");
+    }
   };
 
   return (

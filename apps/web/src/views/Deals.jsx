@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { Plus, Search, ChevronDown, Phone, Mail } from "lucide-react";
 import api from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { useAuth } from "../context/AuthContext";
 import { Card, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatINR, formatDate, timeAgo } from "../lib/format";
@@ -110,6 +111,7 @@ function DealCard({ deal, contact, companyName, ownerName, canManage, onMoveStag
 
 export default function Deals() {
   const router = useRouter();
+  const toast = useToast();
   const { canManage, user } = useAuth();
   const [deals, setDeals] = useState([]);
   const [users, setUsers] = useState([]);
@@ -155,8 +157,12 @@ export default function Deals() {
   }, {});
 
   const moveStage = async (dealId, stage) => {
-    await api.post(`/deals/${dealId}/stage`, { stage });
-    load();
+    try {
+      await api.post(`/deals/${dealId}/stage`, { stage });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't move that deal to the new stage.");
+    }
   };
 
   // Picking a Contact auto-fills their Company, if they have one — a deal
@@ -168,14 +174,18 @@ export default function Deals() {
   };
 
   const save = async () => {
-    await api.post("/deals", {
-      ...form,
-      expectedRevenue: Number(form.expectedRevenue) || 0,
-      probability: Math.min(100, Math.max(0, Number(form.probability) || 0)),
-    });
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/deals", {
+        ...form,
+        expectedRevenue: Number(form.expectedRevenue) || 0,
+        probability: Math.min(100, Math.max(0, Number(form.probability) || 0)),
+      });
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save that deal.");
+    }
   };
 
   const stageFiltered = activeStage ? deals.filter((d) => d.stage === activeStage) : deals;

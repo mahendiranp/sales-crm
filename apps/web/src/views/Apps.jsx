@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Sparkles, Rocket, UserPlus } from "lucide-react";
 import api from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, Switch, Badge } from "../components/ui";
 import { APP_CATALOG, APP_CATEGORIES } from "../lib/appCatalog";
 import { CORE_MODULES } from "../lib/coreModules";
@@ -28,15 +29,24 @@ const TENANT_OVERVIEW_COLUMNS = [
 // customer's sidebar or the signup picker once it's released here, no
 // matter what any tenant's own settings.modules/apps says.
 function ReleaseFeatures() {
+  const toast = useToast();
   const { releasedModules, releasedApps, reload } = usePlatformFeatures();
 
   const toggleModule = async (key, next) => {
-    await api.put("/platform", { releasedModules: { [key]: next } });
-    reload();
+    try {
+      await api.put("/platform", { releasedModules: { [key]: next } });
+      reload();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't update that module's release status.");
+    }
   };
   const toggleApp = async (key, next) => {
-    await api.put("/platform", { releasedApps: { [key]: next } });
-    reload();
+    try {
+      await api.put("/platform", { releasedApps: { [key]: next } });
+      reload();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't update that app's release status.");
+    }
   };
 
   return (
@@ -176,6 +186,7 @@ function TenantOverview() {
 }
 
 export default function Apps() {
+  const toast = useToast();
   const [settings, setSettings] = useState(null);
 
   const load = () => api.get("/settings").then((r) => setSettings(r.data));
@@ -189,7 +200,11 @@ export default function Apps() {
   const toggle = async (app, next) => {
     const updatedApps = { ...settings.apps, [app.key]: next };
     setSettings((s) => ({ ...s, apps: updatedApps }));
-    await api.put("/settings", { apps: updatedApps });
+    try {
+      await api.put("/settings", { apps: updatedApps });
+    } catch (err) {
+      toast.error(err.response?.data?.error || `Couldn't ${next ? "enable" : "disable"} ${app.label}.`);
+    }
   };
 
   const isModuleOn = (key) => settings?.modules?.[key] !== false;
@@ -197,7 +212,11 @@ export default function Apps() {
   const toggleModule = async (key, next) => {
     const updatedModules = { ...settings.modules, [key]: next };
     setSettings((s) => ({ ...s, modules: updatedModules }));
-    await api.put("/settings", { modules: updatedModules });
+    try {
+      await api.put("/settings", { modules: updatedModules });
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't update that module's visibility.");
+    }
   };
 
   if (!settings) return <div className="text-ink/40 text-sm">Loading…</div>;

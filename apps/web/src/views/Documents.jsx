@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import { useToast } from "../components/ui/Toast";
 
 const CATEGORIES = ["Contract", "Invoice Copy", "Proposal", "ID Proof", "Other"];
 
@@ -12,6 +13,7 @@ const emptyForm = { name: "", category: CATEGORIES[0], relatedTo: "", note: "" }
 
 export default function Documents() {
   const { canManage, user } = useAuth();
+  const toast = useToast();
   const [documents, setDocuments] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -29,17 +31,21 @@ export default function Documents() {
   useLiveCollection(["documents"], load);
 
   const save = async () => {
-    await api.post("/documents", {
-      name: form.name,
-      category: form.category,
-      relatedTo: form.relatedTo,
-      note: form.note,
-      uploadedBy: user?.id,
-      uploadedAt: new Date().toISOString(),
-    });
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/documents", {
+        name: form.name,
+        category: form.category,
+        relatedTo: form.relatedTo,
+        note: form.note,
+        uploadedBy: user?.id,
+        uploadedAt: new Date().toISOString(),
+      });
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save that document.");
+    }
   };
 
   return (

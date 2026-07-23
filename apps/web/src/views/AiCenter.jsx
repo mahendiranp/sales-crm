@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PartyPopper, X, ChevronDown } from "lucide-react";
 import api from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, inputCls } from "../components/ui";
 import Pagination from "../components/Pagination";
 import useLiveCollection from "../lib/useLiveCollection";
@@ -539,6 +540,7 @@ function CardSkeleton() {
 }
 
 export default function AiCenter() {
+  const toast = useToast();
   const [health, setHealth] = useState(null);
   const [openItems, setOpenItems] = useState([]);
   const [status, setStatus] = useState("OPEN");
@@ -625,6 +627,8 @@ export default function AiCenter() {
     try {
       await api.patch(`/recommendations/bulk/${action}`, { ids: [...selectedIds] });
       reloadAll();
+    } catch (err) {
+      toast.error(err.response?.data?.error || `Couldn't ${action} the selected recommendations.`);
     } finally {
       setBulkBusy(false);
     }

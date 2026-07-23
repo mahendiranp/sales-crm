@@ -5,6 +5,7 @@ import "../index.css";
 import { AuthProvider } from "../context/AuthContext";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Analytics from "../components/Analytics";
+import { ToastProvider } from "../components/ui/Toast";
 import AppShell from "../components/AppShell";
 import { APP_NAME } from "../lib/brand";
 import { initLogRocket } from "../lib/logrocket";
@@ -39,15 +40,11 @@ export default function MyApp({ Component, pageProps }) {
         <meta name="description" content={`${APP_NAME} — a CRM with drag-and-drop forms, approvals, and WhatsApp automation.`} />
       </Head>
       <Analytics />
-      <AuthProvider>
-        {isAppRoute ? (
-          <AppShell>
-            <Component {...pageProps} />
-          </AppShell>
-        ) : (
+      <ToastProvider>
+        <AuthProvider>
           <Component {...pageProps} />
-        )}
-      </AuthProvider>
+        </AuthProvider>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

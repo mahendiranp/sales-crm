@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { randomUUID: uuid } = require("crypto");
 const rateLimit = require("express-rate-limit");
 const { collection } = require("../db/store");
+const { tenantAccountsFor } = require("../utils/tenantAccounts");
 const { signToken, requireAuth, requireFullAccess, effectivePermission } = require("../middleware/auth");
 const { defaults: settingsDefaults, getLimitsForAccount } = require("./settings");
 const emailClient = require("../integrations/emailClient");
@@ -456,7 +457,7 @@ function requireOwner(req, res, next) {
 }
 
 router.get("/team", requireAuth, requireOwner, async (req, res) => {
-  const teammates = (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId && a.id !== req.user.id);
+  const teammates = (await tenantAccountsFor(req.user.accountId)).filter((a) => a.id !== req.user.id);
   res.json(teammates.map(publicAccount));
 });
 
@@ -483,7 +484,7 @@ router.post("/team", requireAuth, requireOwner, async (req, res) => {
     const limits = await getLimitsForAccount(req.user.accountId);
     if (limits.maxUsers !== Infinity) {
       // +1 for the owner themselves — maxUsers counts the whole team, not just teammates.
-      const currentUsers = (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId).length;
+      const currentUsers = (await tenantAccountsFor(req.user.accountId)).length;
       if (currentUsers >= limits.maxUsers) {
         return res.status(403).json({ error: `Your plan (${limits.label}) allows up to ${limits.maxUsers} user${limits.maxUsers === 1 ? "" : "s"}. Upgrade to add more.` });
       }

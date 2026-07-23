@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { Plus, Check, X, List as ListIcon, LayoutGrid, MessageSquare, Trash2 } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, Button, Modal, Field, inputCls } from "../components/ui";
 import { formatDate, timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
@@ -55,6 +56,7 @@ const EVENT_LABEL = {
 // Comments (one level of threaded replies), and Activity (the real
 // Event Engine timeline, not a placeholder).
 function TaskDrawer({ taskId, users, onClose, onChanged }) {
+  const toast = useToast();
   const [task, setTask] = useState(null);
   const [comments, setComments] = useState(null);
   const [timeline, setTimeline] = useState(null);
@@ -78,9 +80,13 @@ function TaskDrawer({ taskId, users, onClose, onChanged }) {
   if (!taskId) return null;
 
   const patch = async (fields) => {
-    await api.put(`/tasks/${taskId}`, fields);
-    load();
-    onChanged();
+    try {
+      await api.put(`/tasks/${taskId}`, fields);
+      load();
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't update that task.");
+    }
   };
 
   const userName = (id) => users.find((u) => u.id === id)?.name || "Unassigned";
@@ -98,23 +104,35 @@ function TaskDrawer({ taskId, users, onClose, onChanged }) {
   const postComment = async (parentCommentId) => {
     const text = parentCommentId ? replyTo.text : newComment;
     if (!text?.trim()) return;
-    await api.post(`/tasks/${taskId}/comments`, { comment: text, parentCommentId });
-    setNewComment("");
-    setReplyTo(null);
-    load();
+    try {
+      await api.post(`/tasks/${taskId}/comments`, { comment: text, parentCommentId });
+      setNewComment("");
+      setReplyTo(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't post that comment.");
+    }
   };
 
   const addSubtask = async () => {
     if (!newSubtask.trim()) return;
-    await api.post("/tasks", { title: newSubtask.trim(), parentTaskId: taskId });
-    setNewSubtask("");
-    load();
-    onChanged();
+    try {
+      await api.post("/tasks", { title: newSubtask.trim(), parentTaskId: taskId });
+      setNewSubtask("");
+      load();
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't add that subtask.");
+    }
   };
   const toggleSubtask = async (subtask) => {
-    await api.put(`/tasks/${subtask.id}`, { status: subtask.status === "Completed" ? "Todo" : "Completed" });
-    load();
-    onChanged();
+    try {
+      await api.put(`/tasks/${subtask.id}`, { status: subtask.status === "Completed" ? "Todo" : "Completed" });
+      load();
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't update that subtask.");
+    }
   };
 
   return (
@@ -424,6 +442,7 @@ const DUE_FILTERS = [
 export default function Tasks() {
   const router = useRouter();
   const { canManage, user } = useAuth();
+  const toast = useToast();
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [leads, setLeads] = useState([]);
@@ -513,17 +532,29 @@ export default function Tasks() {
   const activeFilterCount = [priorityFilter, assigneeFilter, dueFilter, createdByMe].filter(Boolean).length;
 
   const complete = async (task) => {
-    await api.put(`/tasks/${task.id}`, { status: "Completed" });
-    load();
+    try {
+      await api.put(`/tasks/${task.id}`, { status: "Completed" });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't mark that task complete.");
+    }
   };
   const changeStatus = async (task, status) => {
-    await api.put(`/tasks/${task.id}`, { status });
-    load();
+    try {
+      await api.put(`/tasks/${task.id}`, { status });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't change that task's status.");
+    }
   };
   const remove = async (task) => {
     if (!confirm(`Delete "${task.title}"? This can't be undone from here.`)) return;
-    await api.delete(`/tasks/${task.id}`);
-    load();
+    try {
+      await api.delete(`/tasks/${task.id}`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't delete that task.");
+    }
   };
 
   const save = async () => {
@@ -544,10 +575,14 @@ export default function Tasks() {
             .map((text) => ({ text, done: false }))
         : [],
     };
-    await api.post("/tasks", payload);
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/tasks", payload);
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't create that task.");
+    }
   };
 
   return (

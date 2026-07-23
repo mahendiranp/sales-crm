@@ -21,8 +21,8 @@ const salespeople = (req) => scopedCollection("users", req.user.accountId);
 // same reasoning as tasks.js's notifyAssignee.
 async function notifyAssignee(req, lead, assignee) {
   if (!assignee?.email) return;
-  try {
-    await emailClient.sendMail({
+  emailClient
+    .sendMail({
       to: assignee.email,
       subject: `You've been assigned a lead: ${lead.name}`,
       html: emailLayout({
@@ -30,10 +30,8 @@ async function notifyAssignee(req, lead, assignee) {
         heading: "You have been assigned",
         bodyHtml: `<p>Lead</p><p><strong>${lead.name}</strong>${lead.company ? ` — ${lead.company}` : ""}</p>`,
       }),
-    });
-  } catch {
-    // Notification is a nice-to-have — the assignment already succeeded.
-  }
+    })
+    .catch((err) => console.error(`notifyAssignee: failed to send lead-assignment email for lead ${lead.id}:`, err));
 }
 
 // Backstop for the form's own required-field rules (Lead Name, plus a
@@ -235,9 +233,7 @@ router.post("/merge", requirePermission("leads.delete"), async (req, res) => {
   const primary = await leads(req).find(primaryId);
   if (!primary) return res.status(404).json({ error: "Primary lead not found" });
 
-  for (const dupId of duplicateIds || []) {
-    await leads(req).remove(dupId);
-  }
+  await Promise.all((duplicateIds || []).map((dupId) => leads(req).remove(dupId)));
   res.json({ merged: true, primary });
 });
 

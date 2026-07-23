@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { Plus, FileText, MapPin, ShoppingBag, Cake, CalendarClock, Phone, Mail, Users, Clock, ArrowLeft } from "lucide-react";
 import api from "../api/client";
+import { useToast } from "../components/ui/Toast";
 import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, EmptyState, Button, Modal, Field, inputCls } from "../components/ui";
 import { formatINR, formatDate, timeAgo } from "../lib/format";
@@ -20,6 +21,7 @@ const DETAIL_TABS = ["Overview", "Timeline", "Notes", "Documents"];
 
 export default function Contacts() {
   const router = useRouter();
+  const toast = useToast();
   const { user, canManage } = useAuth();
   const [contacts, setContacts] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -64,10 +66,14 @@ export default function Contacts() {
 
   const saveContact = async () => {
     if (!form.name.trim()) return;
-    await api.post("/contacts", { ...form, purchaseHistory: [], documents: [] });
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/contacts", { ...form, purchaseHistory: [], documents: [] });
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save that contact.");
+    }
   };
 
   const contactActivities = active
@@ -97,17 +103,21 @@ export default function Contacts() {
 
   const saveLog = async () => {
     if (!logSummary.trim()) return;
-    await api.post("/activities", {
-      type: logType,
-      summary: logSummary.trim(),
-      contactId: active.id,
-      relatedTo: active.name,
-      performedBy: user.id,
-      timestamp: new Date().toISOString(),
-    });
-    setLogType(null);
-    setLogSummary("");
-    load();
+    try {
+      await api.post("/activities", {
+        type: logType,
+        summary: logSummary.trim(),
+        contactId: active.id,
+        relatedTo: active.name,
+        performedBy: user.id,
+        timestamp: new Date().toISOString(),
+      });
+      setLogType(null);
+      setLogSummary("");
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save that activity log.");
+    }
   };
 
   return (

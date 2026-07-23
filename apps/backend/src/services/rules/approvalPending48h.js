@@ -8,10 +8,10 @@
 const { collection } = require("../../db/store");
 const { currentApprovers } = require("../../utils/workflowEngine");
 const { upsertRecommendation, resolveRecommendation, findOpenByRule, PRIORITY } = require("../recommendationStore");
+const { tenantAccountsFor } = require("../../utils/tenantAccounts");
 
 const events = collection("events");
 const responses = collection("form_responses");
-const accounts = collection("accounts");
 
 const ID = "approval.pending.48h";
 const OVERDUE_HOURS = 48;
@@ -25,7 +25,7 @@ const OVERDUE_HOURS = 48;
 async function resolveWaitingFor(accId, entityId) {
   const response = await responses.find(entityId);
   if (!response?.workflow) return null;
-  const tenantAccounts = (await accounts.all()).filter((a) => (a.accountId || a.id) === accId);
+  const tenantAccounts = await tenantAccountsFor(accId);
   const approverIds = currentApprovers(response.workflow, tenantAccounts);
   const names = tenantAccounts.filter((a) => approverIds.includes(a.id)).map((a) => a.name || a.email);
   return names.length ? names.join(", ") : null;

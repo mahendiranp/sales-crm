@@ -5,6 +5,8 @@ const crypto = require("crypto");
 const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 const { randomUUID: uuid } = crypto;
 const { collection, scopedCollection } = require("../db/store");
+const { tenantAccountsFor: tenantAccountsForId } = require("../utils/tenantAccounts");
+const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { requirePermission } = require("../middleware/permissions");
 const { encryptAnswers, decryptResponse } = require("../utils/formCrypto");
 const { listTemplates, getTemplate } = require("../data/formTemplates");
@@ -150,10 +152,7 @@ const responsesFor = (req) =>
   scopedCollection("form_responses", req.user.accountId);
 // Everyone sharing a tenant (owner + teammates) for resolving role-based
 // approvers — mirrors the membership check in routes/auth.js's /team route.
-const tenantAccountsFor = async (req) =>
-  (await accounts.all()).filter(
-    (a) => (a.accountId || a.id) === req.user.accountId,
-  );
+const tenantAccountsFor = (req) => tenantAccountsForId(req.user.accountId);
 
 // Master admin bypasses plan limits same as every other gate in this app.
 // Returns null (ok to proceed) or an error message to send as a 403.

@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatINR, formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import { useToast } from "../components/ui/Toast";
 
 const STATUSES = ["Draft", "Sent", "Paid", "Overdue"];
 
@@ -12,6 +13,7 @@ const emptyForm = { dealId: "", description: "", amount: "", dueDate: "", status
 
 export default function Invoicing() {
   const { canManage } = useAuth();
+  const toast = useToast();
   const [invoices, setInvoices] = useState([]);
   const [deals, setDeals] = useState([]);
   const [modal, setModal] = useState(false);
@@ -39,21 +41,25 @@ export default function Invoicing() {
     const amount = Number(form.amount) || 0;
     const tax = Math.round(amount * 0.18);
     const count = invoices.length + 1;
-    await api.post("/invoices", {
-      invoiceNumber: `INV-2026-${String(count).padStart(4, "0")}`,
-      dealId: form.dealId || null,
-      lineItems: [{ description: form.description, qty: 1, unitPrice: amount }],
-      amount,
-      tax,
-      total: amount + tax,
-      status: form.status,
-      issueDate: new Date().toISOString(),
-      dueDate: form.dueDate,
-      notes: "",
-    });
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/invoices", {
+        invoiceNumber: `INV-2026-${String(count).padStart(4, "0")}`,
+        dealId: form.dealId || null,
+        lineItems: [{ description: form.description, qty: 1, unitPrice: amount }],
+        amount,
+        tax,
+        total: amount + tax,
+        status: form.status,
+        issueDate: new Date().toISOString(),
+        dueDate: form.dueDate,
+        notes: "",
+      });
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't create that invoice.");
+    }
   };
 
   return (

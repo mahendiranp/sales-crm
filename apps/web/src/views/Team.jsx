@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, Eye, Pencil, ShieldCheck, Users as UsersIcon } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState, ErrorModal } from "../components/ui";
 import { formatDate } from "../lib/format";
 import { limitsFor } from "../lib/plans";
@@ -16,6 +17,7 @@ const emptyForm = { name: "", email: "", password: "", permission: "edit" };
 
 export default function Team() {
   const { user, isOwner, isMasterAdmin } = useAuth();
+  const toast = useToast();
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -54,14 +56,22 @@ export default function Team() {
   };
 
   const changePermission = async (id, permission) => {
-    await api.put(`/auth/team/${id}`, { permission });
-    load();
+    try {
+      await api.put(`/auth/team/${id}`, { permission });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't change that teammate's permission.");
+    }
   };
 
   const removeTeammate = async (member) => {
     if (!confirm(`Remove ${member.name}'s access? They won't be able to log in anymore.`)) return;
-    await api.delete(`/auth/team/${member.id}`);
-    load();
+    try {
+      await api.delete(`/auth/team/${member.id}`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't remove that team member.");
+    }
   };
 
   if (!isOwner) {

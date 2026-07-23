@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Sparkles, MessageCircle, Mail } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import useLiveCollection from "../lib/useLiveCollection";
 
@@ -10,6 +11,7 @@ const emptyForm = { name: "", category: "Welcome", channel: "WhatsApp", body: ""
 
 export default function Templates() {
   const { canManage } = useAuth();
+  const toast = useToast();
   const [templates, setTemplates] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -28,10 +30,14 @@ export default function Templates() {
   useLiveCollection(["templates"], load);
 
   const save = async () => {
-    await api.post("/templates", form);
-    setModal(false);
-    setForm(emptyForm);
-    load();
+    try {
+      await api.post("/templates", form);
+      setModal(false);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't save that template.");
+    }
   };
 
   const personalize = (body) =>

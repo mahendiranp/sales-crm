@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { formatDate } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import { useToast } from "../components/ui/Toast";
 import useResizableColumns from "../lib/useResizableColumns";
 import ResizableTh from "../components/ResizableTh";
 
@@ -18,6 +19,7 @@ const EMAIL_COLUMNS = [
 
 export default function EmailPage() {
   const { canManage } = useAuth();
+  const toast = useToast();
   const [emails, setEmails] = useState([]);
   const [stats, setStats] = useState(null);
   const [modal, setModal] = useState(false);
@@ -38,10 +40,14 @@ export default function EmailPage() {
   useLiveCollection(["emails"], load);
 
   const send = async () => {
-    await api.post("/emails/send", form);
-    setModal(false);
-    setForm({ to: "", subject: "", body: "" });
-    load();
+    try {
+      await api.post("/emails/send", form);
+      setModal(false);
+      setForm({ to: "", subject: "", body: "" });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't send that email.");
+    }
   };
 
   return (

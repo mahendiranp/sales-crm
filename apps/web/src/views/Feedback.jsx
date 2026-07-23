@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, PageHeader, Button, Badge, Modal, Field, inputCls, EmptyState } from "../components/ui";
 import { timeAgo } from "../lib/format";
 import useLiveCollection from "../lib/useLiveCollection";
+import { useToast } from "../components/ui/Toast";
 import { collectDiagnostics } from "../lib/feedbackDiagnostics";
 import { APP_VERSION } from "../lib/brand";
 import ImageLightbox from "../components/ImageLightbox";
@@ -354,6 +355,7 @@ function NewTicketModal({ open, onClose, onCreated }) {
 // Message thread + reply box, shared by both the master-admin and
 // tenant-owner views — only the status dropdown at the top differs by role.
 function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatusChanged }) {
+  const toast = useToast();
   const [reply, setReply] = useState("");
   const [replyAttachment, setReplyAttachment] = useState(null);
   const [sending, setSending] = useState(false);
@@ -393,8 +395,12 @@ function TicketThread({ ticket, isMasterAdmin, currentUserId, onReplied, onStatu
   };
 
   const changeStatus = async (status) => {
-    const { data } = await api.put(`/feedback/${ticket.id}/status`, { status });
-    onStatusChanged(data);
+    try {
+      const { data } = await api.put(`/feedback/${ticket.id}/status`, { status });
+      onStatusChanged(data);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't update the ticket status.");
+    }
   };
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Send, MessageCircle, CheckCircle2, Clock3, ArrowLeft, Smartphone, PowerOff } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
 import { Card, Button, Field, inputCls, Badge, EmptyState, Switch } from "../components/ui";
 import { timeAgo } from "../lib/format";
 
@@ -141,6 +142,7 @@ function ReplyControl({ field, onSend, sending }) {
 }
 
 function SessionChat({ session, onBack }) {
+  const toast = useToast();
   const [detail, setDetail] = useState(null);
   const [thread, setThread] = useState([]);
   const [sending, setSending] = useState(false);
@@ -162,8 +164,13 @@ function SessionChat({ session, onBack }) {
 
   const send = async (text) => {
     setSending(true);
-    await api.post("/whatsapp-surveys/simulate-reply", { phone: session.phone, text });
-    setSending(false);
+    try {
+      await api.post("/whatsapp-surveys/simulate-reply", { phone: session.phone, text });
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Couldn't send that reply.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const isComplete = detail?.session.status === "completed";

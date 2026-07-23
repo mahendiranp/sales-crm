@@ -15,17 +15,19 @@
 // that generic pipeline was the whole point of building it that way.
 const express = require("express");
 const { randomUUID: uuid } = require("crypto");
+const { scopedCollection } = require("../db/store");
+const { requireManager, requireFullAccess } = require("../middleware/auth");
 const { collection, scopedCollection } = require("../db/store");
 const { requirePermission } = require("../middleware/permissions");
 const { recordEvent, EVENT_TYPES, EVENT_SOURCES } = require("../services/eventEngine");
 const emailClient = require("../integrations/emailClient");
 const { emailLayout } = require("../utils/emailTemplate");
+const { tenantAccountsFor: tenantAccountsForId } = require("../utils/tenantAccounts");
 
 const router = express.Router();
 const meetingsFor = (req) => scopedCollection("meetings", req.user.accountId);
 const participantsFor = (req) => scopedCollection("meeting_participants", req.user.accountId);
 const notesFor = (req) => scopedCollection("meeting_notes", req.user.accountId);
-const accounts = collection("accounts");
 
 const STATUSES = ["Scheduled", "In Progress", "Completed", "Cancelled", "No Show"];
 // A fixed list plus "allow custom types" (per the spec) — anything else
@@ -36,9 +38,7 @@ const COMMON_TYPES = ["Sales Demo", "Customer Call", "Internal Meeting", "Interv
 const OUTCOMES = ["Successful", "Rescheduled", "Cancelled", "No Response", "Won", "Lost"];
 const LINKABLE_ENTITY_TYPES = ["lead", "deal", "contact", "company", "task"];
 
-async function tenantAccountsFor(req) {
-  return (await accounts.all()).filter((a) => (a.accountId || a.id) === req.user.accountId);
-}
+const tenantAccountsFor = (req) => tenantAccountsForId(req.user.accountId);
 
 // Best-effort — a missing/invalid email shouldn't block creating the
 // meeting, same reasoning as tasks.js's notifyAssignee.
@@ -46,7 +46,10 @@ async function notifyParticipants(req, meeting, participantUserIds) {
   try {
     const tenantAccounts = await tenantAccountsFor(req);
     const recipients = tenantAccounts.filter((a) => participantUserIds.includes(a.id) && a.id !== req.user.id && a.email);
-    await Promise.all(
+    // Fire-and-forget — the meeting is already created/updated; the caller
+    // shouldn't wait on SMTP latency for a set of invite emails (same
+    // reasoning as recommendations.js's notifyApprover).
+    Promise.all(
       recipients.map((account) =>
         emailClient
           .sendMail({
