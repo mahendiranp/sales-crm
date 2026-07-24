@@ -1,5 +1,5 @@
 describe("Landing page", () => {
-  it("renders new hero, business-workflow diagram, comparison, industries, security, pricing, FAQ, final CTA", () => {
+  it("renders new hero, business-workflow diagram, comparison, security, pricing, FAQ, final CTA", () => {
     cy.visit("/");
     cy.contains("Build a form. Get finished work.").should("be.visible");
     cy.contains("From idea to finished work").should("be.visible");
@@ -14,8 +14,6 @@ describe("Landing page", () => {
     // removed entirely — both repeated the Form→CRM→Approval→Work chain
     // shown three times earlier on the page by this point.
     cy.contains("Google Forms").should("be.visible");
-    cy.contains("Perfect for").should("be.visible");
-    cy.contains("Administration").should("be.visible");
     cy.contains("Security & Reliability").should("be.visible");
     cy.contains("Encrypted in transit and at rest").should("be.visible");
     cy.get("#pricing").within(() => {
