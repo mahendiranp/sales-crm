@@ -78,6 +78,52 @@ describe("Landing page", () => {
     cy.contains("CRM updated", { timeout: 16000 }).should("be.visible");
     cy.contains("Business Process Completed", { timeout: 16000 }).should("be.visible");
   });
+
+  // Regression test: a merge-conflict resolution once dropped the
+  // `hidden md:flex` class from the desktop Log in/Sign up free block,
+  // so both it AND the separate mobile actions block rendered at once
+  // on phones — nothing in the suite ran at a mobile viewport, so it
+  // shipped unnoticed. This runs the header specifically at a phone
+  // width to catch that class of bug going forward.
+  //
+  // Uses not.be.visible (not not.exist) for the desktop-only pieces —
+  // they're hidden via a `hidden md:flex` CSS class, so they're still
+  // in the DOM below md, just display:none. not.exist would pass even
+  // in the buggy state (the elements do exist), which is exactly the
+  // false-negative that let this regression through undetected.
+  it("mobile header shows only logo, Sign up, and the hamburger menu — not the full desktop nav", () => {
+    cy.viewport("iphone-x");
+    cy.visit("/");
+
+    // Desktop nav (Features/Templates/Pricing/FAQ) — the whole <nav> is
+    // hidden below md.
+    cy.get("header nav").should("not.be.visible");
+    // Desktop actions (Log in / Sign up free) — "Sign up free" is a
+    // distinct phrase from the mobile button's plain "Sign up", so this
+    // unambiguously targets the desktop-only element.
+    cy.contains("a", "Sign up free").should("not.be.visible");
+
+    // Mobile actions — Sign up + hamburger, scoped to the hamburger's
+    // own container so this can't accidentally match the desktop
+    // Sign up free button.
+    cy.get('button[aria-label="Open menu"]').should("be.visible")
+      .parent().within(() => {
+        cy.contains("a", "Sign up").should("be.visible");
+      });
+
+    // Opening the hamburger reveals the rest (Platform/Templates/
+    // Pricing/FAQ + Log in) inside the menu panel — confirms those
+    // links still exist somewhere, just moved into the menu instead of
+    // missing entirely.
+    cy.get('button[aria-label="Open menu"]').click();
+    cy.get("nav").last().within(() => {
+      cy.contains("a", "Platform").should("be.visible");
+      cy.contains("a", "Templates").should("be.visible");
+      cy.contains("a", "Pricing").should("be.visible");
+      cy.contains("a", "FAQ").should("be.visible");
+      cy.contains("a", "Log in").should("be.visible");
+    });
+  });
 });
 
 describe("Login", () => {
