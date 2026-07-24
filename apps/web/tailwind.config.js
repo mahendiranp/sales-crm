@@ -59,6 +59,56 @@ export default {
           "15%, 40%": { opacity: "1", transform: "translateY(0)" },
           "55%": { opacity: "0", transform: "translateY(-6px)" },
         },
+        // Mobile menu panel opening (Landing.jsx's NavBar) and general
+        // scroll-reveal (Workflow Demo/Pricing/Security sections) — same
+        // shape as fadeIn but a larger travel distance (16-24px, not 2px),
+        // since fadeIn's subtlety reads as "barely there" at this scale.
+        fadeUp: {
+          "0%": { opacity: "0", transform: "translateY(20px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        // Mobile menu panel opening specifically — slides down FROM the
+        // header edge (negative translateY, not up from below like
+        // fadeUp), 250ms ease-out per spec.
+        slideDown: {
+          "0%": { opacity: "0", transform: "translateY(-8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        // Mobile menu glass card entrance specifically — scale 0.96→1 plus
+        // a small downward settle, per the "Slide" preset (mobile menu,
+        // drawers, modals) in the animation-system spec. slideDown (above)
+        // is kept as-is since other callers may still reference it.
+        panelIn: {
+          "0%": { opacity: "0", transform: "translateY(-8px) scale(0.96)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        backdropIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        // CTA pulse (Landing.jsx's Sign up buttons) — a barely-there
+        // "breathe," not a bounce; stops once the visitor has interacted
+        // with the page at all (see hasInteracted in Landing.jsx).
+        ctaPulse: {
+          "0%, 100%": { transform: "scale(1)" },
+          "50%": { transform: "scale(1.02)" },
+        },
+        // AI badge shimmer — a narrow light sweep translating across the
+        // badge (not a background-position trick, which needs a
+        // wider-than-element gradient to look right at this small size),
+        // so it reads as "polish" rather than a flashing alert.
+        shimmer: {
+          "0%, 92%": { transform: "translateX(-120%)" },
+          "100%": { transform: "translateX(220%)" },
+        },
+      },
+      animation: {
+        // Named so call sites can write animate-fade-up-slow instead of
+        // repeating the full animate-[fadeUp_...] arbitrary-value syntax
+        // at every scroll-reveal section.
+        "fade-up": "fadeUp 0.5s ease-out forwards",
+        "cta-pulse": "ctaPulse 7s ease-in-out infinite",
+        shimmer: "shimmer 9s ease-in-out infinite",
       },
     },
   },
